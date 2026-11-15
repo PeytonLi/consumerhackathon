@@ -2,8 +2,9 @@
 
 **Event:** Y Combinator Consumer Mobile Hackathon (November 15, 2026 · 6:00 PM PST Submission · 7:00 PM Live Demos)  
 **Team Hardware Constraint:** 2 Windows laptops + 1 MacBook (no local Xcode / Android Studio required)  
-**Core Required Stack:** Capy · Revyl · Convex  
-**Sponsor & Speed Stack:** Keiki (`@onkeiki/agents`) · Whop (`@whop/sdk`) · TypeSafe Jev / Nace Drex (`systemOne`)
+**Core Required Stack:** Capy · Revyl (`apps/mobile/.revyl/config.yaml`) · Convex (`convex@1.50.0`, `convex-test@0.0.71`)  
+**Sponsor & Speed Stack:** Keiki (`@onkeiki/agents@0.1.7`) · Whop (`@whop/sdk@2.8.1`) · TypeSafe Jev (`@typesafe-ai/sdk@0.7.0`) / Nace Drex (`nace-sdk@0.8.0`)  
+**Step-by-Step Execution & Revyl Testing Roadmap:** See [`PLAN.md`](./PLAN.md)
 
 ---
 
@@ -79,8 +80,7 @@ Structuring the repository with strict directory boundaries lets 3 teammates (an
 consumerhackathon/
 ├── package.json                     # Bun workspaces root
 ├── DESIGN.md                        # Master architecture & integration spec
-├── .revyl/
-│   └── config.yaml                  # Cloud Android APK & iOS Simulator build profiles
+├── PLAN.md                          # Step-by-step execution & Revyl testing plan
 ├── convex/                          # [OWNER: Track A — Backend & AI]
 │   ├── _generated/                  # Auto-generated typed API contracts
 │   ├── schema.ts                    # Single source of truth DB schema + indexes
@@ -104,6 +104,10 @@ consumerhackathon/
 │   └── http.ts                      # POST /keiki/tools/* & POST /webhooks/whop
 ├── apps/
 │   └── mobile/                      # [OWNER: Track B — Mobile UI, Games & Wrapped]
+│       ├── .revyl/
+│       │   ├── config.yaml          # Cloud Android APK & iOS Simulator build profiles
+│       │   └── tests/               # Declarative Revyl YAML E2E regression tests
+│       ├── .capyignore              # Keeps Revyl cloud upload archive lean (<100MB)
 │       ├── app.json                 # Expo config (scheme: "nickel", permissions)
 │       ├── package.json
 │       ├── app/
