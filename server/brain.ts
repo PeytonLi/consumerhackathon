@@ -417,7 +417,7 @@ export async function generateArt(token: string, role: string) {
     if (openai) {
       const [, mime, data] = photo.match(/^data:(image\/[a-z]+);base64,(.+)$/)!;
       const form = new FormData();
-      form.set("model", process.env.NICKEL_IMAGE_MODEL ?? "gpt-image-1");
+      form.set("model", process.env.NICKEL_IMAGE_MODEL ?? "gpt-image-2.6-flare");
       form.set("prompt", prompt);
       form.set("size", "1024x1024");
       form.set("quality", "low");
