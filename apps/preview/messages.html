@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Messages">
+<meta name="theme-color" content="#ffffff">
+<title>Messages</title>
+<style>
+  :root {
+    --bg: #fff;
+    --in: #e9e9eb;
+    --out: #0b84ff;
+    --text: #000;
+    --sub: #8e8e93;
+    --line: rgba(60, 60, 67, .18);
+    --bar: rgba(249, 249, 249, .9);
+    --game-bg: light-dark(#f2f2f7, #000);
+    --nickel: linear-gradient(#48484a, #1c1c1e);
+    color-scheme: light;
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; overscroll-behavior: none; }
+  button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; text-align: inherit; }
+  .view {
+    position: fixed; inset: 0; background: var(--bg);
+    display: flex; flex-direction: column;
+    transition: transform .34s cubic-bezier(.2, .8, .2, 1);
+  }
+  .view.off { transform: translateX(100%); }
+  .view.under { transform: translateX(-28%); }
+
+  .inbox-head { padding: calc(10px + var(--safe-t)) 16px 8px; }
+  .inbox-head .edit { color: var(--out); font-size: 17px; display: flex; justify-content: space-between; }
+  .inbox-head h1 { margin: 6px 0 8px; font-size: 34px; font-weight: 700; letter-spacing: -0.03em; }
+  .search { height: 36px; border-radius: 10px; background: #eeeef0; color: var(--sub); display: flex; align-items: center; padding: 0 10px; font-size: 17px; gap: 6px; }
+  .chats { flex: 1; overflow: auto; }
+  .chat { display: flex; gap: 10px; padding: 10px 16px 0 6px; width: 100%; align-items: flex-start; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--out); margin-top: 22px; flex: none; }
+  .dot.read { background: transparent; }
+  .chat .body { flex: 1; min-width: 0; border-bottom: 0.5px solid var(--line); padding-bottom: 10px; }
+  .chat .l1 { display: flex; justify-content: space-between; gap: 8px; }
+  .chat .l1 b { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
+  .chat .l1 span { font-size: 15px; color: var(--sub); white-space: nowrap; }
+  .chat p { margin: 2px 0 0; font-size: 15px; color: var(--sub); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .note { text-align: center; color: var(--sub); font-size: 12px; padding: 18px 16px calc(18px + var(--safe-b)); }
+
+  .av { width: 46px; height: 46px; border-radius: 50%; flex: none; display: grid; place-items: center; font-weight: 700; color: #fff; font-size: 17px; position: relative; }
+  .av.n, .face.n { background: var(--nickel); color: #fff; }
+  .av.grp { background: none; }
+  .av.grp i { position: absolute; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-style: normal; color: #fff; border: 2px solid #fff; }
+  .av.grp i:nth-child(1) { left: 0; top: 0; background: #ff8a3d; }
+  .av.grp i:nth-child(2) { right: 0; top: 2px; background: #34c759; }
+  .av.grp i:nth-child(3) { left: 9px; bottom: 0; background: var(--nickel); }
+  .av.mom { background: linear-gradient(#a0a6b1, #868c97); }
+
+  .nav {
+    padding: calc(6px + var(--safe-t)) 8px 8px;
+    display: grid; grid-template-columns: 76px 1fr 76px; align-items: center;
+    background: var(--bar); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 0.5px solid var(--line);
+  }
+  .back { color: var(--out); font-size: 17px; display: flex; align-items: center; gap: 4px; min-height: 44px; }
+  .back svg { width: 12px; height: 20px; }
+  .back em { font-style: normal; background: var(--out); color: #fff; border-radius: 99px; font-size: 13px; padding: 1px 7px; font-weight: 600; }
+  .title { text-align: center; }
+  .title .av { width: 40px; height: 40px; margin: 0 auto 3px; font-size: 15px; }
+  .title .av.grp i { width: 25px; height: 25px; font-size: 11px; }
+  .title b { font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 2px; }
+
+  .thread { flex: 1; overflow: auto; padding: 10px 12px 10px; display: flex; flex-direction: column; gap: 3px; }
+  .day { align-self: center; font-size: 11px; color: var(--sub); margin: 12px 0 8px; }
+  .day b { font-weight: 600; }
+  .name { font-size: 11px; color: var(--sub); margin: 8px 0 2px 40px; }
+  .row { display: flex; gap: 6px; align-items: flex-end; }
+  .row.me { justify-content: flex-end; margin-top: 6px; }
+  .face { width: 28px; height: 28px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; }
+  .face.ghost { visibility: hidden; }
+  .face.m { background: #ff8a3d; }
+  .face.s { background: #34c759; }
+  .face.d { background: #af52de; }
+  .bubble { max-width: min(76%, 290px); background: var(--in); border-radius: 18px; padding: 7px 12px; font-size: 17px; line-height: 1.27; letter-spacing: -0.015em; position: relative; }
+  .row.me .bubble { background: var(--out); color: #fff; }
+  .tb {
+    position: absolute; top: -12px; right: -8px; background: var(--in); border: 2px solid #fff;
+    border-radius: 99px; font-size: 12px; padding: 1px 6px; line-height: 1.3;
+  }
+  .row.me .tb { right: auto; left: -8px; }
+  .delivered { align-self: flex-end; font-size: 11px; color: var(--sub); margin: 2px 4px 0; }
+
+  .link {
+    width: min(76%, 290px); border-radius: 18px; overflow: hidden; background: var(--in); position: relative; display: block;
+  }
+  .og {
+    aspect-ratio: 1.91; background:
+      radial-gradient(180px 110px at 88% 0%, rgba(255, 149, 0, .32), transparent 70%),
+      linear-gradient(#ffffff, #f2f2f7);
+    color: #1c1c1e; padding: 12px 14px; display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .og .k { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: #6c6c70; }
+  .og h3 { margin: 0; font-size: 22px; font-weight: 750; letter-spacing: -0.035em; }
+  .og .tiles { display: flex; gap: 3px; margin-top: 5px; }
+  .og .tiles i { width: 16px; height: 16px; border-radius: 4px; background: #8e8e93; }
+  .og .tiles i.o { background: #ff9500; }
+  .og .tiles i.b { background: #007aff; }
+  .og .bot { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #6c6c70; }
+  .rings { display: flex; }
+  .rings b { width: 20px; height: 20px; border-radius: 50%; margin-right: -5px; border: 2px solid #fff; display: grid; place-items: center; font-size: 8px; color: #fff; }
+  .rings b.off { background: #e5e5ea !important; color: #aeaeb2; }
+  .meta { padding: 7px 12px 9px; }
+  .meta b { display: block; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .meta span { display: block; font-size: 13px; color: var(--sub); }
+
+  .vault { width: min(70%, 260px); border-radius: 18px; overflow: hidden; background: var(--in); display: block; position: relative; }
+  .vault .art {
+    aspect-ratio: 1.45; color: #1c1c1e;
+    background: radial-gradient(170px 110px at 90% 0%, color-mix(in srgb, var(--h) 34%, transparent), transparent 70%), linear-gradient(#ffffff, #f2f2f7);
+    padding: 12px; display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .vault .art .k { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--h); }
+  .vault .art h3 { margin: 0; font-size: 21px; font-weight: 750; letter-spacing: -0.035em; }
+  .vault .art p { margin: 2px 0 0; font-size: 12px; color: #6c6c70; }
+  .vault .art .glyph { font-size: 28px; }
+  .vault .tl { display: flex; gap: 3px; }
+  .vault .tl i { width: 22px; height: 22px; border-radius: 6px; background: #8e8e93; }
+  .vault .tl i.o { background: #ff9500; }
+  .vault .tl i.b { background: #007aff; }
+  .vault.done .art { filter: grayscale(.9); opacity: .7; }
+  .vault .cap { padding: 7px 12px 8px; }
+  .vault .cap b { display: block; font-size: 14px; font-weight: 600; }
+  .vault .cap span { display: block; font-size: 13px; color: var(--sub); }
+  .vault .app { display: flex; align-items: center; gap: 5px; padding: 6px 12px 7px; border-top: 0.5px solid var(--line); font-size: 11px; color: var(--sub); }
+  .vault .app i { width: 14px; height: 14px; border-radius: 4px; background: linear-gradient(135deg, #1f2937, #4b5563); display: inline-block; }
+
+  .composer { display: flex; gap: 8px; align-items: center; padding: 6px 10px calc(8px + var(--safe-b)); background: var(--bar); border-top: 0.5px solid var(--line); }
+  .plus { width: 34px; height: 34px; border-radius: 50%; background: #eeeef0; color: #6b6b70; display: grid; place-items: center; font-size: 24px; line-height: 1; }
+  .field { flex: 1; height: 36px; border-radius: 18px; border: 0.5px solid #c7c7cc; display: flex; align-items: center; padding: 0 12px; color: #b0b0b5; font-size: 17px; }
+
+  .sheet-dim { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 8; }
+  .sheet-dim.on { opacity: 1; pointer-events: auto; }
+  .sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; top: calc(var(--safe-t) + 46px); z-index: 9;
+    background: var(--game-bg); border-radius: 14px 14px 0 0; overflow: hidden;
+    display: flex; flex-direction: column;
+    transform: translateY(105%); transition: transform .4s cubic-bezier(.2, .8, .2, 1);
+  }
+  .sheet.on { transform: none; }
+  .sheet-top { height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; color: #6c6c70; font-size: 13px; position: relative; flex: none; }
+  .sheet-top::before { content: ""; position: absolute; left: 50%; top: 6px; width: 36px; height: 5px; border-radius: 3px; background: #aeaeb2; transform: translateX(-50%); opacity: .5; }
+  .sheet-top .app { display: flex; align-items: center; gap: 6px; }
+  .sheet-top .app i { width: 18px; height: 18px; border-radius: 5px; background: linear-gradient(135deg, #1f2937, #4b5563); }
+  .x { width: 30px; height: 30px; border-radius: 50%; background: #e5e5ea; color: #6c6c70; display: grid; place-items: center; font-size: 15px; }
+  iframe { border: 0; width: 100%; flex: 1; background: var(--game-bg); display: block; }
+
+  .safari { position: fixed; inset: 0; z-index: 9; background: var(--game-bg); display: flex; flex-direction: column; transform: translateY(100%); transition: transform .38s cubic-bezier(.2, .8, .2, 1); }
+  .safari.on { transform: none; }
+  .crumb { padding: calc(4px + var(--safe-t)) 10px 2px; background: var(--game-bg); flex: none; }
+  .crumb button { color: #0a84ff; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 2px; min-height: 28px; }
+
+  .toast {
+    position: fixed; left: 50%; top: calc(var(--safe-t) + 54px); z-index: 20; transform: translate(-50%, -20px); opacity: 0;
+    background: rgba(28, 28, 30, .92); color: #fff; font-size: 14px; padding: 10px 14px; border-radius: 14px; max-width: 86%;
+    transition: opacity .25s, transform .25s; pointer-events: none;
+  }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+<section class="view" id="inbox">
+  <div class="inbox-head">
+    <div class="edit"><span>Edit</span><span>✎</span></div>
+    <h1>Messages</h1>
+    <div class="search">⌕ Search</div>
+  </div>
+  <div class="chats">
+    <button class="chat" data-open="group" type="button">
+      <span class="dot" id="dot-group"></span>
+      <span class="av grp"><i>M</i><i>S</i><i>N</i></span>
+      <span class="body"><span class="l1"><b>Cupertino Day Ones</b><span id="time-group">12:30 PM</span></span><p id="prev-group">Nickel: Today's Nickel: Wordle Blitz. 45 seconds, closes at 9.</p></span>
+    </button>
+    <button class="chat" data-open="dm" type="button">
+      <span class="dot" id="dot-dm"></span>
+      <span class="av n">N</span>
+      <span class="body"><span class="l1"><b>Nickel</b><span>12:41 PM</span></span><p>Dev challenged you to Rock Paper Scissors. Best of 3, 5 Nickels.</p></span>
+    </button>
+    <button class="chat" type="button">
+      <span class="dot read"></span>
+      <span class="av mom">M</span>
+      <span class="body"><span class="l1"><b>Mom</b><span>Yesterday</span></span><p>call me when you're free</p></span>
+    </button>
+    <p class="note">Nickel preview · Messages is simulated here. Games and cards are the real web pages Keiki would open.</p>
+  </div>
+</section>
+
+<section class="view off" id="group">
+  <header class="nav">
+    <button class="back" data-back type="button"><svg viewBox="0 0 12 20" fill="none"><path d="M10 2L2 10l8 8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><em>1</em></button>
+    <div class="title"><div class="av grp"><i>M</i><i>S</i><i>N</i></div><b>Cupertino Day Ones ›</b></div>
+    <div></div>
+  </header>
+  <div class="thread" id="thread-group">
+    <div class="day"><b>Today</b> 12:28 PM</div>
+    <div class="name">Maya</div>
+    <div class="row"><div class="face m">M</div><div class="bubble">who's actually playing today</div></div>
+    <div class="name">Nickel</div>
+    <div class="row"><div class="face ghost"></div><div class="bubble">Today's Nickel: Wordle Blitz. 45 seconds, closes at 9.</div></div>
+    <div class="row" style="margin-top:3px">
+      <div class="face n">N</div>
+      <button class="link" data-round="wordle-212" data-via="link" type="button">
+        <div class="og">
+          <div class="k">NICKEL · CUPERTINO DAY ONES</div>
+          <div><h3>Wordle Blitz #212</h3><div class="tiles"><i class="o"></i><i></i><i class="b"></i><i></i><i class="o"></i></div></div>
+          <div class="bot">
+            <span class="rings"><b style="background:#ff8a3d">M</b><b style="background:#34c759">S</b><b style="background:#0a84ff">A</b><b class="off">D</b><b class="off" id="ring-me">P</b></span>
+            <span id="og-count">3 of 5 played · closes 9 PM</span>
+          </div>
+        </div>
+        <div class="meta"><b>Wordle Blitz #212 · Cupertino Day Ones</b><span>nickel.app</span></div>
+        <span class="tb" id="tb-drop" hidden>‼️</span>
+      </button>
+    </div>
+    <div class="name">Sritej</div>
+    <div class="row"><div class="face s">S</div><div class="bubble">4/6 lets go<span class="tb">👍</span></div></div>
+    <div class="row me"><div class="bubble">locked in once I get out of this meeting</div></div>
+    <div class="delivered">Delivered</div>
+    <div id="group-after"></div>
+  </div>
+  <div class="composer"><div class="plus">+</div><div class="field">iMessage</div></div>
+</section>
+
+<section class="view off" id="dm">
+  <header class="nav">
+    <button class="back" data-back type="button"><svg viewBox="0 0 12 20" fill="none"><path d="M10 2L2 10l8 8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><em>1</em></button>
+    <div class="title"><div class="av n">N</div><b>Nickel ›</b></div>
+    <div></div>
+  </header>
+  <div class="thread" id="thread-dm">
+    <div class="day"><b>Yesterday</b> 6:02 PM</div>
+    <div class="row me"><div class="bubble">deal me in KRILL5</div></div>
+    <div class="row" style="margin-top:6px"><div class="face ghost"></div><div class="bubble">You're in, Peyton. Games open right here in Keiki Vault, a free app.</div></div>
+    <div class="row" style="margin-top:3px">
+      <div class="face n">N</div>
+      <button class="vault done" style="--h:#0f9fbf" data-round="krill-87" data-via="vault" type="button">
+        <div class="art"><div class="k">ONE IN A KRILLION #87</div><div><span class="glyph">🦐</span><h3>Countries with 4 letters</h3><p>Closed · you finished 2nd</p></div></div>
+        <div class="cap"><b>One in a Krillion #87</b><span>Results are in</span></div>
+        <div class="app"><i></i>Keiki Vault</div>
+      </button>
+    </div>
+    <div class="day"><b>Today</b> 12:30 PM</div>
+    <div class="row"><div class="face ghost"></div><div class="bubble">Today's Nickel 👇</div></div>
+    <div class="row" style="margin-top:3px">
+      <div class="face n">N</div>
+      <button class="vault" style="--h:#ff9500" data-round="wordle-212" data-via="vault" type="button">
+        <div class="art"><div class="k">WORDLE BLITZ #212</div><div><span class="glyph"><span class="tl"><i class="o"></i><i class="b"></i><i></i></span></span><h3>45 seconds</h3><p>3 of 5 played · closes 9 PM</p></div></div>
+        <div class="cap"><b>Wordle Blitz #212</b><span>Tap to play</span></div>
+        <div class="app"><i></i>Keiki Vault</div>
+      </button>
+    </div>
+    <div class="day">12:41 PM</div>
+    <div class="row"><div class="face ghost"></div><div class="bubble">Dev challenged you to Rock Paper Scissors. Best of 3, 5 Nickels.</div></div>
+    <div class="row" style="margin-top:3px">
+      <div class="face n">N</div>
+      <button class="vault" style="--h:#5856d6" data-round="rps-dev" data-via="vault" type="button">
+        <div class="art"><div class="k">CHALLENGE · VS DEV</div><div><span class="glyph">✊✋✌️</span><h3>Rock Paper Scissors</h3><p>Best of 3 · 5 Nickels · 4 hrs left</p></div></div>
+        <div class="cap"><b>You vs Dev</b><span>Your move</span></div>
+        <div class="app"><i></i>Keiki Vault</div>
+      </button>
+    </div>
+    <div id="dm-after"></div>
+  </div>
+  <div class="composer"><div class="plus">+</div><div class="field">iMessage</div></div>
+</section>
+
+<div class="sheet-dim" id="dim"></div>
+<section class="sheet" id="sheet" aria-hidden="true">
+  <div class="sheet-top"><span class="app"><i></i>Keiki Vault</span><button class="x" id="sheet-x" type="button" aria-label="Close">✕</button></div>
+  <iframe id="sheet-frame" title="Nickel game"></iframe>
+</section>
+
+<section class="safari" id="safari" aria-hidden="true">
+  <div class="crumb"><button id="crumb" type="button">◀ Messages</button></div>
+  <iframe id="safari-frame" title="Nickel game"></iframe>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const views = { inbox: document.getElementById("inbox"), group: document.getElementById("group"), dm: document.getElementById("dm") };
+let current = "inbox";
+let groupResult = false;
+
+function go(name) {
+  if (name === current) return;
+  if (name === "inbox") {
+    views[current].classList.add("off");
+    views.inbox.classList.remove("under");
+  } else {
+    views.inbox.classList.add("under");
+    views[name].classList.remove("off");
+    document.getElementById("dot-" + name).classList.add("read");
+    const t = views[name].querySelector(".thread");
+    requestAnimationFrame(() => t.scrollTop = t.scrollHeight);
+  }
+  current = name;
+}
+document.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => go(b.dataset.open));
+document.querySelectorAll("[data-back]").forEach((b) => b.onclick = () => go("inbox"));
+
+function openRound(round, via) {
+  const src = "/r/" + round + "?via=" + via;
+  if (via === "vault") {
+    document.getElementById("sheet-frame").src = src;
+    document.getElementById("sheet").classList.add("on");
+    document.getElementById("dim").classList.add("on");
+    return;
+  }
+  document.getElementById("safari-frame").src = src;
+  document.getElementById("safari").classList.add("on");
+  document.querySelector('meta[name="theme-color"]').content = "#f2f2f7";
+}
+function closeAll() {
+  document.getElementById("sheet").classList.remove("on");
+  document.getElementById("dim").classList.remove("on");
+  document.getElementById("safari").classList.remove("on");
+  document.querySelector('meta[name="theme-color"]').content = "#ffffff";
+  setTimeout(() => { document.getElementById("sheet-frame").src = "about:blank"; document.getElementById("safari-frame").src = "about:blank"; }, 450);
+}
+document.querySelectorAll("[data-round]").forEach((b) => b.onclick = () => openRound(b.dataset.round, b.dataset.via));
+document.getElementById("sheet-x").onclick = closeAll;
+document.getElementById("dim").onclick = closeAll;
+document.getElementById("crumb").onclick = closeAll;
+
+function toast(text) {
+  const el = document.getElementById("toast");
+  el.textContent = text;
+  el.classList.add("on");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("on"), 2600);
+}
+
+function nickelSays(container, html, time) {
+  const wrap = document.createElement("div");
+  wrap.innerHTML = (time ? '<div class="day">' + time + "</div>" : "") +
+    '<div class="name">Nickel</div><div class="row"><div class="face n">N</div><div class="bubble">' + html + "</div></div>";
+  container.append(...wrap.children);
+}
+
+window.addEventListener("message", (e) => {
+  if (e.data?.type !== "nickel:done") return;
+  const d = e.data.line;
+  if (e.data.round === "wordle-212" && d && !groupResult) {
+    groupResult = true;
+    document.getElementById("ring-me").classList.remove("off");
+    document.getElementById("ring-me").style.background = "#ff2d55";
+    document.getElementById("og-count").textContent = "4 of 5 played · closes 9 PM";
+    document.getElementById("tb-drop").hidden = false;
+    nickelSays(document.getElementById("group-after"),
+      "🏆 Maya 3/6 · " + d.name + " " + d.tries + " · Sritej 4/6 · Alex 5/6<br>Dev didn't play. Group streak: 13 days 🔥",
+      "<b>Today</b> 9:00 PM");
+    document.getElementById("time-group").textContent = "9:00 PM";
+    document.getElementById("prev-group").textContent = "Nickel: 🏆 Maya 3/6 · " + d.name + " " + d.tries + " · Sritej 4/6 · Alex 5/6";
+    document.getElementById("dot-group").classList.remove("read");
+    setTimeout(() => { closeAll(); toast("Locked in. Nickel posts results in the group at 9 PM."); }, 2600);
+  }
+  if (e.data.round === "rps-dev" && d) {
+    nickelSays(document.getElementById("group-after"),
+      (d.won ? d.name + " beat Dev " : "Dev beat " + d.name + " ") + d.score + " at Rock Paper Scissors. 5 Nickels moved.", "4:12 PM");
+    document.getElementById("dot-group").classList.remove("read");
+    setTimeout(() => { closeAll(); toast("Result posted in Cupertino Day Ones."); }, 3400);
+  }
+  if (!d) closeAll();
+});
+</script>
+</body>
+</html>

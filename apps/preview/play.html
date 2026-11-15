@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>Nickel</title>
+<!--ROUND-->
+<link rel="stylesheet" href="/nickel.css">
+<style>
+  .board { display: grid; gap: 6px; width: min(100%, 340px, calc((100dvh - 310px) * 5 / 6)); }
+  .guess { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .tile {
+    aspect-ratio: 1; border-radius: var(--r-tile); border: 2px solid var(--edge); position: relative;
+    display: grid; place-items: center; font: 600 clamp(22px, 7vw, 30px)/1 var(--round); text-transform: uppercase;
+  }
+  .tile.fill { border-color: var(--ink-3); background: light-dark(var(--surface), transparent); animation: pop 160ms var(--spring); }
+  .tile.cue { border-color: var(--you); animation: nudge 700ms var(--ease) infinite; }
+  .tile.flip { animation: flipx var(--t-flip) var(--ease); }
+  .tile.ok, .tile.mid, .tile.no { border-color: transparent; color: var(--on-color); }
+  .tile.ok { background: var(--them); }
+  .tile.mid { background: var(--you); }
+  .tile.no { background: var(--none); }
+  .tile.ok::after, .tile.mid::after { position: absolute; right: 5px; top: 3px; font: 700 10px/1 var(--font); opacity: .85; }
+  .tile.ok::after { content: "✓"; }
+  .tile.mid::after { content: "•"; font-size: 14px; top: 1px; }
+  .tile.win { animation: pop 420ms var(--spring) both; }
+  @keyframes flipx { 50% { transform: rotateX(90deg); } }
+
+  .keys { display: flex; flex-direction: column; gap: 8px; }
+  .krow { display: flex; gap: 5px; justify-content: center; }
+  .key {
+    --key: light-dark(#ffffff, #48484a);
+    height: 46px; flex: 1; max-width: 34px; border-radius: 8px; background: var(--key);
+    box-shadow: 0 1px 0 light-dark(rgb(0 0 0 / .18), rgb(0 0 0 / .6));
+    font: 500 19px/1 var(--font); text-transform: uppercase; display: grid; place-items: center;
+    transition: transform 90ms var(--ease), background var(--t-lock) var(--ease);
+  }
+  .key:active { transform: scale(.92); }
+  .key.wide { max-width: 54px; flex: 1.5; --key: light-dark(#c9cbd1, #2c2c2e); font-size: 20px; }
+  .key.ok { background: var(--them); color: var(--on-color); }
+  .key.mid { background: var(--you); color: var(--on-color); }
+  .key.no { background: transparent; box-shadow: none; color: var(--ink-3); }
+
+  .result { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .result .t-label { display: inline-flex; align-items: center; gap: 5px; }
+  .mini { display: grid; gap: 3px; margin-top: 8px; }
+  .mini div { display: flex; gap: 3px; }
+  .mini i { width: 12px; height: 12px; border-radius: 3px; background: var(--none); }
+  .mini i.ok { background: var(--them); }
+  .mini i.mid { background: var(--you); }
+
+  .people { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px 12px; width: 100%; max-width: 320px; }
+  .person { display: flex; flex-direction: column; align-items: center; gap: 8px; font: 500 15px/1 var(--font); color: var(--ink-2); transition: transform 350ms var(--spring), opacity var(--t-lock); }
+  .person .avatar { transition: box-shadow var(--t-lock) var(--ease); }
+  .person.on { color: var(--ink); font-weight: 600; }
+  .person.on .avatar { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5.5px var(--you); }
+  .people.picked .person:not(.on) { opacity: .45; }
+
+  .depth { position: relative; width: 100%; padding: 18px 20px; display: grid; grid-template-columns: 10px 1fr; gap: 0 16px; }
+  .track { grid-row: 1 / 7; position: relative; border-radius: 99px; background: linear-gradient(color-mix(in srgb, var(--game) 25%, var(--surface-2)), color-mix(in srgb, var(--game) 85%, black)); }
+  .marker {
+    position: absolute; left: 50%; top: 0; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%;
+    background: var(--surface); box-shadow: 0 0 0 3px var(--game), 0 4px 12px rgb(0 0 0 / .25);
+    transition: top 1100ms var(--ease);
+  }
+  .tier { height: 38px; display: flex; align-items: center; justify-content: space-between; font: 500 15px/1 var(--font); color: var(--ink-3); transition: color var(--t-lock); }
+  .tier .num { font-size: 14px; }
+  .tier.hit { color: var(--ink); font-weight: 650; }
+  .tier.hit .num { color: var(--game); }
+  .answer {
+    width: 100%; height: 72px; border: 0; border-radius: var(--r-big); background: var(--surface); text-align: center;
+    font: 600 28px/1 var(--round); color: var(--ink); -webkit-user-select: text; user-select: text; outline: none;
+    box-shadow: inset 0 0 0 2px transparent; transition: box-shadow var(--t-lock);
+  }
+  .answer:focus { box-shadow: inset 0 0 0 2px var(--game); }
+  .answer::placeholder { color: var(--ink-3); font-weight: 500; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; }
+  .stat { padding: 16px 8px; text-align: center; }
+  .stat b { display: block; font: 700 22px/1.1 var(--round); letter-spacing: -0.02em; }
+  .stat span { display: block; margin-top: 6px; font: 500 12px/1 var(--font); color: var(--ink-2); }
+
+  .duel { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; width: 100%; }
+  .side { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .side b { font: 600 17px/1 var(--font); }
+  .side .t-caption { height: 12px; }
+  .pips { display: flex; gap: 6px; }
+  .pips i { width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink-3); }
+  .pips i.on { box-shadow: none; background: var(--you); animation: pop 420ms var(--spring); }
+  .side.them .pips i.on { background: var(--them); }
+  .arena { display: flex; gap: 16px; }
+  .hand {
+    width: 128px; height: 128px; border-radius: var(--r-big); background: var(--surface);
+    display: grid; place-items: center; font-size: 60px; transition: opacity var(--t-lock), box-shadow var(--t-lock);
+  }
+  .hand.ghost { background: transparent; box-shadow: inset 0 0 0 2px var(--hair); color: var(--ink-3); font: 600 40px/1 var(--round); }
+  .hand.ghost .i { font-size: 30px; }
+  .hand.wait { animation: breathe 1.2s var(--ease) infinite; }
+  .hand.flip { animation: flipy 420ms var(--ease); }
+  .hand.won { box-shadow: inset 0 0 0 3px var(--you); }
+  .hand.won.them { box-shadow: inset 0 0 0 3px var(--them); }
+  .hand.lost { opacity: .4; }
+  @keyframes flipy { 0% { transform: rotateY(90deg) scale(.9); } 100% { transform: none; } }
+  .choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .choice {
+    height: 96px; border-radius: var(--r-big); background: var(--surface); font-size: 46px;
+    transition: transform 350ms var(--spring), opacity var(--t-lock), box-shadow var(--t-lock);
+  }
+  .choice:active { transform: scale(.94); transition-duration: var(--t-press); }
+  .choice.on { box-shadow: inset 0 0 0 3px var(--you); }
+  .choices.locked .choice:not(.on) { opacity: .35; }
+  .choices.locked { pointer-events: none; }
+  .halo { display: grid; place-items: center; width: 96px; height: 96px; border-radius: 50%; color: var(--ink-3); background: var(--surface); font-size: 40px; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="bar">
+    <div id="me"></div>
+    <div class="name"><b id="title"></b><span id="league"></span></div>
+    <div><span class="glass pill" id="clock" hidden></span><button class="glass icon-btn" id="info" type="button" aria-label="How to play" hidden></button></div>
+  </header>
+  <main class="stage" id="stage"></main>
+  <footer class="dock" id="dock"></footer>
+</div>
+<div class="glass toast" id="toast" role="status"></div>
+<div class="scrim" id="scrim"></div>
+<section class="glass sheet" id="sheet" aria-hidden="true"></section>
+<script>
+const R = window.ROUND ?? { game: "missing", title: "Nickel" };
+const params = new URLSearchParams(location.search);
+const via = params.get("via") ?? "link";
+if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
+const $ = (id) => document.getElementById(id);
+const stage = $("stage"), dock = $("dock"), clockEl = $("clock");
+
+const ICON = {
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6v.1"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
+  share: '<path d="M12 14.5v-11M8 7.5l4-4 4 4"/><path d="M7 10.5H6.5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H17"/>',
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+  dive: '<path d="M12 4v15M6 13l6 6 6-6"/>',
+  hidden: '<path d="M3.5 3.5l17 17"/><path d="M10.5 5.1c.5-.1 1-.1 1.5-.1 5 0 9 5 9 7 0 .9-.8 2.4-2.2 3.8M6.7 6.7C4.6 8.1 3 10.4 3 12c0 2 4 7 9 7 1.6 0 3.1-.5 4.4-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  coin: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/>',
+  del: '<path d="M9 5.5h10a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H9L3.5 12z"/><path d="M12 9.5l5 5M17 9.5l-5 5"/>',
+  enter: '<path d="M19.5 5.5v5a3 3 0 0 1-3 3h-12"/><path d="M8.5 9.5l-4 4 4 4"/>',
+  again: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3L4.5 9"/><path d="M4.5 4.5V9H9"/>',
+  ended: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/><path d="M4 4l16 16"/>',
+};
+const icon = (n) => '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">' + ICON[n] + "</svg>";
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
+const fmt = (s) => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+const tell = (line) => { if (parent !== window) parent.postMessage({ type: "nickel:done", round: R.id, line }, "*"); };
+const meKey = "nickel.me." + via;
+const me = () => sessionStorage.getItem(meKey);
+const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", "#5e5ce6"];
+const hue = (name) => { const i = (R.members ?? []).indexOf(name); return HUES[(i < 0 ? [...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) : i) % HUES.length]; };
+const avatar = (name, cls = "", seal = "") => '<span class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + esc(name[0]) + (seal ? '<span class="seal">' + icon(seal) + "</span>" : "") + "</span>";
+
+const GAMES = {
+  wordle: { hue: "light-dark(#ff9500, #ff9f0a)" },
+  krillion: { hue: "light-dark(#0f9fbf, #40c8e0)", info: [["target", "Name one answer"], ["dive", "Rarer answers dive deeper"], ["hidden", "Hidden until the reveal"]] },
+  rps: { hue: "light-dark(#5856d6, #5e5ce6)" },
+};
+
+const haptic = (() => {
+  const label = document.createElement("label");
+  label.style.cssText = "position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;overflow:hidden";
+  label.ariaHidden = "true";
+  label.innerHTML = '<input type="checkbox" switch tabindex="-1">';
+  document.body.append(label);
+  return (times = 1) => { for (let i = 0; i < times; i++) setTimeout(() => label.click(), i * 90); };
+})();
+
+function show(stageHtml, dockHtml = "") {
+  stage.innerHTML = stageHtml;
+  dock.innerHTML = dockHtml;
+  dock.hidden = !dockHtml;
+}
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text;
+  t.classList.add("on");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove("on"), 1300);
+}
+function openSheet(html) {
+  $("sheet").innerHTML = html;
+  $("sheet").classList.add("on");
+  $("sheet").ariaHidden = "false";
+  $("scrim").classList.add("on");
+}
+function closeSheet() {
+  $("sheet").classList.remove("on");
+  $("sheet").ariaHidden = "true";
+  $("scrim").classList.remove("on");
+}
+$("scrim").onclick = closeSheet;
+$("sheet").addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeSheet(); });
+
+let timer;
+function setClock(html, warn = false) { clockEl.hidden = false; clockEl.innerHTML = html; clockEl.classList.toggle("warn", warn); }
+function countdown(seconds, onEnd) {
+  let left = seconds;
+  setClock(icon("clock") + fmt(left));
+  clearInterval(timer);
+  timer = setInterval(() => {
+    left = Math.max(0, left - 1);
+    setClock(icon("clock") + fmt(left), left <= 10);
+    if (left <= 3 && left > 0) { clockEl.classList.remove("pop"); void clockEl.offsetWidth; clockEl.classList.add("pop"); haptic(); }
+    if (left === 0) { clearInterval(timer); onEnd(); }
+  }, 1000);
+  return () => seconds - left;
+}
+const stopClock = (html) => { clearInterval(timer); setClock(html); };
+
+function start() {
+  const game = GAMES[R.game];
+  if (game) document.documentElement.style.setProperty("--game", game.hue);
+  $("title").textContent = R.number ? R.title + " #" + R.number : R.title;
+  $("league").textContent = R.league ?? "";
+  if (!game) return missing();
+  if (via === "vault") sessionStorage.setItem(meKey, "Peyton");
+  if (!me()) return pickName();
+  $("me").innerHTML = avatar(me(), "", via === "vault" ? "check" : "");
+  if (game.info) {
+    $("info").hidden = false;
+    $("info").innerHTML = icon("info");
+    $("info").onclick = () => openSheet(
+      '<p class="t-title">How to play</p>' +
+      game.info.map(([i, line]) => '<div class="rule"><span class="ico">' + icon(i) + '</span><span class="t-head">' + line + "</span></div>").join("") +
+      '<div class="dock"><button class="primary" type="button" data-close>Got it</button></div>'
+    );
+  }
+  if (R.closed && !params.has("practice")) return closed();
+  ({ wordle, krillion, rps })[R.game]();
+}
+
+function pickName() {
+  show(
+    '<p class="t-title">Who\'s playing?</p><div class="people" id="people">' +
+      R.members.map((m) => '<button class="person" type="button" data-name="' + esc(m) + '">' + avatar(m, "lg") + esc(m) + "</button>").join("") +
+    "</div>",
+    '<button class="glass primary" id="confirm" type="button" disabled>Pick yourself</button><p class="t-caption">Nickel confirms it with one text</p>'
+  );
+  let picked;
+  stage.querySelectorAll(".person").forEach((b) => b.onclick = () => {
+    picked = b.dataset.name;
+    stage.querySelectorAll(".person").forEach((x) => x.classList.toggle("on", x === b));
+    $("people").classList.add("picked");
+    $("confirm").disabled = false;
+    $("confirm").textContent = "I'm " + picked;
+    haptic();
+  });
+  $("confirm").onclick = () => {
+    $("confirm").disabled = true;
+    $("confirm").innerHTML = icon("check") + "Confirmed";
+    haptic(2);
+    sessionStorage.setItem(meKey, picked);
+    setTimeout(start, 700);
+  };
+}
+
+function missing() {
+  show('<span class="halo">' + icon("ended") + '</span><p class="t-title">This game ended</p><p class="t-label">Text Nickel “today” for a new one</p>');
+}
+
+function closed() {
+  const m = R.mine;
+  show(
+    '<span class="tag">' + icon("lock") + "Closed " + esc(R.closedAt) + '</span><p class="t-title" style="text-align:center">' + esc(R.prompt) + "</p>" +
+    '<div class="stats">' + [[m.place, "Place"], [m.tier, "Tier"], [m.depth + "m", "Depth"]].map(([v, k]) => '<div class="card stat"><b>' + esc(v) + "</b><span>" + k + "</span></div>").join("") + "</div>",
+    '<button class="glass primary" id="today" type="button">Today\'s game</button><button class="glass secondary" id="practice" type="button">' + icon("again") + "Practice</button>"
+  );
+  $("today").onclick = () => location.href = "/r/" + R.next + location.search;
+  $("practice").onclick = () => location.href = location.pathname + "?" + new URLSearchParams({ via, practice: "1" });
+}
+
+function wordle() {
+  let guess = "", turn = 0, locked = false, elapsed;
+  show(
+    '<div class="board" id="board"></div><p class="t-caption" id="hint">Clock starts on your first letter</p>',
+    '<div class="keys" id="keys"></div>'
+  );
+  setClock(icon("clock") + fmt(R.seconds));
+  const board = $("board"), keys = $("keys");
+  for (let r = 0; r < 6; r++) board.insertAdjacentHTML("beforeend", '<div class="guess">' + '<div class="tile"></div>'.repeat(5) + "</div>");
+  const tile = (r, c) => board.children[r].children[c];
+  tile(0, 0).classList.add("cue");
+  ["qwertyuiop", "asdfghjkl", "+zxcvbnm-"].forEach((row) => {
+    const line = document.createElement("div");
+    line.className = "krow";
+    for (const ch of row) {
+      const id = ch === "+" ? "enter" : ch === "-" ? "del" : ch;
+      line.insertAdjacentHTML("beforeend", '<button class="key' + (id.length > 1 ? " wide" : "") + '" type="button" data-k="' + id + '" aria-label="' + id + '">' + (id.length > 1 ? icon(id) : id) + "</button>");
+    }
+    keys.append(line);
+  });
+  keys.onclick = (e) => { const k = e.target.closest(".key"); if (k) press(k.dataset.k); };
+  document.onkeydown = (e) => {
+    if (e.key === "Enter") press("enter");
+    else if (e.key === "Backspace") press("del");
+    else if (/^[a-z]$/i.test(e.key)) press(e.key.toLowerCase());
+  };
+  function paint() {
+    for (let c = 0; c < 5; c++) {
+      const t = tile(turn, c), ch = guess[c] ?? "";
+      if (t.textContent !== ch) { t.textContent = ch; t.classList.toggle("fill", !!ch); }
+    }
+  }
+  function score(g) {
+    const res = Array(5).fill("no"), left = {};
+    for (const ch of R.answer) left[ch] = (left[ch] ?? 0) + 1;
+    for (let i = 0; i < 5; i++) if (g[i] === R.answer[i]) { res[i] = "ok"; left[g[i]]--; }
+    for (let i = 0; i < 5; i++) if (res[i] !== "ok" && left[g[i]] > 0) { res[i] = "mid"; left[g[i]]--; }
+    return res;
+  }
+  function markKey(ch, cls) {
+    const el = keys.querySelector('[data-k="' + ch + '"]');
+    const rank = { no: 0, mid: 1, ok: 2 };
+    const cur = ["ok", "mid", "no"].find((c) => el.classList.contains(c));
+    if (cur && rank[cur] >= rank[cls]) return;
+    el.classList.remove("ok", "mid", "no");
+    el.classList.add(cls);
+  }
+  function press(id) {
+    if (locked) return;
+    if (!elapsed) {
+      elapsed = countdown(R.seconds, () => finish(false));
+      tile(0, 0).classList.remove("cue");
+      $("hint").style.visibility = "hidden";
+    }
+    if (id === "del") { guess = guess.slice(0, -1); return paint(); }
+    if (id === "enter") return submit();
+    if (guess.length < 5) { guess += id; paint(); }
+  }
+  function submit() {
+    const row = board.children[turn];
+    if (guess.length < 5) {
+      row.classList.remove("shake"); void row.offsetWidth; row.classList.add("shake");
+      toast("Five letters");
+      return haptic(2);
+    }
+    const r = turn, word = guess, res = score(word);
+    locked = true;
+    res.forEach((cls, c) => setTimeout(() => {
+      const t = tile(r, c);
+      t.classList.remove("fill");
+      t.classList.add("flip");
+      setTimeout(() => { t.classList.add(cls); markKey(word[c], cls); }, 150);
+    }, 110 * c));
+    const won = word === R.answer;
+    turn++;
+    guess = "";
+    setTimeout(() => {
+      if (won) {
+        [...row.children].forEach((t, c) => setTimeout(() => t.classList.add("win"), 80 * c));
+        haptic(2);
+        return setTimeout(() => finish(true), 900);
+      }
+      if (turn === 6) return finish(false);
+      locked = false;
+    }, 110 * 4 + 320);
+  }
+  function finish(won) {
+    locked = true;
+    document.onkeydown = null;
+    const secs = elapsed ? elapsed() : R.seconds;
+    stopClock(icon("check") + fmt(secs));
+    const tries = won ? turn + "/6" : "X/6";
+    const cells = [...board.children].slice(0, turn).map((g) => [...g.children].map((t) => ["ok", "mid"].find((c) => t.classList.contains(c)) ?? "no"));
+    const line = "Nickel Wordle #" + R.number + " · " + tries + " · " + fmt(secs) + "\n" + cells.map((r) => r.map((c) => ({ ok: "🟧", mid: "🟦", no: "⬛" })[c]).join("")).join("\n");
+    const key = (t, s) => (t.startsWith("X") ? 9 : parseInt(t)) * 100 + s;
+    const mine = [me(), tries, fmt(secs), key(tries, secs)];
+    const played = [...R.board.map(([n, t, s]) => [n, t, s, key(t, parseInt(s.split(":")[1]))]), mine].sort((a, b) => a[3] - b[3]);
+    const waiting = R.members.filter((m) => !played.some((p) => p[0] === m));
+    show(
+      '<div class="result"><p class="t-display pop">' + (won ? turn + "/6" : "X") + '</p><p class="t-label">' + icon("clock") + fmt(secs) + "</p>" +
+        '<div class="mini">' + cells.map((r) => "<div>" + r.map((c) => '<i class="' + c + '"></i>').join("") + "</div>").join("") + "</div></div>" +
+      '<div class="rows">' +
+        played.map((p, i) => '<div class="rowi' + (p === mine ? " me" : "") + '" style="animation-delay:' + (300 + i * 90) + 'ms"><span class="rk">' + (i + 1) + "</span>" + avatar(p[0]) + "<b>" + esc(p[0]) + '</b><span class="num">' + p[1] + " · " + p[2] + "</span></div>").join("") +
+        waiting.map((n, i) => '<div class="rowi wait" style="animation-delay:' + (300 + (played.length + i) * 90) + 'ms"><span class="rk"></span>' + avatar(n, "ghost") + "<b>" + esc(n) + '</b><span class="num">—</span></div>').join("") +
+      "</div>",
+      '<button class="glass primary" id="share" type="button">' + icon("share") + 'Share</button><p class="t-caption">Results ' + esc(R.closes) + "</p>"
+    );
+    $("share").onclick = async () => {
+      try {
+        if (navigator.share && parent === window) await navigator.share({ text: line });
+        else await navigator.clipboard.writeText(line);
+        $("share").innerHTML = icon("check") + (parent === window && navigator.share ? "Shared" : "Copied");
+        haptic();
+      } catch (err) {
+        if (err?.name !== "AbortError") toast("Couldn't share");
+      }
+    };
+    tell({ name: me(), tries, time: fmt(secs) });
+  }
+}
+
+function krillion() {
+  const practice = params.has("practice");
+  const tiers = [["Wipeout", 0], ["Plankton", 100], ["Schooler", 300], ["Rare", 600], ["Deep Cut", 850], ["One in a Krillion", 1000]];
+  const grade = { peru: 1, cuba: 1, iran: 2, iraq: 2, chad: 2, mali: 3, oman: 3, fiji: 3, laos: 4, togo: 4, niue: 5 };
+  const depth = (hit) => '<div class="card depth"><div class="track"><span class="marker" id="marker"' + (hit ? "" : " hidden") + "></span></div>" +
+    tiers.map(([n, d], i) => '<div class="tier' + (hit === i ? " hit" : "") + '"><span>' + n + '</span><span class="num">' + d + "m</span></div>").join("") + "</div>";
+  show(
+    (practice ? '<span class="tag">' + icon("again") + "Practice</span>" : "") +
+    '<p class="t-title" style="text-align:center">' + esc(R.prompt) + "</p>" + depth(null),
+    '<button class="glass primary" id="go" type="button">' + icon("clock") + "Start · " + R.seconds + "s</button>"
+  );
+  setClock(icon("clock") + fmt(R.seconds));
+  $("go").onclick = () => {
+    show(
+      '<p class="t-title" style="text-align:center">' + esc(R.prompt) + '</p><input class="answer" id="ans" placeholder="Your answer" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">',
+      '<button class="glass primary" id="send" type="button" disabled>' + icon("lock") + "Lock in</button>"
+    );
+    const input = $("ans");
+    input.focus({ preventScroll: true });
+    input.oninput = () => $("send").disabled = !input.value.trim();
+    const elapsed = countdown(R.seconds, () => submit());
+    const submit = () => {
+      const typed = input.value.trim();
+      const hit = grade[typed.toLowerCase()] ?? 0;
+      input.blur();
+      stopClock(icon("check") + fmt(elapsed()));
+      haptic();
+      show(
+        (practice ? '<span class="tag">' + icon("again") + "Practice</span>" : "") +
+        '<div class="result"><p class="t-display" id="m">0m</p><p class="t-head">' + tiers[hit][0] + '</p><p class="t-label">“' + esc(typed || "—") + "”</p></div>" + depth(hit),
+        '<button class="glass secondary" id="again" type="button">' + (practice ? icon("again") + "Again" : "Done") + "</button>"
+      );
+      const tierEl = stage.querySelectorAll(".tier")[hit];
+      requestAnimationFrame(() => requestAnimationFrame(() => { $("marker").style.top = tierEl.offsetTop - 18 + tierEl.offsetHeight / 2 + "px"; }));
+      const target = tiers[hit][1];
+      let n = 0;
+      const step = setInterval(() => { n = Math.min(target, n + Math.ceil(target / 26)); $("m").textContent = n + "m"; if (n >= target) clearInterval(step); }, 40);
+      $("again").onclick = () => practice ? krillion() : tell(null);
+    };
+    $("send").onclick = submit;
+    input.onkeydown = (e) => { if (e.key === "Enter" && input.value.trim()) submit(); };
+  };
+}
+
+function rps() {
+  const hands = { rock: "✊", paper: "✋", scissors: "✌️" };
+  const beats = { rock: "scissors", paper: "rock", scissors: "paper" };
+  const need = Math.ceil(R.bestOf / 2);
+  let mine = 0, theirs = 0, round = 0;
+  setClock(icon("coin") + R.stake);
+  const pips = (who) => '<div class="pips" id="p' + who + '">' + "<i></i>".repeat(need) + "</div>";
+  show(
+    '<div class="duel"><div class="side">' + avatar(me(), "lg") + "<b>You</b>" + pips("m") + '</div><span class="t-caption">vs</span>' +
+      '<div class="side them">' + avatar(R.opponent, "lg") + "<b>" + esc(R.opponent) + "</b>" + pips("t") + "</div></div>" +
+    '<div class="arena"><div class="hand ghost" id="hm">?</div><div class="hand ghost" id="ht">' + icon("lock") + "</div></div>",
+    '<div class="choices" id="choices">' + Object.keys(hands).map((k) => '<button class="choice" type="button" data-m="' + k + '" aria-label="' + k + '">' + hands[k] + "</button>").join("") + "</div>"
+  );
+  const hm = $("hm"), ht = $("ht"), choices = $("choices");
+  const setHand = (el, cls, html) => { el.className = "hand " + cls; el.innerHTML = html; };
+  choices.onclick = (e) => {
+    const b = e.target.closest(".choice");
+    if (!b) return;
+    const m = b.dataset.m, t = R.devMoves[round++ % R.devMoves.length];
+    b.classList.add("on");
+    choices.classList.add("locked");
+    haptic();
+    setHand(hm, "pop", hands[m]);
+    setHand(ht, "ghost wait", icon("lock"));
+    setTimeout(() => {
+      setHand(ht, "flip", hands[t]);
+      if (beats[m] === t) { mine++; hm.classList.add("won"); ht.classList.add("lost"); $("pm").children[mine - 1].classList.add("on"); haptic(2); }
+      else if (beats[t] === m) { theirs++; ht.classList.add("won", "them"); hm.classList.add("lost"); $("pt").children[theirs - 1].classList.add("on"); haptic(); }
+      else toast("Tie");
+      if (mine === need || theirs === need) return setTimeout(done, 900);
+      setTimeout(() => {
+        setHand(hm, "ghost", "?");
+        setHand(ht, "ghost", icon("lock"));
+        b.classList.remove("on");
+        choices.classList.remove("locked");
+      }, 1600);
+    }, 750);
+  };
+  function done() {
+    const won = mine > theirs;
+    stopClock(icon("coin") + (won ? "+" + R.stake : "−" + R.stake));
+    openSheet(
+      '<div class="result" style="margin-top:16px">' + avatar(won ? me() : R.opponent, "lg pop") + '<p class="t-title">' + (won ? "You win" : esc(R.opponent) + " wins") + "</p>" +
+      '<p class="t-label">' + Math.max(mine, theirs) + "–" + Math.min(mine, theirs) + " · " + icon("coin") + (won ? "+" : "−") + R.stake + "</p></div>" +
+      '<div class="dock" style="margin-top:20px"><button class="primary" id="rm" type="button">' + icon("again") + 'Rematch</button><button class="secondary fill" type="button" data-close>Done</button></div>'
+    );
+    haptic(won ? 2 : 1);
+    $("rm").onclick = () => { $("rm").innerHTML = icon("check") + "Sent to " + esc(R.opponent); $("rm").disabled = true; };
+    tell({ name: me(), opponent: R.opponent, score: won ? mine + "–" + theirs : theirs + "–" + mine, won });
+  }
+}
+
+start();
+</script>
+</body>
+</html>
