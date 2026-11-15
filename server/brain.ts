@@ -650,6 +650,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   const text = input.text.trim();
   const lower = text.toLowerCase();
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
+  const fantasyTalk = /fantasy/.test(lower) && !/punish/.test(lower);
   const phone = (input.senderPhone ?? "").replace(/[^+0-9]/g, "");
   const intro = person(text.match(/\b(?:i'?m|i am|this is|call me|my name is|it'?s)\s+([A-Za-z]{2,14})\b/i)?.[1]);
   const introduced = intro && !["Down", "In", "Ready", "Up", "Here", "Back", "Game", "Not", "So", "Good", "The", "A"].includes(intro) ? intro : "";
@@ -698,14 +699,14 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     return reply((sender ? sender + ", your" : "Your") + " player card: name and photo. One time, then every link opens as you.", profileCard(mine));
   }
 
-  const money = /fantasy/.test(lower) ? null : potTurn(text, lower, sender);
+  const money = fantasyTalk ? null : potTurn(text, lower, sender);
   if (money) {
     if (!money.pot) return { addressed: true, line: money.line };
     const card = potCard(money.pot);
     return { ...reply(money.line, { ...card, path: card.path + (sender ? "?u=" + sender.toLowerCase() : "") }), pay: money.pay };
   }
 
-  if (/fantasy/.test(lower) && (input.fantasyTopic || /(start|create|make|new|set ?up|run|open|draft|do)\b/.test(lower))) {
+  if (fantasyTalk && (input.fantasyTopic || /(start|create|make|new|set ?up|run|open|draft|do)\b/.test(lower))) {
     const [head, list] = text.split(/:\s*/, 2);
     const topic = input.fantasyTopic ?? head.match(/\b(?:for|about|of|on)\s+(.+)$/i)?.[1] ?? head.replace(/.*fantasy\s*(league)?/i, "");
     const cleanTopic = topic.replace(/\b(league|draft|please)\b/gi, "").replace(/[.!?]+$/, "").trim() || "anything";
@@ -725,7 +726,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
       const tail = !pick.owner ? "Nobody owns " + pick.name + " yet, so it is still up for grabs." : top.points > 0 ? top.member + " leads Fantasy " + latest.topic + " with " + top.points + "." : "Fantasy " + latest.topic + " is still wide open.";
       return reply(pick.name + " " + (delta > 0 ? "+" : "") + delta + ". " + tail, fantasyCard(latest));
     }
-    if (/fantasy/.test(lower)) {
+    if (fantasyTalk) {
       const top = fantasyStandings(latest)[0];
       return reply(top.points > 0 ? top.member + " leads Fantasy " + latest.topic + " with " + top.points + "." : "Fantasy " + latest.topic + ": nobody has scored yet.", fantasyCard(latest));
     }
