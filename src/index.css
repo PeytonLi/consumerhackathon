@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("/fonts/InstrumentSerif-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("/fonts/InstrumentSerif-Italic.ttf") format("truetype");
+  font-style: italic;
+  font-display: swap;
+}
+
+@theme {
+  --font-serif: "Instrument Serif", ui-serif, "New York", Georgia, serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --color-ink: #0f0e0c;
+  --color-card: #181714;
+  --color-line: #2a2823;
+  --color-paper: #f3eee3;
+  --color-soft: #bdb7a9;
+  --color-mute: #8e887b;
+  --color-accent: #ff5b2e;
+  --color-good: #9ad28a;
+  --color-warn: #e6c86a;
+}
+
+@layer base {
+  html,
+  body {
+    background-color: var(--color-ink);
+    color: var(--color-paper);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  button {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  input,
+  select {
+    font-size: 16px;
+  }
+}
+
+@layer components {
+  .kicker {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-mute);
+  }
+}
