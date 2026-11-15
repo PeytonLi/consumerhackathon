@@ -1,3 +1,5 @@
+import { ConvexHttpClient } from "convex/browser";
+import { makeFunctionReference } from "convex/server";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 export interface Round {
@@ -22,6 +24,8 @@ export interface FantasyLeague {
 
 export interface TurnReply {
   addressed: boolean;
+  react?: { emoji: string; tapback: "dislike" | "laugh" | "question" };
+  roast?: string;
   pay?: { amountCents: number; memo: string };
   line?: string;
   url?: string;
@@ -43,18 +47,26 @@ const POOLS: [RegExp, string[]][] = [
 const dataDir = process.env.NICKEL_DATA_DIR ?? new URL("../.data/", import.meta.url).pathname;
 const dataFile = dataDir + "/store.json";
 const seedRounds = JSON.parse(readFileSync(new URL("../apps/preview/rounds.json", import.meta.url), "utf8")) as Record<string, Omit<Round, "id">>;
-const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number }[]; pots: Record<string, Pot>; latestPot: string | null } = existsSync(dataFile)
+const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number; loser?: string; roasted?: boolean }[]; quips: number; profiles: Record<string, Profile>; pots: Record<string, Pot>; latestPot: string | null; stats: Record<string, { played: number; wins: number; losses: number }>; punishment: string | null } = existsSync(dataFile)
   ? JSON.parse(readFileSync(dataFile, "utf8"))
-  : { rounds: {}, fantasy: {}, latestFantasy: null, names: {}, nickels: {}, results: [], pots: {}, latestPot: null };
+  : { rounds: {}, fantasy: {}, latestFantasy: null, names: {}, nickels: {}, results: [], pots: {}, latestPot: null, stats: {}, punishment: null, quips: 0, profiles: {} };
 store.names ??= {};
 store.nickels ??= {};
 store.results ??= [];
 store.pots ??= {};
 store.latestPot ??= null;
+store.stats ??= {};
+store.punishment ??= null;
+store.quips ??= 0;
+store.profiles ??= {};
 
 function save() {
   mkdirSync(dataDir, { recursive: true });
   writeFileSync(dataFile, JSON.stringify(store));
+  if (convex) {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => convex.mutation(statePut, { key: "store", json: JSON.stringify(store), secret: process.env.NICKEL_SYNC_SECRET }).catch((e) => console.error("Convex sync failed", e)), 300);
+  }
 }
 
 const newId = (prefix: string) => prefix + "-" + Math.random().toString(36).slice(2, 7);
@@ -246,6 +258,159 @@ function potTurn(text: string, lower: string, sender: string): { line: string; p
   return null;
 }
 
+
+export const PUNISHMENTS = [
+  "runs a milk mile: four laps, a full glass of milk before each one",
+  "retakes the SAT and posts the score in the chat",
+  "spends 24 hours in a Waffle House, minus one hour per waffle eaten",
+  "does a five-minute open mic set and the group picks the topic",
+  "sets up a lemonade stand and cannot leave until it makes 20 dollars",
+  "wears a full suit to every class for a week and explains nothing",
+  "lets the group write their dating profile and keeps it up for a month",
+  "films a calendar shoot, one themed photo for each month, printed for everyone",
+  "makes a three-minute apology video to the league and pins it",
+  "takes the group's coffee order every morning for a week, by hand, on foot",
+  "holds a sign on the busiest corner on campus that says they finished last",
+  "gets the league trophy: a framed photo of the winner on their desk all season",
+  "performs karaoke of the winner's choice, sober, first song of the night",
+  "cooks dinner for the whole group in a costume the winner picks",
+  "sends a good morning text to the group chat every day until next season",
+  "runs a 5K in jeans and posts the splits",
+];
+
+const TITLES = ["Front runner", "Closing fast", "Mid-table merchant", "Vibes only", "Down bad", "Paying for dinner"];
+
+
+export const COMEBACKS = [
+  "The fuck do you mean by that?",
+  "Read that back to yourself. Slowly.",
+  "I run a league, I do not read minds.",
+  "That was a sentence, technically.",
+  "Say it again, but like a person this time.",
+];
+export const CLAPBACKS = [
+  "Bold talk from someone whose Nickels I control.",
+  "Noted. The commissioner has a long memory.",
+  "Say that again after you win one.",
+  "Cry about it in the standings.",
+  "I have seen your record. Sit down.",
+];
+export const EXCUSES = [
+  "Skill issue. The result stands.",
+  "It is not rigged. You are just losing.",
+  "Appeal denied. The commissioner reviewed nothing.",
+  "Lag does not explain all of that.",
+];
+export const ROASTS = [
+  "Thoughts and prayers for NAME.",
+  "NAME may want to sit the next one out.",
+  "Somebody check on NAME.",
+  "NAME is making the punishment feel personal.",
+  "A moment of silence for NAME.",
+];
+const quip = (list: string[]) => list[store.quips++ % list.length];
+
+
+export interface Profile { token: string; phone?: string; name: string; account?: string; photo?: string; createdAt: number }
+const publicProfile = (p: Profile) => ({ token: p.token, name: p.name, account: p.account ?? "", face: p.photo ? "/face/" + p.token + "?v=" + p.photo.length : null });
+
+export function profileFor(phone: string, name: string): Profile {
+  const found = Object.values(store.profiles).find((p) => (phone ? p.phone === phone : !p.phone && !!name && p.name === name));
+  if (found) {
+    if (name && !found.name) found.name = name;
+    return found;
+  }
+  const profile: Profile = { token: newId("me") + Math.random().toString(36).slice(2, 8), phone: phone || undefined, name, createdAt: Date.now() };
+  store.profiles[profile.token] = profile;
+  save();
+  return profile;
+}
+
+export const getProfile = (token: string) => (store.profiles[token] ? publicProfile(store.profiles[token]) : null);
+
+export function saveProfile(token: string, body: { name?: string; account?: string; photo?: string }): { ok: boolean; error?: string; profile?: ReturnType<typeof publicProfile> } {
+  const profile = store.profiles[token];
+  if (!profile) return { ok: false, error: "That link is not a player card." };
+  const name = person(body.name);
+  if (!name) return { ok: false, error: "Add your first name." };
+  if (body.photo !== undefined && !(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(body.photo) && body.photo.length < 300000)) return { ok: false, error: "That photo did not work. Try another." };
+  profile.name = name;
+  profile.account = String(body.account ?? profile.account ?? "").trim().slice(0, 40);
+  if (body.photo) profile.photo = body.photo;
+  if (profile.phone) store.names[profile.phone] = name;
+  store.nickels[name] ??= 0;
+  save();
+  return { ok: true, profile: publicProfile(profile) };
+}
+
+export function facePhoto(token: string): { type: string; bytes: Uint8Array } | null {
+  const match = store.profiles[token]?.photo?.match(/^data:(image\/[a-z]+);base64,(.+)$/);
+  return match ? { type: match[1], bytes: Buffer.from(match[2], "base64") } : null;
+}
+
+const faceOf = (name: string) => {
+  const p = Object.values(store.profiles).find((x) => x.name === name && x.photo);
+  return p ? publicProfile(p).face : null;
+};
+
+export function profileCard(p: { token: string; name: string }) {
+  return { kicker: "Player card", title: p.name ? p.name + "'s card" : "Your player card", sub: "Name, photo, payout handle. One time.", league: LEAGUE_NAME, members: p.name ? [p.name] : [], hue: "#30d158", path: "/me/" + p.token };
+}
+
+const convexUrl = process.env.CONVEX_URL;
+const convex = convexUrl ? new ConvexHttpClient(convexUrl) : null;
+const stateGet = makeFunctionReference<"query", { key: string }, string | null>("league:get");
+const statePut = makeFunctionReference<"mutation", { key: string; json: string; secret?: string }, null>("league:put");
+let syncTimer: ReturnType<typeof setTimeout> | undefined;
+
+export async function hydrate(): Promise<"convex" | "file"> {
+  if (!convex) return "file";
+  const json = await convex.query(stateGet, { key: "store" });
+  if (json) Object.assign(store, JSON.parse(json));
+  else await convex.mutation(statePut, { key: "store", json: JSON.stringify(store), secret: process.env.NICKEL_SYNC_SECRET });
+  return "convex";
+}
+
+export function leaderboard() {
+  const names = [...new Set([...Object.keys(store.nickels), ...Object.values(store.names), ...Object.keys(store.stats), ...Object.values(store.profiles).map((p) => p.name).filter(Boolean)])];
+  const people = (names.length ? names : MEMBERS).map((name) => {
+    const stats = store.stats[name] ?? { played: 0, wins: 0, losses: 0 };
+    const last = [...store.results].reverse().find((r) => r.name === name || r.line.includes(name));
+    return { name, nickels: store.nickels[name] ?? 0, ...stats, last: last?.line ?? "", face: faceOf(name) };
+  }).sort((a, b) => b.nickels - a.nickels || b.wins - a.wins || a.name.localeCompare(b.name));
+  return {
+    league: LEAGUE_NAME,
+    punishment: store.punishment,
+    people: people.map((p, i) => ({ ...p, rank: i + 1, title: i === people.length - 1 && people.length > 1 ? TITLES[5] : TITLES[Math.min(i, 4)] })),
+  };
+}
+
+export function leaderboardCard() {
+  const board = leaderboard();
+  const top = board.people[0];
+  const last = board.people[board.people.length - 1];
+  return {
+    kicker: "Leaderboard",
+    title: top.nickels > 0 ? top.name + " leads" : "Leaderboard",
+    sub: store.punishment ? "Last place " + store.punishment.split(":")[0] + ". Right now: " + last.name + "." : top.nickels > 0 ? top.name + " is up " + top.nickels + " Nickels." : "Nobody has scored yet.",
+    league: LEAGUE_NAME,
+    members: board.people.map((p) => p.name),
+    hue: "#ff9500",
+    path: "/l",
+  };
+}
+
+function setPunishment(text: string): string {
+  const custom = text.match(/punishment\s*(?:is|:|=)\s*(.{6,160})$/i)?.[1]?.trim().replace(/[.!]+$/, "");
+  if (custom) store.punishment = custom.replace(/^(last place|loser)\s+/i, "");
+  else {
+    const pool = PUNISHMENTS.filter((p) => p !== store.punishment);
+    store.punishment = pool[Math.floor(Math.random() * pool.length)];
+  }
+  save();
+  return store.punishment!;
+}
+
 export function recordResult(roundId: string, payload: { name?: string; opponent?: string; won?: boolean; score?: string; tries?: string; time?: string }): { ok: boolean; line?: string } {
   const round = getRound(roundId);
   const name = person(payload.name);
@@ -254,20 +419,27 @@ export function recordResult(roundId: string, payload: { name?: string; opponent
   const stake = typeof round.stake === "number" ? round.stake : 5;
   const rival = person(payload.opponent ?? (typeof round.opponent === "string" ? round.opponent : ""));
   const bump = (who: string, delta: number) => { if (who) store.nickels[who] = (store.nickels[who] ?? 0) + delta; };
+  const tally = (who: string, won: boolean) => { if (!who) return; const t = (store.stats[who] ??= { played: 0, wins: 0, losses: 0 }); t.played += 1; if (won) t.wins += 1; else t.losses += 1; };
   let line: string;
+  let loser = "";
   if (round.game === "rps") {
+    loser = payload.won ? rival : name;
     bump(name, payload.won ? stake : -stake);
     bump(rival, payload.won ? -stake : stake);
+    tally(name, !!payload.won);
+    tally(rival, !payload.won);
     const score = String(payload.score ?? "").replace(/[^0-9]+/, "-");
     line = (payload.won ? name + " beat " + rival : rival + " beat " + name) + " " + score + " at Rock Paper Scissors. " + stake + " Nickels moved.";
   } else {
     const solved = !/x/i.test(String(payload.tries ?? "X"));
     bump(name, solved ? stake : 0);
+    tally(name, solved);
+    if (!solved) loser = name;
     line = round.game === "wordle"
       ? name + (solved ? " solved " + round.title + " in " + String(payload.tries).split("/")[0] + (payload.time ? " (" + payload.time + ")" : "") + ". Plus " + stake + " Nickels." : " missed " + round.title + ". No Nickels today.")
       : name + " locked in " + round.title + ". Plus " + stake + " Nickels.";
   }
-  store.results.push({ roundId, name, line, at: Date.now() });
+  store.results.push({ roundId, name, line, at: Date.now(), loser: loser || undefined });
   save();
   return { ok: true, line };
 }
@@ -290,13 +462,29 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   }
   const sender = introduced || person(input.sender) || (phone ? store.names[phone] ?? "" : "");
   const base = input.baseUrl.replace(/\/+$/, "");
-  const reply = (line: string, card: ReturnType<typeof roundCard> | ReturnType<typeof fantasyCard> | ReturnType<typeof potCard>): TurnReply => ({
+  const reply = (line: string, card: ReturnType<typeof roundCard> | ReturnType<typeof fantasyCard> | ReturnType<typeof potCard> | ReturnType<typeof leaderboardCard> | ReturnType<typeof profileCard>): TurnReply => ({
     addressed: true,
     line,
     url: base + card.path,
     card: { kicker: (card.kicker + " \u00b7 " + card.league).toUpperCase(), title: card.title, sub: card.sub, path: card.path },
   });
   const latest = store.latestFantasy ? store.fantasy[store.latestFantasy] : null;
+
+  if (!/challenge|fantasy|buy.?in|who won|standings|leaderboard|punish|\bplay\b|i'?m in\b|\$\d/.test(lower)) {
+    if (/\b(you suck|u suck|sucks?|trash|garbage|stupid|dumb|idiot|shut up|stfu|fuck (you|u|off)|hate (you|u)|useless|the worst|clown|bozo|loser)\b/.test(lower)) {
+      save();
+      return { addressed: true, react: { emoji: "\u{1F595}", tapback: "dislike" }, line: quip(CLAPBACKS) };
+    }
+    if (/\b(rigged|cheat(ed|ing|er)?|lag(ged|gy)?|didn'?t count|not fair|unfair|robbed|bullshit|bs)\b/.test(lower)) {
+      save();
+      return { addressed: true, react: { emoji: "\u{1F602}", tapback: "laugh" }, line: quip(EXCUSES) };
+    }
+  }
+
+  if (/\b(profile|set ?me ?up|sign ?me ?up|sign ?up|add me|player card|my (photo|picture|pic|card|account))\b/.test(lower) && !/buy.?in/.test(lower)) {
+    const mine = profileFor(phone, sender);
+    return reply((sender ? sender + ", your" : "Your") + " player card: name, photo, payout handle. One time, then every link opens as you.", profileCard(mine));
+  }
 
   const money = /fantasy/.test(lower) ? null : potTurn(text, lower, sender);
   if (money) {
@@ -331,9 +519,26 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     }
   }
 
-  if (/who won|who'?s winning|results?\b|standings|leaderboard|score\b/.test(lower)) {
-    const last = store.results[store.results.length - 1];
-    return { addressed: true, line: /standings|leaderboard|winning/.test(lower) || !last ? nickelStandings() : last.line + " " + nickelStandings() };
+  if (/punish|loser has to|last place (has|does|gets)|reroll/.test(lower)) {
+    const fresh = !store.punishment || /new|another|reroll|different|change|worse|pick|set|\bis\b|:/.test(lower);
+    const what = fresh ? setPunishment(text) : store.punishment!;
+    const board = leaderboard();
+    const last = board.people[board.people.length - 1];
+    const card = leaderboardCard();
+    return reply("Last place " + what + ". Right now that is " + last.name + ".", { ...card, path: card.path + "?u=" + last.name.toLowerCase() });
+  }
+
+  if (/who won|who'?s winning|who'?s losing|results?\b|standings|leaderboard|score\b|rankings?/.test(lower)) {
+    const lastResult = store.results[store.results.length - 1];
+    const line = /standings|leaderboard|winning|losing|rank/.test(lower) || !lastResult ? nickelStandings() : lastResult.line + " " + nickelStandings();
+    const out = reply(line, leaderboardCard());
+    if (lastResult?.loser && !lastResult.roasted) {
+      lastResult.roasted = true;
+      if (lastResult.loser === sender) out.react = { emoji: "\u{1F480}", tapback: "laugh" };
+      out.roast = lastResult.loser === sender ? "You asked." : quip(ROASTS).replace("NAME", lastResult.loser);
+      save();
+    }
+    return out;
   }
 
   const asked = (input.game ?? "").toLowerCase();
@@ -350,8 +555,11 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     const round = game === "wordle" && !/new/.test(lower) ? getRound("wordle-212")! : createRound(game, sender, "");
     return reply(round.title + " is live. " + (round.seconds ? round.seconds + " seconds on the clock." : "Best of 3."), roundCard(round));
   }
-  if (introduced) return { addressed: true, line: "Got it, " + introduced + ". You are in. Say challenge and a name to start one." };
-  return { addressed: true, line: "Try: challenge Maya, play wordle, who won, or start a fantasy league for anything." };
+  if (introduced) return reply("Got it, " + introduced + ". Add your photo and payout handle here, one time. After that every link opens as you.", profileCard(profileFor(phone, introduced)));
+  const n = store.quips;
+  const line = quip(COMEBACKS) + " Try: challenge Maya, who won, punishment, or a fantasy league for anything.";
+  save();
+  return n % 2 === 0 ? { addressed: true, line, react: { emoji: "\u2753", tapback: "question" } } : { addressed: true, line };
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

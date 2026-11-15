@@ -89,6 +89,8 @@
   .face.d { background: #af52de; }
   .bubble { max-width: min(76%, 290px); background: var(--in); border-radius: 18px; padding: 7px 12px; font-size: 17px; line-height: 1.27; letter-spacing: -0.015em; position: relative; }
   .row.me .bubble { background: var(--out); color: #fff; }
+  .react { position: absolute; top: -17px; left: -13px; width: 30px; height: 30px; border-radius: 50%; background: var(--in); box-shadow: 0 0 0 2px var(--bg, #fff); display: grid; place-items: center; font-size: 16px; line-height: 1; animation: pop .28s cubic-bezier(.3,1.6,.5,1); }
+  @keyframes pop { from { transform: scale(0); } }
   .tb {
     position: absolute; top: -12px; right: -8px; background: var(--in); border: 2px solid #fff;
     border-radius: 99px; font-size: 12px; padding: 1px 6px; line-height: 1.3;
@@ -238,7 +240,7 @@
     <div class="delivered">Delivered</div>
     <div id="group-after"></div>
   </div>
-  <div class="chips" id="chips"><button type="button">Nickel, challenge Maya</button><button type="button">Nickel, start a fantasy league for AI models</button><button type="button">Nickel, $5 buy-in</button><button type="button">Nickel, I'm in</button><button type="button">Nickel, play krillion</button></div>
+  <div class="chips" id="chips"><button type="button">Nickel, challenge Maya</button><button type="button">Nickel, start a fantasy league for AI models</button><button type="button">Nickel, $5 buy-in</button><button type="button">Nickel, I'm in</button><button type="button">Nickel, play krillion</button><button type="button">Nickel, leaderboard</button><button type="button">Nickel, punishment</button><button type="button">Nickel, that was rigged</button></div>
   <form class="composer" id="send-group"><div class="plus">+</div><input class="field" id="field-group" placeholder="iMessage" autocomplete="off" enterkeyhint="send"><button class="send" type="submit" aria-label="Send">&uarr;</button></form>
 </section>
 
@@ -405,7 +407,14 @@ async function sendGroup(text) {
   } catch { return toast("Nickel is offline."); }
   if (!reply.addressed) return;
   await new Promise((r) => setTimeout(r, 700));
+  if (reply.react) {
+    const mine = [...after.querySelectorAll(".row.me .bubble")].pop();
+    mine.insertAdjacentHTML("beforeend", '<span class="react">' + reply.react.emoji + "</span>");
+    mine.parentElement.style.marginTop = "22px";
+    await new Promise((r) => setTimeout(r, 500));
+  }
   nickelSays(after, escText(reply.line));
+  if (reply.roast) nickelSays(after, escText(reply.roast));
   if (reply.card) {
     const round = reply.card.path.match(/^\/r\/(.+)$/)?.[1];
     const vs = reply.card.title.match(/ vs (.+)$/)?.[1];

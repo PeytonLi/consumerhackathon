@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>Nickel leaderboard</title>
+<!--BOARD-->
+<link rel="stylesheet" href="/nickel.css">
+<style>
+  :root { --game: light-dark(#ff9500, #ff9f0a); }
+  .app { padding-left: 0; padding-right: 0; }
+  .bar { padding: 0 var(--gutter); }
+  .stage { justify-content: center; align-items: stretch; gap: var(--s3); }
+  .reel { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px 9vw 12px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .reel::-webkit-scrollbar { display: none; }
+  .slide {
+    flex: none; width: 82vw; max-width: 340px; scroll-snap-align: center; border-radius: var(--r-big); background: var(--surface);
+    padding: var(--s5) var(--s5) var(--s4); display: flex; flex-direction: column; align-items: center; gap: 10px; position: relative; overflow: hidden;
+    transition: transform var(--t-sheet) var(--ease), opacity var(--t-sheet) var(--ease);
+  }
+  .slide::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 120px; background: linear-gradient(color-mix(in srgb, var(--hue) 26%, transparent), transparent); }
+  .slide > * { position: relative; }
+  .slide .rank { align-self: flex-start; font: 700 15px/1 var(--round); color: var(--ink-2); }
+  .slide .avatar.xl { width: 96px; height: 96px; font-size: 40px; box-shadow: 0 0 0 4px var(--surface); }
+  .mug { position: relative; width: 108px; height: 108px; margin-top: 26px; }
+  .mug .pic { display: block; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; background: var(--hue); box-shadow: 0 0 0 4px var(--surface); }
+  .mug .pic img, .mug .pic svg { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .mug .prop { position: absolute; left: 50%; pointer-events: none; }
+  .mug .crown { width: 62px; top: -30px; transform: translateX(-50%) rotate(-8deg); }
+  .mug .cone { width: 54px; top: -44px; transform: translateX(-30%) rotate(14deg); }
+  .mug .nose { position: absolute; left: 50%; top: 56%; width: 24px; height: 24px; margin: -12px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ff8a80, #ff3b30 60%); box-shadow: 0 2px 4px rgb(0 0 0 / .25); }
+  .mug.last .pic { transform: rotate(-7deg); filter: saturate(.6); }
+  .slide h2 { margin: 4px 0 0; font: 700 28px/1.1 var(--font); letter-spacing: -0.025em; }
+  .slide .big { font: 700 56px/1 var(--round); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; margin-top: 6px; }
+  .slide .big small { font: 600 15px/1 var(--font); color: var(--ink-2); letter-spacing: 0; margin-left: 6px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; margin-top: 8px; }
+  .stat { padding: 12px 4px; text-align: center; background: var(--bg); border-radius: 14px; }
+  .stat b { display: block; font: 700 20px/1.1 var(--round); }
+  .stat span { display: block; margin-top: 5px; font: 500 12px/1 var(--font); color: var(--ink-2); }
+  .last { font: 500 13px/1.35 var(--font); color: var(--ink-2); text-align: center; min-height: 36px; text-wrap: balance; }
+  .doom { width: 100%; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--them) 14%, transparent); font: 600 13px/1.35 var(--font); text-align: center; text-wrap: balance; }
+  .dots { display: flex; justify-content: center; gap: 6px; }
+  .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); opacity: .45; transition: opacity var(--t-lock), transform var(--t-lock); }
+  .dots i.on { opacity: 1; background: var(--ink); transform: scale(1.25); }
+  .dock { padding-left: var(--gutter); padding-right: var(--gutter); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div></div>
+    <div class="name"><b>Leaderboard</b><span id="league"></span></div>
+    <div></div>
+  </header>
+  <main class="stage" id="stage"></main>
+  <footer class="dock" id="dock"></footer>
+</div>
+<script>
+let B = window.BOARD;
+const params = new URLSearchParams(location.search);
+if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
+const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", "#5e5ce6"];
+const hue = (name) => HUES[[...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % HUES.length];
+const ORD = ["1st", "2nd", "3rd"];
+function goofy(name) {
+  const h = [...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0;
+  const eyes = [
+    '<circle cx="36" cy="42" r="9" fill="#fff"/><circle cx="64" cy="40" r="13" fill="#fff"/><circle cx="38" cy="45" r="4"/><circle cx="60" cy="37" r="4"/>',
+    '<path d="M27 44q9-11 18 0M55 44q9-11 18 0" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>',
+    '<circle cx="36" cy="42" r="11" fill="#fff"/><circle cx="64" cy="42" r="11" fill="#fff"/><circle cx="41" cy="43" r="4"/><circle cx="59" cy="43" r="4"/>',
+    '<rect x="20" y="34" width="60" height="15" rx="6"/><rect x="26" y="38" width="9" height="3" rx="1.5" fill="#fff"/><rect x="56" y="38" width="9" height="3" rx="1.5" fill="#fff"/>',
+  ];
+  const mouths = [
+    '<path d="M33 62q17 18 34 0z"/><path d="M44 69q6 13 12 0z" fill="#ff6b81"/>',
+    '<path d="M36 72q14-11 28 0" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>',
+    '<ellipse cx="50" cy="69" rx="7" ry="9"/>',
+    '<path d="M32 65h36" stroke="#000" stroke-width="4" stroke-linecap="round"/><rect x="45" y="65" width="7" height="8" fill="#fff" stroke="#000" stroke-width="1.5"/>',
+  ];
+  return '<svg viewBox="0 0 100 100" aria-hidden="true">' + eyes[h % 4] + mouths[(h >> 3) % 4] + "</svg>";
+}
+const CROWN = '<svg class="prop crown" viewBox="0 0 60 40" aria-hidden="true"><path d="M4 36L2 10l14 12L30 2l14 20 14-12-2 26z" fill="#ffd60a" stroke="#b8860b" stroke-width="2" stroke-linejoin="round"/><circle cx="30" cy="27" r="3.5" fill="#ff375f"/></svg>';
+const CONE = '<svg class="prop cone" viewBox="0 0 60 60" aria-hidden="true"><path d="M30 2L52 56H8z" fill="#fff" stroke="#1c1c1e" stroke-width="2.5" stroke-linejoin="round"/><text x="30" y="46" text-anchor="middle" font-family="system-ui" font-weight="800" font-size="20" fill="#ff3b30">L</text></svg>';
+function mug(p, lastPlace) {
+  return '<span class="mug' + (lastPlace ? " last" : "") + '" style="--hue:' + hue(p.name) + '"><span class="pic">' + (p.face ? '<img src="' + p.face + '" alt="">' : goofy(p.name)) + "</span>" +
+    (p.rank === 1 && p.nickels > 0 ? CROWN : "") + (lastPlace ? CONE + '<i class="nose"></i>' : "") + "</span>";
+}
+
+
+function draw() {
+  $("league").textContent = B.league;
+  const n = B.people.length;
+  $("stage").innerHTML = '<div class="reel" id="reel">' + B.people.map((p) => {
+    const lastPlace = p.rank === n && n > 1;
+    return '<article class="slide" style="--hue:' + hue(p.name) + '">' +
+      '<span class="rank">' + (ORD[p.rank - 1] ?? p.rank + "th") + " of " + n + "</span>" +
+      mug(p, lastPlace) +
+      "<h2>" + esc(p.name) + '</h2><span class="tag">' + esc(p.title) + "</span>" +
+      '<p class="big">' + (p.nickels > 0 ? "+" : "") + p.nickels + "<small>Nickels</small></p>" +
+      '<div class="stats"><div class="stat"><b>' + p.played + '</b><span>Played</span></div><div class="stat"><b>' + p.wins + '</b><span>Won</span></div><div class="stat"><b>' + p.losses + "</b><span>Lost</span></div></div>" +
+      (lastPlace && B.punishment ? '<p class="doom">If the season ended today, ' + esc(p.name) + " " + esc(B.punishment) + ".</p>" : '<p class="last">' + esc(p.last || "No games yet") + "</p>") +
+      "</article>";
+  }).join("") + '</div><div class="dots" id="dots">' + B.people.map((_, i) => '<i class="' + (i === 0 ? "on" : "") + '"></i>').join("") + "</div>";
+  $("dock").innerHTML = '<p class="t-caption">' + (B.punishment ? "Last place " + esc(B.punishment.split(":")[0]) : 'No punishment set. Text "Nickel, punishment"') + "</p>";
+  const reel = $("reel");
+  reel.onscroll = () => {
+    const mid = reel.scrollLeft + reel.clientWidth / 2;
+    let best = 0, dist = Infinity;
+    [...reel.children].forEach((el, i) => { const d = Math.abs(el.offsetLeft + el.offsetWidth / 2 - mid); if (d < dist) { dist = d; best = i; } });
+    [...$("dots").children].forEach((d, i) => d.classList.toggle("on", i === best));
+  };
+  const who = ((window.ME && window.ME.name) || params.get("u") || "").toLowerCase();
+  const mine = B.people.findIndex((p) => p.name.toLowerCase() === who);
+  if (mine > 0) reel.children[mine].scrollIntoView({ inline: "center", block: "nearest" });
+}
+draw();
+setInterval(async () => {
+  const next = await (await fetch("/api/leaderboard")).json();
+  if (JSON.stringify(next) !== JSON.stringify(B)) { const x = $("reel").scrollLeft; B = next; draw(); $("reel").scrollLeft = x; }
+}, 5000);
+</script>
+</body>
+</html>

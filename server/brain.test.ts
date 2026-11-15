@@ -57,7 +57,7 @@ describe("group chat turns", () => {
 
   it("learns names by phone, records results, and reports who won", () => {
     expect(turn("nickel standings").line).toBe("No Nickels have moved yet. First to finish a game takes the lead.");
-    expect(turn("Nickel, I'm Sritej", "", { senderPhone: "+1 (480) 233-6330" }).line).toBe("Got it, Sritej. You are in. Say challenge and a name to start one.");
+    expect(turn("Nickel, I'm Sritej", "", { senderPhone: "+1 (480) 233-6330" }).line).toBe("Got it, Sritej. Add your photo and payout handle here, one time. After that every link opens as you.");
     const duel = turn("nickel challenge peyton", "", { senderPhone: "+14802336330" });
     expect(duel.line).toBe("Sritej just called out Peyton. Rock Paper Scissors. Best of 3, 5 Nickels on it.");
     const id = duel.card!.path.slice(3);
@@ -90,5 +90,65 @@ describe("group chat turns", () => {
     const made = turn("nickel fantasy professors", "Dev", { fantasyTopic: "Berkeley professors", fantasyPicks: ["Sahai", "DeNero", "Hug"] });
     expect(brain.getFantasy(made.card!.path.slice(3))).toMatchObject({ topic: "Berkeley professors", rosterSize: 3 });
     expect(brain.fantasyCard(brain.getFantasy(made.card!.path.slice(3))!).sub).toBe("Draft 3 picks each. 3 on the board.");
+  });
+
+  it("keeps a leaderboard with a card per person and a real punishment", () => {
+    const before = (name: string) => ({ played: 0, wins: 0, losses: 0, ...brain.leaderboard().people.find((p) => p.name === name) });
+    const [m0, a0] = [before("Maya"), before("Alex")];
+    const made = turn("Nickel, challenge Maya", "Alex");
+    const id = made.card!.path.slice(3);
+    expect(brain.recordResult(id, { name: "Alex", won: false, score: "0-2" }).line).toBe("Maya beat Alex 0-2 at Rock Paper Scissors. 5 Nickels moved.");
+    const board = brain.leaderboard();
+    const maya = board.people.find((p) => p.name === "Maya")!;
+    const alex = board.people.find((p) => p.name === "Alex")!;
+    expect(maya).toMatchObject({ wins: m0.wins + 1, losses: m0.losses, played: m0.played + 1 });
+    expect(alex).toMatchObject({ wins: a0.wins, losses: a0.losses + 1, played: a0.played + 1 });
+    expect(maya.rank).toBeLessThan(alex.rank);
+    expect(board.people[board.people.length - 1].title).toBe("Paying for dinner");
+    const doom = turn("nickel what's the punishment", "Maya");
+    expect(brain.PUNISHMENTS).toContain(brain.leaderboard().punishment);
+    expect(doom.line).toMatch(/^Last place .+\. Right now that is \w+\.$/);
+    expect(doom.url).toMatch(/\/l\?u=/);
+    const same = brain.leaderboard().punishment;
+    turn("nickel what is the punishment again", "Maya");
+    expect(turn("nickel new punishment", "Maya").line).not.toContain(same!);
+    expect(turn("nickel punishment is runs ten milk miles", "Maya").line).toContain("Last place runs ten milk miles.");
+    expect(turn("nickel leaderboard", "Maya").url).toBe("https://nickel.test/l");
+  });
+
+  it("roasts a loss once and only claps back when someone earns it", () => {
+    const made = turn("Nickel, challenge Dev", "Peyton");
+    brain.recordResult(made.card!.path.slice(3), { name: "Peyton", won: false, score: "1-2" });
+    const asked = turn("nickel who won", "Peyton");
+    expect(asked.react).toEqual({ emoji: "\u{1F480}", tapback: "laugh" });
+    expect(asked.roast).toBe("You asked.");
+    expect(turn("nickel who won", "Peyton").react).toBeUndefined();
+    const rude = turn("nickel you suck", "Peyton");
+    expect(rude.react).toEqual({ emoji: "\u{1F595}", tapback: "dislike" });
+    expect(brain.CLAPBACKS).toContain(rude.line);
+    const excuse = turn("nickel that was rigged", "Peyton");
+    expect(excuse.react!.tapback).toBe("laugh");
+    expect(brain.EXCUSES).toContain(excuse.line);
+    expect(turn("Nickel, challenge Maya", "Peyton").react).toBeUndefined();
+    expect(turn("nickel play krillion", "Peyton").react).toBeUndefined();
+    expect(turn("Nickel, $5 buy-in", "Peyton").react).toBeUndefined();
+    const huh = [turn("nickel asdf qwerty"), turn("nickel hmm ok")];
+    expect(huh.filter((r) => r.react).length).toBe(1);
+    expect(brain.COMEBACKS.some((c) => huh[0].line!.startsWith(c))).toBe(true);
+  });
+
+  it("hands out a personal player card the pages load from", () => {
+    const say = (text: string) => brain.handleTurn({ text, senderPhone: "+15550001111", baseUrl: "https://nickel.test" });
+    const intro = say("nickel i'm Abhi");
+    expect(intro.line).toBe("Got it, Abhi. Add your photo and payout handle here, one time. After that every link opens as you.");
+    const token = intro.card!.path.slice(4);
+    expect(intro.url).toBe("https://nickel.test/me/" + token);
+    expect(say("nickel set me up").url).toBe(intro.url);
+    expect(brain.saveProfile(token, { name: "abhi", photo: "javascript:alert(1)" }).ok).toBe(false);
+    expect(brain.saveProfile(token, { name: "abhi", account: "@abhi-v", photo: "data:image/jpeg;base64,/9j/4AAQ" })).toMatchObject({ ok: true, profile: { name: "Abhi", account: "@abhi-v" } });
+    expect(brain.facePhoto(token)!.type).toBe("image/jpeg");
+    expect(brain.getProfile(token)!.face).toMatch(new RegExp("^/face/" + token));
+    expect(brain.leaderboard().people.find((p) => p.name === "Abhi")!.face).toBe(brain.getProfile(token)!.face);
+    expect(brain.saveProfile("me-nope", { name: "x" }).ok).toBe(false);
   });
 });

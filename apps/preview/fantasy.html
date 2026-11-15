@@ -61,7 +61,7 @@ const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", 
 const hue = (name) => { const i = L.members.indexOf(name); return HUES[(i < 0 ? [...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) : i) % HUES.length]; };
 const avatar = (name, cls = "") => '<span class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + esc(name[0]) + "</span>";
 const meKey = "nickel.me." + (params.get("via") ?? "link");
-const me = () => sessionStorage.getItem(meKey);
+const me = () => (!params.get("via") && window.ME && window.ME.name) || sessionStorage.getItem(meKey);
 let view = "draft";
 
 function toast(text) {

@@ -158,7 +158,7 @@ const tell = (line) => {
   if (parent !== window) parent.postMessage({ type: "nickel:done", round: R.id, line }, "*");
 };
 const meKey = "nickel.me." + via;
-const me = () => sessionStorage.getItem(meKey);
+const me = () => (!params.get("via") && window.ME && window.ME.name) || sessionStorage.getItem(meKey);
 const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", "#5e5ce6"];
 const hue = (name) => { const i = (R.members ?? []).indexOf(name); return HUES[(i < 0 ? [...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) : i) % HUES.length]; };
 const avatar = (name, cls = "", seal = "") => '<span class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + esc(name[0]) + (seal ? '<span class="seal">' + icon(seal) + "</span>" : "") + "</span>";

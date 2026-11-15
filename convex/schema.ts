@@ -33,6 +33,8 @@ export const gameTypeValidator = v.union(
 );
 
 export default defineSchema({
+  leagueState: defineTable({ key: v.string(), json: v.string(), updatedAt: v.number() }).index("by_key", ["key"]),
+
   users: defineTable({
     name: v.string(),
     handle: v.string(),
