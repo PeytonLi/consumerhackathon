@@ -171,6 +171,11 @@
     transition: opacity .25s, transform .25s; pointer-events: none;
   }
   .toast.on { opacity: 1; transform: translate(-50%, 0); }
+  input.field { flex: 1; min-width: 0; outline: none; background: transparent; color: inherit; font: inherit; font-size: 17px; -webkit-user-select: text; user-select: text; }
+  .send { width: 30px; height: 30px; border-radius: 50%; background: #0a84ff; color: #fff; font-weight: 700; flex: none; display: grid; place-items: center; }
+  .chips { display: flex; gap: 6px; overflow-x: auto; padding: 6px 10px; background: var(--bar); scrollbar-width: none; }
+  .chips button { flex: none; height: 30px; padding: 0 12px; border-radius: 15px; border: 0.5px solid var(--line); font-size: 13px; color: #0a84ff; white-space: nowrap; background: transparent; }
+  .og .bot span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 </head>
 <body>
@@ -233,7 +238,8 @@
     <div class="delivered">Delivered</div>
     <div id="group-after"></div>
   </div>
-  <div class="composer"><div class="plus">+</div><div class="field">iMessage</div></div>
+  <div class="chips" id="chips"><button type="button">Nickel, challenge Maya</button><button type="button">Nickel, start a fantasy league for AI models</button><button type="button">Nickel, play krillion</button></div>
+  <form class="composer" id="send-group"><div class="plus">+</div><input class="field" id="field-group" placeholder="iMessage" autocomplete="off" enterkeyhint="send"><button class="send" type="submit" aria-label="Send">&uarr;</button></form>
 </section>
 
 <section class="view off" id="dm">
@@ -255,7 +261,7 @@
       </button>
     </div>
     <div class="day"><b>Today</b> 12:30 PM</div>
-    <div class="row"><div class="face ghost"></div><div class="bubble">Today's Nickel 👇</div></div>
+    <div class="row"><div class="face ghost"></div><div class="bubble">Today's Nickel</div></div>
     <div class="row" style="margin-top:3px">
       <div class="face n">N</div>
       <button class="vault" style="--h:#ff9500" data-round="wordle-212" data-via="vault" type="button">
@@ -363,21 +369,66 @@ window.addEventListener("message", (e) => {
     document.getElementById("og-count").textContent = "4 of 5 played · closes 9 PM";
     document.getElementById("tb-drop").hidden = false;
     nickelSays(document.getElementById("group-after"),
-      "🏆 Maya 3/6 · " + d.name + " " + d.tries + " · Sritej 4/6 · Alex 5/6<br>Dev didn't play. Group streak: 13 days 🔥",
+      "Maya 3/6 · " + d.name + " " + d.tries + " · Sritej 4/6 · Alex 5/6<br>Dev didn't play. Group streak: 13 days.",
       "<b>Today</b> 9:00 PM");
     document.getElementById("time-group").textContent = "9:00 PM";
-    document.getElementById("prev-group").textContent = "Nickel: 🏆 Maya 3/6 · " + d.name + " " + d.tries + " · Sritej 4/6 · Alex 5/6";
+    document.getElementById("prev-group").textContent = "Nickel: Maya 3/6 · " + d.name + " " + d.tries + " · Sritej 4/6 · Alex 5/6";
     document.getElementById("dot-group").classList.remove("read");
     setTimeout(() => { closeAll(); toast("Locked in. Nickel posts results in the group at 9 PM."); }, 2600);
   }
-  if (e.data.round === "rps-dev" && d) {
+  if (String(e.data.round).startsWith("rps-") && d) {
+    const opp = opponents[e.data.round] ?? "Dev";
     nickelSays(document.getElementById("group-after"),
-      (d.won ? d.name + " beat Dev " : "Dev beat " + d.name + " ") + d.score + " at Rock Paper Scissors. 5 Nickels moved.", "4:12 PM");
+      (d.won ? d.name + " beat " + opp + " " : opp + " beat " + d.name + " ") + d.score + " at Rock Paper Scissors. 5 Nickels moved.", "4:12 PM");
     document.getElementById("dot-group").classList.remove("read");
     setTimeout(() => { closeAll(); toast("Result posted in Cupertino Day Ones."); }, 3400);
   }
   if (!d) closeAll();
 });
+
+const opponents = { "rps-dev": "Dev" };
+const escText = (v) => String(v).replace(/[&<>"]/g, (c) => "&#" + c.charCodeAt(0) + ";");
+function openUrl(path) {
+  document.getElementById("safari-frame").src = path + (path.includes("?") ? "&" : "?") + "via=link";
+  document.getElementById("safari").classList.add("on");
+  document.querySelector('meta[name="theme-color"]').content = "#f2f2f7";
+}
+function scrollGroup() { const t = document.getElementById("thread-group"); t.scrollTop = t.scrollHeight; }
+async function sendGroup(text) {
+  const after = document.getElementById("group-after");
+  document.querySelectorAll("#thread-group .delivered").forEach((el) => el.remove());
+  after.insertAdjacentHTML("beforeend", '<div class="row me"><div class="bubble">' + escText(text) + '</div></div><div class="delivered" style="text-align:right">Delivered</div>');
+  scrollGroup();
+  let reply;
+  try {
+    reply = await (await fetch("/api/turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, sender: "Peyton" }) })).json();
+  } catch { return toast("Nickel is offline."); }
+  if (!reply.addressed) return;
+  await new Promise((r) => setTimeout(r, 700));
+  nickelSays(after, escText(reply.line));
+  if (reply.card) {
+    const round = reply.card.path.match(/^\/r\/(.+)$/)?.[1];
+    const vs = reply.card.title.match(/^You vs (.+)$/)?.[1];
+    if (round && vs) opponents[round] = vs;
+    const row = document.createElement("div");
+    row.className = "row";
+    row.style.marginTop = "3px";
+    row.innerHTML = '<div class="face n">N</div><button class="link" type="button"><div class="og"><div class="k">' + escText(reply.card.kicker) + '</div><div><h3>' + escText(reply.card.title) + '</h3></div><div class="bot"><span>' + escText(reply.card.sub) + '</span></div></div><div class="meta"><b>' + escText(reply.card.title) + ' · Cupertino Day Ones</b><span>' + location.host + '</span></div></button>';
+    row.querySelector("button").onclick = () => openUrl(reply.card.path);
+    after.append(row);
+  }
+  document.getElementById("prev-group").textContent = "Nickel: " + reply.line;
+  scrollGroup();
+}
+document.getElementById("send-group").onsubmit = (e) => {
+  e.preventDefault();
+  const field = document.getElementById("field-group");
+  const text = field.value.trim();
+  if (!text) return;
+  field.value = "";
+  sendGroup(text);
+};
+document.querySelectorAll("#chips button").forEach((b) => b.onclick = () => sendGroup(b.textContent));
 </script>
 </body>
 </html>
