@@ -46,8 +46,7 @@ function form() {
   $("stage").className = "stage";
   $("stage").innerHTML =
     '<button class="shot" id="shot" type="button" aria-label="Add your photo">' + (P.face ? '<img src="' + P.face + '" alt="">' : "<span>" + CAMERA + "Add a photo</span>") + "</button>" +
-    '<div class="fields"><label for="name">First name</label><input id="name" maxlength="14" autocomplete="given-name" placeholder="Sritej" value="' + esc(P.name || "") + '">' +
-    '<label for="account">Payout handle</label><input id="account" maxlength="40" autocapitalize="off" autocorrect="off" placeholder="Venmo or Cash App, like @sritej" value="' + esc(P.account || "") + '"></div>' +
+    '<div class="fields"><label for="name">First name</label><input id="name" maxlength="14" autocomplete="given-name" placeholder="Sritej" value="' + esc(P.name || "") + '"></div>' +
     '<p class="t-caption" style="text-align:center;max-width:300px">One time. After this, every Nickel link on this phone opens as you.</p>';
   $("dock").innerHTML = '<button class="glass primary" id="save" type="button">Save my card</button>';
   $("shot").onclick = () => $("file").click();
@@ -74,7 +73,7 @@ async function save() {
   const name = $("name").value.trim();
   if (!name) return toast("Add your first name.");
   $("save").disabled = true;
-  const body = { name, account: $("account").value.trim() };
+  const body = { name };
   if (photo) body.photo = photo;
   const res = await (await fetch("/api/me/" + P.token, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json().catch(() => ({ ok: false, error: "Nickel is offline." }));
   if (!res.ok) { $("save").disabled = false; return toast(res.error || "Could not save."); }

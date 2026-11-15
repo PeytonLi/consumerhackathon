@@ -1,4 +1,4 @@
-import { ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
+import { setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -45,7 +45,23 @@ Bun.serve({
 
     if (path === "/api/turn" && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as { text?: string; sender?: string; senderPhone?: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string };
-      return json(handleTurn({ text: String(body.text ?? ""), sender: body.sender, senderPhone: body.senderPhone, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined }));
+      let hasPhoto = false;
+      const photoUrl = (body as { photoUrl?: string }).photoUrl;
+      if (photoUrl && /^https:\/\//.test(photoUrl)) {
+        const proc = Bun.spawn(["ffmpeg", "-loglevel", "error", "-i", photoUrl, "-vf", "scale=384:384:force_original_aspect_ratio=increase,crop=384:384", "-frames:v", "1", "-q:v", "5", "-f", "mjpeg", "pipe:1"], { stdout: "pipe", stderr: "pipe" });
+        const bytes = Buffer.from(await new Response(proc.stdout).arrayBuffer());
+        if ((await proc.exited) === 0 && bytes.length > 500 && bytes.length < 220000) {
+          setPhoto(String(body.senderPhone ?? "").replace(/[^+0-9]/g, ""), body.sender ?? "", "data:image/jpeg;base64," + bytes.toString("base64"));
+          hasPhoto = true;
+        } else console.error("Photo import failed", await new Response(proc.stderr).text());
+      }
+      const turn = handleTurn({ hasPhoto, text: String(body.text ?? ""), sender: body.sender, senderPhone: body.senderPhone, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined });
+      if (turn.art) await Promise.race([generateArt(turn.art.token, turn.art.role), new Promise((r) => setTimeout(r, 40000))]);
+      if (turn.addressed && turn.line && Number(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false })) >= 18) {
+        const due = dueNudges();
+        if (due.length) turn.line += " " + due.map((n) => n.text).join(" ");
+      }
+      return json(turn);
     }
 
     const resultApi = path.match(/^\/api\/rounds\/([a-z0-9-]+)\/result$/);
@@ -94,6 +110,12 @@ Bun.serve({
     }
 
     const board = () => { ensureArt(); const b = leaderboard(); return { ...b, cards: leaderboardImages(), order: [...b.people].reverse().map((p) => p.name) }; };
+    const meCard = path.match(/^\/card\/me\/([a-z0-9-]+)\/(loser|winner)\.png$/);
+    if (meCard) {
+      const png = await personCardPng(0, { token: meCard[1], role: meCard[2] });
+      return png ? new Response(png as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=60" } }) : new Response("Not found", { status: 404 });
+    }
+    if (path === "/api/nudges") return json({ idle: idleStakes(), send: request.method === "POST" ? dueNudges() : [] });
     const personCard = path.match(/^\/card\/l\/(\d)\.png$/);
     if (personCard) {
       const png = await personCardPng(Number(personCard[1]));

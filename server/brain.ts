@@ -1,6 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 
 export interface Round {
   id: string;
@@ -25,6 +25,7 @@ export interface FantasyLeague {
 export interface TurnReply {
   addressed: boolean;
   images?: string[];
+  art?: { token: string; role: string };
   react?: { emoji: string; tapback: "dislike" | "laugh" | "question" };
   roast?: string;
   pay?: { amountCents: number; memo: string };
@@ -48,9 +49,9 @@ const POOLS: [RegExp, string[]][] = [
 const dataDir = process.env.NICKEL_DATA_DIR ?? new URL("../.data/", import.meta.url).pathname;
 const dataFile = dataDir + "/store.json";
 const seedRounds = JSON.parse(readFileSync(new URL("../apps/preview/rounds.json", import.meta.url), "utf8")) as Record<string, Omit<Round, "id">>;
-const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number; loser?: string; roasted?: boolean }[]; quips: number; profiles: Record<string, Profile>; pots: Record<string, Pot>; latestPot: string | null; stats: Record<string, { played: number; wins: number; losses: number }>; punishment: string | null } = existsSync(dataFile)
+const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number; loser?: string; roasted?: boolean }[]; quips: number; nudged: Record<string, string>; profiles: Record<string, Profile>; pots: Record<string, Pot>; latestPot: string | null; stats: Record<string, { played: number; wins: number; losses: number }>; punishment: string | null } = existsSync(dataFile)
   ? JSON.parse(readFileSync(dataFile, "utf8"))
-  : { rounds: {}, fantasy: {}, latestFantasy: null, names: {}, nickels: {}, results: [], pots: {}, latestPot: null, stats: {}, punishment: null, quips: 0, profiles: {} };
+  : { rounds: {}, fantasy: {}, latestFantasy: null, names: {}, nickels: {}, results: [], pots: {}, latestPot: null, stats: {}, punishment: null, quips: 0, profiles: {}, nudged: {} };
 store.names ??= {};
 store.nickels ??= {};
 store.results ??= [];
@@ -59,6 +60,7 @@ store.latestPot ??= null;
 store.stats ??= {};
 store.punishment ??= null;
 store.quips ??= 0;
+store.nudged ??= {};
 store.profiles ??= {};
 
 function save() {
@@ -355,7 +357,7 @@ const faceOf = (name: string) => {
 };
 
 export function profileCard(p: { token: string; name: string }) {
-  return { kicker: "Player card", title: p.name ? p.name + "'s card" : "Your player card", sub: "Name, photo, payout handle. One time.", league: LEAGUE_NAME, members: p.name ? [p.name] : [], hue: "#30d158", path: "/me/" + p.token };
+  return { kicker: "Player card", title: p.name ? p.name + "'s card" : "Your player card", sub: "Name and photo. One time.", league: LEAGUE_NAME, members: p.name ? [p.name] : [], hue: "#30d158", path: "/me/" + p.token };
 }
 
 const convexUrl = process.env.CONVEX_URL;
@@ -401,7 +403,7 @@ const ascending = () => {
   return [...board.people].reverse().map((p) => ({ ...p, n, role: p.rank === n && n > 1 ? "loser" : p.rank === 1 && n > 1 ? "winner" : "" }));
 };
 
-async function generateArt(token: string, role: string) {
+export async function generateArt(token: string, role: string) {
   const photo = store.profiles[token]?.photo;
   const gemini = process.env.GEMINI_API_KEY, fal = process.env.FAL_KEY;
   if (!photo || (!gemini && !fal) || artPending.has(token + role)) return;
@@ -434,6 +436,33 @@ async function generateArt(token: string, role: string) {
   }
 }
 
+
+export function setPhoto(phone: string, name: string, photo: string): Profile {
+  const profile = profileFor(phone, person(name) || (phone ? store.names[phone] ?? "" : ""));
+  profile.photo = photo;
+  for (const role of ["loser", "winner"]) rmSync(artDir + "/" + profile.token + "-" + role + ".png", { force: true });
+  save();
+  return profile;
+}
+
+const dayKey = (ms: number) => new Date(ms).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+
+export function idleStakes(now = Date.now()): { name: string; phone: string; text: string }[] {
+  const pot = store.latestPot ? store.pots[store.latestPot] : null;
+  if (!pot) return [];
+  const today = store.results.filter((r) => dayKey(r.at) === dayKey(now));
+  return Object.keys(pot.members)
+    .filter((name) => pot.members[name] === "paid" && !today.some((r) => r.name === name || r.loser === name || r.line.includes(name)))
+    .map((name) => ({ name, phone: Object.keys(store.names).find((p) => store.names[p] === name) ?? "", text: name + ", you have " + dollars(pot.amountCents) + " in the pot and you have not played today. Play before midnight or it is up for grabs." }));
+}
+
+export function dueNudges(now = Date.now()) {
+  const due = idleStakes(now).filter((n) => store.nudged[n.name] !== dayKey(now));
+  for (const n of due) store.nudged[n.name] = dayKey(now);
+  if (due.length) save();
+  return due;
+}
+
 export function ensureArt() {
   for (const p of ascending()) {
     const token = tokenOf(p.name);
@@ -450,9 +479,11 @@ export function leaderboardImages(): string[] {
   return board.people.slice(0, 8).map((_, i) => "/card/l/" + i + ".png?v=" + version);
 }
 
-export function personCardSvg(index: number): string | null {
-  const p = ascending()[index];
-  if (!p) return null;
+export function personCardSvg(index: number, as?: { token: string; role: string }): string | null {
+  const owner = as ? store.profiles[as.token] : null;
+  const found = as ? (owner ? ascending().find((x) => x.name === owner.name) ?? { name: owner.name || "You", nickels: 0, played: 0, wins: 0, losses: 0, last: "", face: null, rank: 1, n: 1, title: "", role: "" } : undefined) : ascending()[index];
+  if (!found) return null;
+  const p = as ? { ...found, role: as.role, title: as.role === "loser" ? "If the season ended badly" : "If the season ended well" } : found;
   const board = leaderboard();
   const token = tokenOf(p.name);
   const aiFile = artDir + "/" + token + "-" + p.role + ".png";
@@ -489,8 +520,8 @@ export function personCardSvg(index: number): string | null {
   );
 }
 
-export async function personCardPng(index: number): Promise<Uint8Array | null> {
-  const svg = personCardSvg(index);
+export async function personCardPng(index: number, as?: { token: string; role: string }): Promise<Uint8Array | null> {
+  const svg = personCardSvg(index, as);
   if (!svg) return null;
   if (!render) await cardPng(leaderboardCard());
   return render!(svg);
@@ -560,7 +591,7 @@ export function nickelStandings(): string {
   return rows.length ? "Nickels: " + rows.slice(0, 6).map(([who, n]) => who + " " + (n > 0 ? "+" : "") + n).join(", ") + "." : "No Nickels have moved yet. First to finish a game takes the lead.";
 }
 
-export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string }): TurnReply {
+export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string; hasPhoto?: boolean }): TurnReply {
   const text = input.text.trim();
   const lower = text.toLowerCase();
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
@@ -592,9 +623,24 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     }
   }
 
+  const wantsArt = /\b(image|picture|pic|photo|draw|show|generate|make)\b.*\b(me|i|myself|my)\b/.test(lower) && /\b(los\w*|last|cry\w*|win\w*|won|first|crown\w*|champ\w*|generate|draw)\b/.test(lower);
+  if (input.hasPhoto || wantsArt) {
+    const mine = profileFor(phone, sender);
+    if (!mine.photo) return reply("I need your face first. Text me a photo of yourself, or add one on your card.", profileCard(mine));
+    const role = input.hasPhoto || /\b(win\w*|won|first|crown\w*|champ\w*)\b/.test(lower) ? "winner" : "loser";
+    const who = mine.name || "you";
+    return { addressed: true, art: { token: mine.token, role }, images: [base + "/card/me/" + mine.token + "/" + role + ".png?v=" + Date.now().toString(36)], line: input.hasPhoto ? (mine.name ? "Got it, " + mine.name + ". That face is on the leaderboard now. Here is you with the crown." : "Got the photo. Now tell me your name: Nickel, I'm Sritej.") : role === "loser" ? "Here is " + who + " in last place." : "Here is " + who + " with the crown." };
+  }
+
+  if (/hasn'?t played|haven'?t played|didn'?t play|not played|up for grabs|nudge|remind/.test(lower)) {
+    const idle = idleStakes();
+    if (!store.latestPot) return { addressed: true, line: "No buy-in yet, so nothing is up for grabs. Say: Nickel, $5 buy-in." };
+    return { addressed: true, line: idle.length ? idle.map((n) => n.name).join(" and ") + (idle.length > 1 ? " have" : " has") + " money in the pot and has not played today. It is up for grabs at midnight.".replace(idle.length > 1 ? "has not" : "have not", "have not") : "Everyone with money in the pot has played today." };
+  }
+
   if (/\b(profile|set ?me ?up|sign ?me ?up|sign ?up|add me|player card|my (photo|picture|pic|card|account))\b/.test(lower) && !/buy.?in/.test(lower)) {
     const mine = profileFor(phone, sender);
-    return reply((sender ? sender + ", your" : "Your") + " player card: name, photo, payout handle. One time, then every link opens as you.", profileCard(mine));
+    return reply((sender ? sender + ", your" : "Your") + " player card: name and photo. One time, then every link opens as you.", profileCard(mine));
   }
 
   const money = /fantasy/.test(lower) ? null : potTurn(text, lower, sender);
@@ -672,7 +718,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     const round = game === "wordle" && !/new/.test(lower) ? getRound("wordle-212")! : createRound(game, sender, "");
     return reply(round.title + " is live. " + (round.seconds ? round.seconds + " seconds on the clock." : "Best of 3."), roundCard(round));
   }
-  if (introduced) return reply("Got it, " + introduced + ". Add your photo and payout handle here, one time. After that every link opens as you.", profileCard(profileFor(phone, introduced)));
+  if (introduced) return reply("Got it, " + introduced + ". Add your photo here, one time. After that every link opens as you.", profileCard(profileFor(phone, introduced)));
   const n = store.quips;
   const line = quip(COMEBACKS) + " Try: challenge Maya, who won, punishment, or a fantasy league for anything.";
   save();

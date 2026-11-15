@@ -57,7 +57,7 @@ describe("group chat turns", () => {
 
   it("learns names by phone, records results, and reports who won", () => {
     expect(turn("nickel standings").line).toBe("No Nickels have moved yet. First to finish a game takes the lead.");
-    expect(turn("Nickel, I'm Sritej", "", { senderPhone: "+1 (480) 233-6330" }).line).toBe("Got it, Sritej. Add your photo and payout handle here, one time. After that every link opens as you.");
+    expect(turn("Nickel, I'm Sritej", "", { senderPhone: "+1 (480) 233-6330" }).line).toBe("Got it, Sritej. Add your photo here, one time. After that every link opens as you.");
     const duel = turn("nickel challenge peyton", "", { senderPhone: "+14802336330" });
     expect(duel.line).toBe("Sritej just called out Peyton. Rock Paper Scissors. Best of 3, 5 Nickels on it.");
     const id = duel.card!.path.slice(3);
@@ -140,7 +140,7 @@ describe("group chat turns", () => {
   it("hands out a personal player card the pages load from", () => {
     const say = (text: string) => brain.handleTurn({ text, senderPhone: "+15550001111", baseUrl: "https://nickel.test" });
     const intro = say("nickel i'm Abhi");
-    expect(intro.line).toBe("Got it, Abhi. Add your photo and payout handle here, one time. After that every link opens as you.");
+    expect(intro.line).toBe("Got it, Abhi. Add your photo here, one time. After that every link opens as you.");
     const token = intro.card!.path.slice(4);
     expect(intro.url).toBe("https://nickel.test/me/" + token);
     expect(say("nickel set me up").url).toBe(intro.url);
@@ -174,5 +174,30 @@ describe("group chat turns", () => {
     expect(brain.leaderboard()).toMatchObject({ stakes: "$10 buy-in", punishment: null });
     expect(turn("nickel punishment", "Maya").line).toBe("This one is for money: $10 buy-in, so last place just loses it. Punishments are for games with no buy-in.");
     expect(brain.personCardSvg(0)).toContain("Last place. Out $10 buy-in.");
+  });
+
+  it("turns a texted photo into a portrait and nudges paid players who skip a day", () => {
+    const say = (text: string, extra = {}) => brain.handleTurn({ text, senderPhone: "+15550002222", baseUrl: "https://nickel.test", ...extra });
+    say("nickel i'm Zed");
+    expect(say("nickel generate an image of me if I was to lose").line).toBe("I need your face first. Text me a photo of yourself, or add one on your card.");
+    const mine = brain.setPhoto("+15550002222", "", "data:image/jpeg;base64,/9j/4AAQ");
+    const got = say("nickel", { hasPhoto: true });
+    expect(got.line).toBe("Got it, Zed. That face is on the leaderboard now. Here is you with the crown.");
+    const lose = say("nickel generate an image of me if I was to lose");
+    expect(lose.line).toBe("Here is Zed in last place.");
+    expect(lose.art).toEqual({ token: mine.token, role: "loser" });
+    expect(lose.images![0]).toContain("/card/me/" + mine.token + "/loser.png");
+    expect(brain.personCardSvg(0, { token: mine.token, role: "loser" })).toContain(">Zed<");
+    expect(brain.personCardSvg(0, { token: "me-nope", role: "loser" })).toBeNull();
+    const pot = turn("Nickel, $5 buy-in", "Zed");
+    const id = pot.card!.path.slice(3).split("?")[0];
+    brain.joinPot(id, "Zed", "paid");
+    brain.joinPot(id, "Maya", "paid");
+    const round = turn("nickel play krillion", "Maya");
+    brain.recordResult(round.card!.path.slice(3), { name: "Maya", tries: "1/1" });
+    expect(brain.idleStakes().map((n) => n.name)).toEqual(["Zed"]);
+    expect(turn("nickel who hasn't played", "Maya").line).toBe("Zed has money in the pot and has not played today. It is up for grabs at midnight.");
+    expect(brain.dueNudges()).toEqual([{ name: "Zed", phone: "+15550002222", text: "Zed, you have $5 in the pot and you have not played today. Play before midnight or it is up for grabs." }]);
+    expect(brain.dueNudges()).toEqual([]);
   });
 });
