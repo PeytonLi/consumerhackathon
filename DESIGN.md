@@ -1,194 +1,122 @@
-# Potluck — System & Product Design Document
+# Nickel — Product & System Design Document
 **Event:** Y Combinator Consumer Mobile Hackathon (November 15, 2026 · 6:00 PM PST Submission)  
-**Stack:** Expo (React Native) · Revyl · Convex · Keiki (`@onkeiki/agents`) · Whop (`@whop/sdk`) · TypeSafe Jev / Nace Drex (`systemOne`) · Capy (+ optional Supermemory)
+**Stack:** Expo (React Native) · Revyl · Convex · Keiki (`@onkeiki/agents`) · Whop (`@whop/sdk`) · TypeSafe Jev / Nace Drex (`systemOne`) · Capy
 
 ---
 
-## 1. Product Thesis & Core Loop
+## 1. High-Level Vision: What Is Nickel?
 
-### Why Hometown & College Group Chats Die
-When friends leave for different colleges—or scatter across majors, dorms, and internships—group chats die in a predictable pattern:
-1. **High-friction catch-ups:** Nobody wants to break a two-week silence with an unprompted life essay, and "how is everyone" gets two tapbacks before dying again.
-2. **Zero-stakes daily spam:** Pasting raw Wordle grids into iMessage creates clutter without shared stakes, live tension, or personal context.
-3. **OS fragmentation:** One friend on Android or studying abroad fractures iMessage threads across SMS/RCS, WhatsApp, and Telegram.
+**Nickel** turns any existing friend group into a **customizable Fantasy League + fast-play micro-game arena** with real-money season pots and daily point wagering—connected seamlessly to iMessage/SMS/Telegram.
 
-### The Solution: Potluck
-**Potluck** pairs a **cross-channel group chat agent** (living natively inside iMessage, SMS/RCS, and Telegram via **Keiki**) with a **real-time mobile companion app** (built in **Expo**, compiled and tested in the cloud on **Revyl**, powered by **Convex**) and **real $1 stakes** (powered by **Whop**).
-
-Every day, Potluck drops one **60-second synchronous/async micro-game** into the group chat—defaulting to **Multiplayer Group Wordle**, rotating with **Friend-Lore Trivia** ("Who said this in October?") and **Campus Pin-Drop / Photo Dares**—backed by a real group money pot.
-
-### Two Interlocking Retention Loops
-
-| Loop | Mechanism | Why Users Come Back Tomorrow |
-| :--- | :--- | :--- |
-| **1. Daily Micro-Game + Pot Stakes (Compulsion)** | Daily Wordle / Trivia drop in the group chat. Friends play spoiler-free in the app or 1:1 DM while watching teammates' live tile colors (`🟩🟨⬛⬛🟩`) appear in real time. | Loss aversion + competition: miss the window and pay a **$1 Ghost Tax** into the pot, or lose ground on the Season Leaderboard. |
-| **2. Cross-Chat Connector + Lore Utility (Genuine Value)** | The same Keiki agent bridges iMessage + Android/Telegram, answers `@potluck catch me up`, plans break linkups, splits group tabs, and quietly indexes group memories. | Even outside the 60-second game, Potluck is the shared glue that remembers who has midterms, who is visiting home, and when everyone is free. |
-
-### Two Selectable Group Pot Modes (Whop)
-Giving groups two modes during onboarding solves both competitive thrill and consumer/YC regulatory polish:
-1. **Reunion Vault Mode (Default / Recommended for Demo):** Everyone loads a $5 Season Wallet via Whop. Staying on streak protects your balance; ghosting a daily round moves **$1 into the Group Reunion Vault**, unlocked together when the crew meets up IRL (Thanksgiving dinner, summer trip, concert tickets).
-2. **Crown Bounty Mode (Skill Competition):** Everyone contributes $1/round (or $5/season) into a **skill-based prize pool** (pure Wordle accuracy + speed + trivia; zero RNG). At season end, Whop pays out 1st place (or 60% / 30% / 10%).
+- **Why "Nickel"?** Every day you show up, you get your **Daily Nickel** (**5 Nickel Points** / $0.05–$1.00 daily pot stake) to put on games, head-to-head challenges, and side bets (*"put a Nickel on it"*).
+- **Fast (<45s) Viral & GamePigeon-Style Micro-Games:** Instead of slow 20-minute board games, every game in Nickel is engineered to finish in **15 to 60 seconds** inside the app:
+  1. **One in a Krillion ("The Dive"):** Inspired by the viral *Krillion* rarity-trivia hit—a 25-second shot clock to name a valid answer to an open category where **rarer valid answers score higher** (*Plankton 10 pts → Schooler 30 → Rare 60 → Deep Cut 85 → **One in a Krillion 100 pts***), graded live in **30ms** by **Jev / Nace Drex `systemOne()`**! If two friends submit the exact same answer, they collide and split the points.
+  2. **Wordle Blitz:** 5-letter speed race with live color-only spectator tiles (`🟩🟨⬛`) streaming over Convex WebSockets.
+  3. **GamePigeon-Style Flick Physics (Cup Pong · Swish Hoops · 1-Hole Mini-Golf):** 30-second swipe-to-shoot physics challenges (5 ping-pong balls / basketballs or 1 Mark Rober-style trick-shot mini-golf hole; fewest strokes / highest streak wins).
+  4. **5x5 Blitz Battleship ("Radar Salvo"):** Probability-condensed Battleship—place 2 mini-ships, fire one 5-shot salvo in 20 seconds, most direct hits wins immediately.
+- **"Fantasy Anything" Custom Leagues:** Groups aren't locked into one template. When creating a league in the app, the commissioner customizes:
+  - **League Fantasy Theme:** Pick **Arcade Mix** (rotating daily micro-games), **Pro Sports Fantasy** (NHL Hockey, NBA, NFL daily pick'ems + mini-game tiebreakers), or **Custom Niche Fantasy**—like a **Fantasy AI League** (draft OpenAI, Anthropic, Google, xAI, TypeSafe; bet Nickels on model drops/benchmarks + play AI-themed *One in a Krillion* rounds), **Campus/Dorm Fantasy**, or any custom topic!
+  - **Custom Payout Timelines:** Set seasons to pay out **Weekly**, **Every 2 Weeks (Bi-Weekly)**, **Monthly**, **Per Semester**, or **Custom** (including a **2-Minute Blitz Season** for live hackathon demos), settled automatically through **Whop**.
+- **App-First Experience + Seamless iMessage Glue:** Everything—playing games, building custom fantasy leagues, placing Nickel prop bets, challenging friends 1v1, and cashing out—happens natively inside **your own Nickel mobile app**, while **Keiki** connects directly to the group's existing iMessage/Telegram chat to fire challenges, trash-talk stragglers, and announce *"One in a Krillion!"* upsets.
 
 ---
 
-## 2. Critical Technical Research Findings (Read Before Coding)
+## 2. Critical Technical Architecture & Sponsor Fit
 
-Researching the exact November 2026 documentation for each sponsor surfaced five architectural constraints we must design around from hour one:
-
-1. **Keiki Group Chats Require `photon` or `blooio` Dedicated Lines:**
-   - Per Keiki's channel docs (`onkeiki.com/docs/cloud-agents`), `features.groupChats: true` **only works on dedicated `photon` or `blooio` iMessage lines** and **Telegram groups**. Lines on `linq` or shared join-code pools ignore group messages (`group_chats_unsupported`).
-   - **Action:** Grab a dedicated `photon`/`blooio` line from the Keiki sponsor booth immediately, and wire the `telegram()` plugin in parallel (same Keiki group engine, zero provisioning wait, instant cross-OS backup).
-2. **Keiki Interactive Cards Are 1:1 DM Only (Not Group Chats):**
-   - Keiki's `features.card_app` / Keiki Vault web cards are intentionally restricted to **direct 1:1 conversations**, never group threads.
-   - **Action:** Keep the **Group Chat** clean as the **Game Master & Scoreboard** (rich deep links `potluck://round/<id>`, native tapbacks via `react_to_message`, confetti via `effect: "confetti"`, and proactive drops via `POST /api/v1/developer/agents/<id>/notice`). Actual Wordle guessing happens **spoiler-free** either in the **Expo Mobile App** (primary) or via **1:1 DM with the agent** (fallback for friends without the app installed yet).
-3. **Avoid $1 Card Processing Drag with a $5 Whop Pot Pass:**
-   - Charging a raw credit card $1.00 daily loses ~32% to fixed payment processor fees and adds daily checkout friction.
-   - **Action:** Use Whop `checkoutConfigurations.create` (`one_time` $5.00 "Season Pot Load" via Apple Pay, plus optional $1 instant top-ups). Convex tracks exact $1.00 per-round stakes/penalties in a double-entry `ledgerEntries` table backed 1:1 by the Whop platform balance, then settles out via Whop Payouts / Transfers.
-4. **System One (`Jev` / `Nace Drex`) Solves the "Annoying Group Bot" Latency Problem:**
-   - Nace's **Drex** (`POST https://console.nace.ai/v1/systemone`, `nace-sdk`) is **wire-compatible** with TypeSafe's **Jev** (`@typesafe-ai/sdk`). Unlike chat LLMs that stream chain-of-thought for 1.5–3s, `systemOne()` returns calibrated probabilities over `choice`, `noul`, and `score` primitives in **~20–50ms** and cannot hallucinate malformed JSON.
-   - **Action:** Put `systemOne()` directly in front of every group message and game transition so 90%+ of group messages resolve in <40ms (silent observation, native tapback, or instant tool dispatch) without invoking a heavy generative LLM.
-5. **Windows + Mac (No Xcode) Mobile Strategy via Expo + Revyl:**
-   - All 3 teammates iterate live with `npx expo start --tunnel` (instant hot reload on physical iOS & Android phones with zero local native toolchains).
-   - Native compilation runs remotely on **Revyl's cloud macOS 26.6 (Xcode 27) and Android runners** (`tools.mobile.build` / `revyl build`), installing directly onto cloud **iPhone 18 Pro** and **Pixel 7** devices (`tools.capy.phone`) and exporting an installable `.apk` + live Expo iPhone build for the 7:00 PM stage demo.
+1. **TypeSafe Jev / Nace Drex (`systemOne`) — Sub-40ms Rarity Judge, Odds Maker & Chat Router:**
+   - Nace's **Drex** (`POST https://console.nace.ai/v1/systemone`) is wire-compatible with TypeSafe's **Jev** (`@typesafe-ai/sdk`).
+   - **Killer Use Case #1 (Live *One in a Krillion* Grading in ~30ms):** Open-ended rarity games usually lag on slow LLMs. A single `systemOne()` call evaluates `isValid: noul(...)` and `rarityTier: score(..., ["Plankton", "Too Clever", "Schooler", "Rare", "Deep Cut", "One in a Krillion"])` in ~30ms with calibrated probabilities and zero JSON hallucinations!
+   - **Killer Use Case #2 (Dynamic Prop Odds):** Computes instant Over/Under lines (`score`) for player challenges (*"Peyton Over/Under 3.5 Cup Pong cups"* or *"Sritej Over/Under 3.5 Wordle guesses"*).
+   - **Killer Use Case #3 (iMessage Turn-Taking Gate):** Classifies group chat messages (`choice` + `noul`) in <40ms so the Keiki bot fires native tapbacks or parses `"@nickel 5 pts I beat Peyton in Mini-Golf"` without annoying chatter.
+2. **Convex — Real-Time Multiplayer Arena, Custom Fantasy Engine & Point Ledger:**
+   - Streams live spectator state (`useQuery`) across Wordle tile masks, Krillion ocean-depth meters, Cup Pong scores, and H2H fantasy scoreboard ticks.
+   - Runs Convex `crons.ts` + scheduled functions to enforce custom league payout windows (7-day, 14-day, 30-day, or custom timestamp) and distribute the **Daily 5-Point Nickel Stipend**.
+3. **Whop (`@whop/sdk` + `@whop/elements`) — Season Buy-Ins & Custom Timeline Payouts:**
+   - Collects league buy-ins ($5, $10, or custom pot) via `whop.checkoutConfigurations.create` (Apple Pay / card).
+   - Verifies deposits via `unwrapWebhook` (`payment.succeeded`) in `convex/http.ts`.
+   - Settles the real-money prize pool automatically when the league's custom payout timer hits zero via Whop Payouts / Wallet transfers.
+4. **Keiki (`@onkeiki/agents`) — Existing Group Chat Connector:**
+   - Uses a dedicated `photon` or `blooio` iMessage line (`features.groupChats: true`) + Telegram/SMS fallback so existing friend group chats link to a Nickel league via a 6-character code (`"@nickel link KRILL5"`).
+   - Receives proactive `POST /api/v1/developer/agents/<id>/notice` events from Convex whenever someone drops a 1v1 challenge, hits a *One in a Krillion* answer, or wins a bi-weekly Whop payout.
+5. **Expo + Revyl + Capy — Zero-Xcode Cross-Platform Mobile Pipeline:**
+   - Built in Expo (React Native + `react-native-reanimated` + `react-native-svg` / 60fps gesture physics for Cup Pong, Hoops & Mini-Golf + `expo-haptics`).
+   - Instant live reload across your 2 Windows laptops + 1 Mac (`npx expo start --tunnel`), while **Revyl** compiles native Android `.apk` and cloud iOS (`iPhone 18 Pro`) builds via `tools.mobile.build` and `tools.capy.phone`.
 
 ---
 
-## 3. End-to-End System Architecture
+## 3. System Architecture Diagram
 
 ```mermaid
 flowchart TB
-    subgraph Surfaces["User Surfaces (Cross-OS)"]
-        IM["iMessage / SMS-RCS Group Chat<br/>(Keiki Dedicated photon/blooio Line)"]
-        TG["Telegram / WhatsApp Group<br/>(Keiki Multi-Channel Engine)"]
-        DM["1:1 Agent DM<br/>(Text Wordle + Keiki Vault Card)"]
-        APP["Expo React Native App<br/>(iOS & Android via Revyl)"]
+    subgraph Client["Nickel Mobile App (Expo + Revyl)"]
+        HUB["League Hub & Customizer<br/>(Theme · Buy-In · 1w/2w/1m Cadence)"]
+        GAMES["60-Second Game Suite<br/>Krillion · Wordle · Cup Pong · Mini-Golf · Salvo"]
+        BETS["Nickel Wager & Fantasy Book<br/>Daily +5 Nickel · H2H · Prop Lines"]
     end
 
-    subgraph FastBrain["Reflex & Memory Layer"]
-        S1["Nace Drex / TypeSafe Jev<br/>POST /v1/systemone (<40ms)<br/>choice · noul · score"]
-        LLM["Generative Agent Model<br/>(Only when reply/summary needed)"]
-        MEM["Group Lore Store<br/>(Convex + Supermemory)"]
+    subgraph Chat["Existing Group Chat (Keiki)"]
+        IMSG["iMessage / SMS / Telegram Group<br/>Dedicated photon/blooio Line"]
     end
 
-    subgraph Core["Convex Reactive Backend"]
-        HTTP["HTTP Actions (convex/http.ts)<br/>Keiki Tools + Whop Webhooks"]
-        MUT["Mutations & Live Queries<br/>Anti-Cheat Wordle + Live Tile Masks"]
-        CRON["Scheduled Drops & Timers<br/>Daily Spark + Ghost Tax Settlement"]
-        LEDGER["Double-Entry Pot Ledger<br/>Season Points + Balance Tracking"]
+    subgraph SystemOne["Jev / Nace Drex (<40ms)"]
+        JUDGE["Krillion Rarity & Validity Judge<br/>noul (valid?) + score (Plankton..Krillion)"]
+        ODDS["Prop Odds & Chat Intent Router<br/>choice + score + noul"]
     end
 
-    subgraph Money["Whop Financial Rails"]
-        CHK["Whop Checkout Configs<br/>($5 Pot Pass / $1 Ghost Top-Up)"]
-        WH["Whop Webhook (unwrapWebhook)<br/>payment.succeeded"]
-        PAY["Whop Payouts & Wallet<br/>Winner Bounty / Reunion Vault"]
+    subgraph Backend["Convex Reactive Backend"]
+        SYNC["Live Multiplayer State & Leaderboards"]
+        FANTASY["Custom Fantasy Generator & H2H Schedule<br/>(Hockey · NBA · AI Models · Custom)"]
+        LEDGER["Nickel Point Book + Season Timer Crons"]
+        HTTP["HTTP Actions (Keiki Tools + Whop Webhooks)"]
     end
 
-    IM <-->|"Inbound turns & Proactive /notice"| HTTP
-    TG <-->|"Unified channel context"| HTTP
-    DM <-->|"Spoiler-free DM guesses"| HTTP
-    APP <-->|"WebSocket reactive useQuery / useMutation"| MUT
+    subgraph Payments["Whop Financial Rails"]
+        BUYIN["Apple Pay Season Buy-In<br/>checkoutConfigurations.create"]
+        PAYOUT["Automated Timeline Payouts<br/>Weekly / Bi-Weekly / Monthly"]
+    end
 
-    HTTP -->|"1. Batch classify (<40ms)"| S1
-    S1 -->|"Full reply needed (~10%)"| LLM
-    S1 -->|"worthRemembering = true"| MEM
-    S1 -->|"Game / Pot command"| MUT
-
-    CRON -->|"Trigger daily drop"| MUT
-    MUT -->|"POST /agents/:id/notice"| IM
-    APP -->|"Apple Pay / Checkout"| CHK
-    CHK --> WH --> HTTP --> LEDGER
-    LEDGER -->|"Season Finale Settlement"| PAY
+    HUB & GAMES & BETS <-->|"WebSocket useQuery / useMutation"| SYNC
+    GAMES -->|"Grade Krillion answer (<35ms)"| JUDGE
+    IMSG <-->|"Challenges, Tapbacks & /notice"| HTTP
+    HTTP -->|"Classify bet / banter"| ODDS
+    SYNC <--> FANTASY & LEDGER
+    HUB --> BUYIN --> HTTP --> LEDGER
+    LEDGER -->|"Cadence timer expires"| PAYOUT
 ```
 
 ---
 
-## 4. Detailed Subsystem Specifications
+## 4. Micro-Game Specifications (Strictly 15–60 Seconds Per Play)
 
-### 4.1 Speed Layer: TypeSafe Jev / Nace Drex (`systemOne`)
-Because Drex (`https://console.nace.ai/v1`) and TypeSafe Jev (`@typesafe-ai/sdk`) share the exact `systemOne` wire protocol, we write one thin wrapper in `convex/lib/systemOne.ts` that works with either `NACE_API_KEY` or `TYPESAFE_API_KEY` via a single environment variable switch.
-
-**Four Production Hot Paths for `systemOne()`:**
-
-1. **Group Chat Turn-Taking & Intent Router (~30ms, 1 batched call per message):**
-   ```ts
-   import { TypeSafeClient, choice, noul, score } from "@typesafe-ai/sdk";
-
-   const s1 = new TypeSafeClient({
-     apiKey: process.env.NACE_API_KEY ?? process.env.TYPESAFE_API_KEY,
-     baseURL: process.env.NACE_API_KEY ? "https://console.nace.ai/v1" : undefined,
-   });
-
-   export async function triageGroupMessage(input: {
-     sender: string;
-     text: string;
-     recentWindow: string[];
-     activeRoundOpen: boolean;
-     unplayedCount: number;
-   }) {
-     const { answers } = await s1.systemOne({
-       state: input,
-       questions: {
-         routing: choice("How should the group chat agent handle this message?", {
-           silent_observe: "Normal friend chatter not directed at the bot",
-           tapback_only: "Funny moment, roast, hype, or milestone deserving a quick reaction only",
-           run_tool: "Direct request or implied need for a game, pot check, bill split, recap, or hangout poll",
-           conversational_reply: "Direct question or banter addressed to the agent needing a short text reply",
-         }),
-         tapback: choice("If reacting with an iMessage tapback, which fits best?", {
-           none: "No reaction needed",
-           laugh: "Joke, roast, or funny fail",
-           love: "Wholesome update, support, or good news",
-           emphasize: "Hype, clutch Wordle solve, or urgent plan",
-           question: "Confusing claim",
-         }),
-         toolIntent: choice("Which utility or game action matches best?", {
-           none: "Not a tool trigger",
-           drop_wordle: "Start or fetch today's Wordle / game link",
-           pot_status: "Check prize pot, leaderboard, or pay $1 buy-in",
-           catch_me_up: "Summarize missed group chat messages",
-           plan_hangout: "Coordinate dates/times to meet up",
-           split_expense: "Split a bill or request money from the group",
-         }),
-         saveToLore: noul("Does this message reveal a personal life update, school/internship milestone, travel date, or memorable quote worth saving for future friend trivia?", {
-           true: "Contains durable personal fact, funny quote, or upcoming trip",
-           false: "Ephemeral logistics or filler",
-         }),
-         chatWarmth: score("How active and connected is the group right now?", [
-           "Cold or awkward silence",
-           "Low energy logistics",
-           "Healthy casual banter",
-           "High-energy conversation—do not interrupt with scheduled prompts",
-         ]),
-       },
-     });
-     return answers;
-   }
-   ```
-2. **Adaptive Wordle & Lore Curating (`score`):** Ranks candidate 5-letter words (mixing standard NYT-tier words with custom group-themed 5-letter words like `BEARS`, `DORMZ`, `BOBA1` -> alpha-only `CACAO`, `STUDY`, `PIZZA`, `PRANK`) so difficulty matches the group's solve rate.
-3. **Smart Drop Timing (`score`):** Before a scheduled cron interrupts a group chat, `chatWarmth` checks the last 10 messages—delaying a game drop by 30 minutes if friends are in the middle of a serious conversation.
-4. **Multimodal Photo-Dare Verification (`noul` + `images[]`):** Both Jev and Drex accept `images[]` in `state`. For bonus flash rounds (*"Snap grass or coffee in 5 minutes to save your streak"*), `systemOne()` verifies image authenticity in <50ms with calibrated confidence (`answers.validSubmission.confidence > 0.80`).
+| Game | Target Time | Core Mechanic & Skill Expression | Anti-Cheat / Scoring in Convex |
+| :--- | :---: | :--- | :--- |
+| **1. One in a Krillion** *(Signature)* | **25 sec** | Open prompt tailored to the league (e.g., *"Name an NHL goalie with 300+ wins"* or *"Name an open-weight AI model under 10B params"* or *"Name a fruit with one seed"*). | Jev/Nace `systemOne()` checks factual validity (`noul`) + rarity (`score` 0–5): **Plankton (10)**, **Too Clever (15)**, **Schooler (30)**, **Rare (60)**, **Deep Cut (85)**, **One in a Krillion (100)**. Duplicate answers in the same group split points! |
+| **2. Wordle Blitz** | **45 sec** | Solve the shared 5-letter word while watching friends' live `🟩🟨⬛` rows flip in real time. | Target word stays server-only; `(7 - guesses) * 20 + speedBonus` points. |
+| **3. Cup Pong / Swish Hoops** | **30 sec** | 5-ball swipe-flick physics challenge (`PanResponder` + 60fps trajectory arc; subtle wind/rim physics inspired by Mark Rober's carnival physics!). | Trajectory seed + shot vectors verified; streak multipliers (`+10, +20, +35, +50, +75`). |
+| **4. 1-Hole Trick Mini-Golf** | **25 sec** | One procedural geometric obstacle hole per day; pull-back slingshot putter. | Par 3 scoring + closest-to-cup millimeter tiebreaker so 1v1 bets never tie. |
+| **5. 5x5 Blitz Salvo (Battleship)** | **30 sec** | Tap 5 radar tiles at once against a hidden 3-ship probability grid (inspired by Mark Rober's Battleship heatmap!). | Server holds ship coordinates; hits + sunk-ship bonuses resolve in one volley. |
 
 ---
 
-### 4.2 Gameplay Mechanics: Anti-Spoiler Live Multiplayer Wordle + Rotating Modes
+## 5. Custom "Fantasy Anything" + Nickel Wagering Mechanics
 
-#### Primary Mode: Group Wordle (Default Daily Ritual)
-- **Synchronized Secret, Private Boards:** At drop time (or manual "Start Round" in demo), Convex selects one 5-letter target word for `groupId + dateKey`.
-- **Zero-Spoiler Live Presence:** Inside the Expo app's `round/[id]` screen, a header strip displays avatars for every member in the group chat alongside **live 5x6 mini-grids showing ONLY colors (`🟩`, `🟨`, `⬛`)** updated reactively via Convex `useQuery` on every guess. Your friends' actual letters remain stripped server-side until *you* complete (win or 6/6) the board.
-- **Scoring Formula (Skill-Based, Deterministic):**
-  - Solve in 1: `600 pts` · 2: `500 pts` · 3: `400 pts` · 4: `300 pts` · 5: `200 pts` · 6: `100 pts` · X/6: `25 participation pts` (protects against Ghost Tax!).
-  - **Speed Tiebreaker Bonus:** `max(0, 120 - elapsedSeconds)` (up to `+120 pts`), rewarding fast focus without punishing async timezones (timer starts when *you* open the round!).
-- **1:1 Text Fallback:** If a friend doesn't open the app, they can text their 5-letter guess directly in a 1:1 DM with the Keiki agent (`STARE` -> `🟩⬛🟨⬛🟩 (1/6)`), hitting the exact same Convex `submitGuess` mutation.
-- **Group Chat Payoff:** The instant a player finishes, Convex calls Keiki's `notice` endpoint so the group chat receives crisp, trash-talk-ready updates:
-  > *"Sritej cooked Wordle #1 in 3/6 (34s) -> +486 pts. Peyton is sweating on row 5... 1 person left before the $1 Ghost Tax hits the Thanksgiving Pot ($24.00)."*
-
-#### Secondary Modes (Selectable in App / Chat)
-1. **"Who Said It?" Lore Trivia (Friday Special):** Pulls saved quotes/facts from `loreMemories` (captured via `saveToLore` + Supermemory), generates 3 multiple-choice questions about the friend group itself, and awards double points.
-2. **Flash Photo Check-In ("Proof of Life"):** 5-minute window to snap what's in front of you (verified instantly via Jev/Drex vision `noul`), stitched into a shared polaroid strip in the app's Memories tab so college friends actually *see* each other's daily lives.
+### 5.1 League Customization Flow (30-Second Commissioner Setup)
+1. **Pick Your Timeline (Payout Schedule):**
+   - `7 Days (Weekly)` · `14 Days (Bi-Weekly)` · `30 Days (Monthly)` · `Semester` · `Demo Blitz (3 Mins)`.
+2. **Pick or Prompt Your Fantasy Mode:**
+   - **Preset Arcade League:** Daily rotation of Krillion, Wordle, Cup Pong, Mini-Golf, and Salvo.
+   - **Sports Fantasy Lite (Hockey / Basketball / Football):** Roster 3 real teams/players or pick daily real-game props + play daily mini-games for bonus fantasy points.
+   - **Custom Topic Fantasy ("Prompt Any League"):** Type *any* obsession—e.g., **"Fantasy AI Models"**, **"Formula 1"**, **"Valorant"**, or **"Berkeley CS Surviving Finals"**. Convex generates custom team drafts, custom daily prop questions, and custom *One in a Krillion* prompts for that exact niche!
+3. **Set the Stakes (Whop + Daily Nickels):**
+   - Optional Whop cash buy-in ($1–$25 per cycle) + automatic **+5 Nickel Points** credited every morning to every member.
+   - Players stake 1–20 Nickels on:
+     - **Daily Over/Unders:** *"Bet 5 Nickels Peyton scores <60m depth on today's Krillion"* (line set dynamically by Jev/Nace `score`).
+     - **1v1 Instant Challenges:** Tap a friend (or text `@nickel challenge @Sritej mini-golf 10 nickels`) to launch a head-to-head duel.
+     - **"One in a Krillion" Parlay:** 3-leg group parlay paying 10x Nickels if hit!
 
 ---
 
-### 4.3 Convex Data Model (`convex/schema.ts`)
+## 6. Convex Schema (`convex/schema.ts`)
 
 ```ts
 import { defineSchema, defineTable } from "convex/server";
@@ -197,204 +125,186 @@ import { v } from "convex/values";
 export default defineSchema({
   users: defineTable({
     name: v.string(),
-    phone: v.optional(v.string()),          // Normalized E.164 (+1...) for Keiki binding
-    telegramId: v.optional(v.string()),
-    avatarUrl: v.optional(v.string()),
-    campusOrCity: v.optional(v.string()),   // e.g., "UC Berkeley", "Austin, TX"
+    handle: v.string(),
+    phone: v.optional(v.string()),
+    avatarColor: v.string(),
     whopUserId: v.optional(v.string()),
     createdAt: v.number(),
-  })
-    .index("by_phone", ["phone"])
-    .index("by_telegram", ["telegramId"]),
+  }).index("by_phone", ["phone"]),
 
-  groups: defineTable({
-    name: v.string(),                       // e.g., "Cupertino Day Ones"
-    inviteCode: v.string(),                 // 6-char join code ("HOME26")
-    keikiConversationId: v.optional(v.string()), // e.g., "imsg:chat:..." or "tg:..."
-    potMode: v.union(v.literal("reunion_vault"), v.literal("crown_bounty")),
-    stakeCents: v.number(),                 // Default 100 ($1.00)
-    potBalanceCents: v.number(),            // Live verified Whop pot total
-    reunionGoalTitle: v.optional(v.string()), // e.g., "Thanksgiving KBBQ Fund"
-    reunionGoalCents: v.optional(v.number()),
+  leagues: defineTable({
+    name: v.string(),                       // e.g. "Hometown Degens" or "Fantasy AI Lab"
+    inviteCode: v.string(),                 // e.g. "KRILL5"
+    keikiConversationId: v.optional(v.string()),
+    themeType: v.union(
+      v.literal("arcade_mix"),
+      v.literal("hockey"),
+      v.literal("basketball"),
+      v.literal("football"),
+      v.literal("ai_models"),
+      v.literal("custom")
+    ),
+    customThemePrompt: v.optional(v.string()), // e.g. "Frontier AI labs, benchmarks, and model releases"
+    cadence: v.union(
+      v.literal("demo_blitz"),
+      v.literal("weekly"),
+      v.literal("biweekly"),
+      v.literal("monthly"),
+      v.literal("custom_days")
+    ),
+    cadenceDays: v.number(),
+    buyInCents: v.number(),                 // e.g. 500 ($5.00 via Whop)
+    potBalanceCents: v.number(),
+    dailyNickelAllowance: v.number(),       // Default: 5 Nickels / day
+    enabledGames: v.array(v.string()),      // ["krillion", "wordle", "cup_pong", "mini_golf", "salvo"]
+    seasonNumber: v.number(),
+    seasonStartsAt: v.number(),
     seasonEndsAt: v.number(),
-    streakDays: v.number(),
-    defaultGame: v.union(v.literal("wordle"), v.literal("lore_trivia"), v.literal("photo_dare")),
+    payoutSplit: v.array(v.number()),       // e.g. [70, 30] or [100]
   })
     .index("by_invite_code", ["inviteCode"])
     .index("by_keiki_conv", ["keikiConversationId"]),
 
-  groupMembers: defineTable({
-    groupId: v.id("groups"),
+  memberships: defineTable({
+    leagueId: v.id("leagues"),
     userId: v.id("users"),
-    role: v.union(v.literal("admin"), v.literal("member")),
-    walletBalanceCents: v.number(),         // Preloaded Whop pass balance
-    seasonPoints: v.number(),
-    currentStreak: v.number(),
-    ghostCount: v.number(),
-    joinedAt: v.number(),
+    role: v.union(v.literal("commissioner"), v.literal("player")),
+    nickelBalance: v.number(),              // Spendable wager points (+5/day)
+    seasonFantasyPoints: v.number(),        // Determines Whop payout rank
+    wins: v.number(),
+    losses: v.number(),
+    krillionCount: v.number(),              // Lifetime "One in a Krillion" pulls!
+    buyInPaid: v.boolean(),
+    lastStipendDate: v.optional(v.string()),
   })
-    .index("by_group", ["groupId"])
-    .index("by_group_points", ["groupId", "seasonPoints"])
+    .index("by_league", ["leagueId"])
+    .index("by_league_points", ["leagueId", "seasonFantasyPoints"])
     .index("by_user", ["userId"]),
 
   rounds: defineTable({
-    groupId: v.id("groups"),
-    roundNumber: v.number(),
-    dateKey: v.string(),                    // "2026-11-15"
-    gameType: v.union(v.literal("wordle"), v.literal("lore_trivia"), v.literal("photo_dare")),
-    secretWord: v.optional(v.string()),     // NEVER returned by client queries!
-    promptText: v.optional(v.string()),
-    status: v.union(v.literal("active"), v.literal("settled")),
-    startsAt: v.number(),
+    leagueId: v.id("leagues"),
+    gameType: v.union(
+      v.literal("krillion"),
+      v.literal("wordle"),
+      v.literal("cup_pong"),
+      v.literal("mini_golf"),
+      v.literal("salvo")
+    ),
+    title: v.string(),
+    promptOrConfig: v.any(),                // Category prompt, obstacle seed, etc.
+    secretServerState: v.optional(v.any()), // Hidden target word or 5x5 ship coords
+    status: v.union(v.literal("open"), v.literal("settled")),
+    challengerId: v.optional(v.id("users")), // Set if 1v1 challenge
+    opponentId: v.optional(v.id("users")),
+    stakeNickels: v.number(),
     expiresAt: v.number(),
-  })
-    .index("by_group_status", ["groupId", "status"])
-    .index("by_group_date", ["groupId", "dateKey"]),
+  }).index("by_league_status", ["leagueId", "status"]),
 
-  submissions: defineTable({
+  plays: defineTable({
     roundId: v.id("rounds"),
-    groupId: v.id("groups"),
+    leagueId: v.id("leagues"),
     userId: v.id("users"),
-    openedAt: v.number(),
-    guesses: v.array(v.string()),           // Stripped for other players until viewer finishes
-    tileMasks: v.array(v.string()),         // e.g., ["🟨⬛🟩⬛⬛", "🟩🟩🟩🟩🟩"] — safe for live spectator sync!
-    status: v.union(v.literal("playing"), v.literal("won"), v.literal("lost")),
-    pointsAwarded: v.number(),
+    publicSpectatorState: v.any(),          // Live tile masks, shot streak, or dive depth
+    rawSubmission: v.optional(v.any()),     // Answer string, guesses, stroke count
+    tierLabel: v.optional(v.string()),      // "Plankton" .. "One in a Krillion"
+    scorePoints: v.number(),
+    durationMs: v.number(),
     completedAt: v.optional(v.number()),
   })
     .index("by_round", ["roundId"])
     .index("by_round_user", ["roundId", "userId"]),
 
-  ledgerEntries: defineTable({
-    groupId: v.id("groups"),
+  wagers: defineTable({
+    leagueId: v.id("leagues"),
+    roundId: v.optional(v.id("rounds")),
+    creatorId: v.id("users"),
+    takerId: v.optional(v.id("users")),
+    marketText: v.string(),                 // e.g. "Peyton hits Rare+ (60+ pts) on Krillion"
+    lineValue: v.optional(v.number()),
+    side: v.union(v.literal("over"), v.literal("under"), v.literal("h2h")),
+    stakeNickels: v.number(),
+    payoutMultiplier: v.number(),
+    status: v.union(v.literal("open"), v.literal("locked"), v.literal("won"), v.literal("lost"), v.literal("push")),
+    createdAt: v.number(),
+  }).index("by_league_status", ["leagueId", "status"]),
+
+  transactions: defineTable({
+    leagueId: v.id("leagues"),
     userId: v.id("users"),
-    type: v.union(
-      v.literal("whop_deposit"),
-      v.literal("round_buy_in"),
-      v.literal("ghost_tax"),
-      v.literal("season_payout")
-    ),
-    amountCents: v.number(),
-    whopCheckoutId: v.optional(v.string()),
+    kind: v.union(v.literal("whop_buy_in"), v.literal("whop_payout"), v.literal("daily_nickel"), v.literal("wager_settle")),
+    amountCents: v.optional(v.number()),
+    amountNickels: v.optional(v.number()),
     whopPaymentId: v.optional(v.string()),
-    status: v.union(v.literal("pending"), v.literal("succeeded"), v.literal("failed")),
-    note: v.string(),
     createdAt: v.number(),
   })
-    .index("by_group", ["groupId"])
+    .index("by_league", ["leagueId"])
     .index("by_whop_payment", ["whopPaymentId"]),
-
-  loreMemories: defineTable({
-    groupId: v.id("groups"),
-    speakerUserId: v.optional(v.id("users")),
-    factOrQuote: v.string(),
-    category: v.string(),                   // "quote" | "milestone" | "visit_date"
-    createdAt: v.number(),
-  }).index("by_group", ["groupId"]),
 });
 ```
 
 ---
 
-### 4.4 Whop Payment, Pot Escrow & Payout Architecture
+## 7. Jev / Nace Drex `systemOne()` Implementation for *One in a Krillion*
 
-1. **Creating a Pot Load / $1 Stake Checkout (`convex/whop.ts`):**
-   - Uses `@whop/sdk` (`WhopClient`) inside a Convex `action`:
-     ```ts
-     const cfg = await whop.checkoutConfigurations.create({
-       account_id: process.env.WHOP_PLATFORM_ACCOUNT_ID!,
-       variant: {
-         visibility: "visible",
-         billing_type: "one_time",
-         release_method: "buy_now",
-         currency: "usd",
-         initial_price: amountDollars, // $5.00 Season Pass or $1.00 Instant Stake
-       },
-       metadata: {
-         groupId,
-         userId,
-         purpose: "pot_deposit",
-       },
-       redirect_url: `potluck://pot/${groupId}?funded=1`,
-     });
-     ```
-   - On mobile, open the hosted Whop Apple Pay / Google Pay checkout URL in `expo-web-browser` (`openAuthSessionAsync`), or render `@whop/elements-react` `<Checkout>` inside a web modal.
-2. **Webhook Confirmation (`convex/http.ts` -> `POST /webhooks/whop`):**
-   - Validates signature via `unwrapWebhook(payload, { headers, key: process.env.WHOP_WEBHOOK_SECRET! })`.
-   - On `payment.succeeded`, runs an internal idempotent Convex mutation checking `by_whop_payment` index -> increments `groups.potBalanceCents` and `groupMembers.walletBalanceCents` -> sends a Keiki proactive `notice` with `effect: "confetti"` to the group chat!
-3. **Season Finale Payout:**
-   - When `seasonEndsAt` arrives (or when you tap **"Settle Season Pot (Live Demo)"** during the 7:00 PM pitch), Convex calculates the #1 point scorer (Crown Bounty) or designated Group Reunion Host (Reunion Vault) and triggers a Whop Subaccount transfer / Payout link (`@whop/elements-react` `<Wallet>` portal or Whop Payouts API).
+```ts
+import { TypeSafeClient, noul, score, choice } from "@typesafe-ai/sdk";
 
----
+const s1 = new TypeSafeClient({
+  apiKey: process.env.NACE_API_KEY ?? process.env.TYPESAFE_API_KEY,
+  baseURL: process.env.NACE_API_KEY ? "https://console.nace.ai/v1" : undefined,
+});
 
-### 4.5 Keiki Multi-Channel Agent Wiring (`@onkeiki/agents`)
+const TIER_TABLE = [
+  { label: "Plankton", points: 10, depthMeters: 100 },
+  { label: "Too Clever", points: 15, depthMeters: 150 },
+  { label: "Schooler", points: 30, depthMeters: 300 },
+  { label: "Rare", points: 60, depthMeters: 600 },
+  { label: "Deep Cut", points: 85, depthMeters: 850 },
+  { label: "One in a Krillion", points: 100, depthMeters: 1000 },
+] as const;
 
-- **Agent Definition (`packages/keiki-agent/src/index.ts`):**
-  - Synced to Keiki Cloud via `await kit.sync()` (`bun add @onkeiki/agents`).
-  - `features.groupChats: true` enabled on dedicated iMessage line (`photon`/`blooio`) + Telegram bot.
-  - **Authored Webhook Tools** pointing to `https://<deployment>.convex.site/keiki/tools/*`:
-    1. `link_group(inviteCode)` — binds the active `imsg:chat:...` conversation ID to the Convex `groups` row in one text (`"@potluck join HOME26"`).
-    2. `start_daily_round(gameType?)` — creates or fetches today's active Wordle/Trivia round and returns the universal deep link + current pot standings.
-    3. `submit_dm_guess(word)` — lets players guess directly in 1:1 DM if they don't have the app open.
-    4. `get_pot_and_pay_link(amountDollars?)` — mints a personalized $1 or $5 Whop checkout URL right inside iMessage.
-    5. `catch_me_up(hours?)` — summarizes missed group banter, plans, and game drama.
-    6. `propose_reunion_poll(title, options[])` — posts a numbered choice presentation (which Keiki automatically renders as interactive buttons on Telegram/Slack and clean numbered text replies on iMessage!).
-- **Proactive Group Drops from Convex:**
-  ```ts
-  await fetch(`https://onkeiki.com/api/v1/developer/agents/${KEIKI_AGENT_ID}/notice`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.KEIKI_API_KEY}`,
-      "Content-Type": "application/json",
+export async function gradeKrillionDive(categoryPrompt: string, playerAnswer: string, leagueContext: string) {
+  const { answers } = await s1.systemOne({
+    state: {
+      leagueContext,
+      categoryPrompt,
+      submittedAnswer: playerAnswer.trim(),
     },
-    body: JSON.stringify({
-      phone: group.keikiConversationId, // Existing group or DM conversation identity
-      text: `[SYSTEM_EVENT] Sritej solved Round #4 in 3/6 (29s) and took 1st place! Pot is now $28.00. Announce in 1 punchy sentence.`,
-    }),
+    questions: {
+      valid: noul("Is submittedAnswer a factually accurate, real, non-fabricated member of categoryPrompt?", {
+        true: "Factually accurate and strictly satisfies every constraint of categoryPrompt",
+        false: "Incorrect, made up, vague, or violates a constraint of categoryPrompt",
+      }),
+      obscurity: score("Assuming submittedAnswer is valid, how obscure or rare of a pull is it compared to what an average player would say first?", [
+        "Plankton: top-3 most obvious textbook answer everyone thinks of first",
+        "Too Clever: cliché 'fake obscure' answer many people try when avoiding the #1 pick",
+        "Schooler: solid recognizable pick, moderately common",
+        "Rare: genuinely uncommon valid answer most players miss under a 25s timer",
+        "Deep Cut: specialized deep-knowledge answer only enthusiasts recall",
+        "One in a Krillion: razor-sharp, indisputable, ultra-obscure valid pull",
+      ]),
+    },
   });
-  ```
+
+  if (!answers.valid.noul) {
+    return { valid: false, label: "Wipeout", points: 0, depthMeters: 0 };
+  }
+  const idx = Math.min(5, Math.max(0, Math.round(answers.obscurity.score)));
+  return { valid: true, ...TIER_TABLE[idx], rawScore: answers.obscurity.score };
+}
+```
 
 ---
 
-### 4.6 Mobile App UI & Cross-OS Revyl Build Pipeline
+## 8. Mobile App Structure & 3-Person Parallel Build Plan
 
-#### Mobile App Screens (`apps/mobile/app/`)
-Keep the mobile app focused on **4 tactile, high-craft screens** (inspired by Candle's warm intimacy + NYT Games' crisp haptics + Cash App's bold pot numbers):
-1. **Home / Crew Switcher (`app/(tabs)/index.tsx`):**
-   - Active group streak flame (`14 days`), **Live Pot Ticker (`$47.00 · Thanksgiving KBBQ Vault`)**, "Play Today's Drop (2/4 played)" hero card with countdown timer, and cross-campus status pills (*Sritej @ Berkeley · Peyton @ UCLA · Alex @ UIUC*).
-2. **Live Multiplayer Arena (`app/round/[id].tsx`):**
-   - Top bar: Live pulsing avatars + miniature 5x6 color-only tile grids of teammates playing right now via Convex reactive queries.
-   - Center: Tactile 6x5 Wordle grid with flip animations (`react-native-reanimated`) and `expo-haptics` impact feedback on key presses, row reveals, and clutch solves.
-   - Post-solve sheet: Instant rank, points breakdown, one-tap **"Talk Trash in iMessage"** button, and revealed teammate guesses once you finish.
-3. **The Pot & Leaderboard (`app/(tabs)/pot.tsx`):**
-   - Toggleable view of **Season Standings** (Points, Avg Guesses, Ghost Count) and **Whop Vault Ledger** (live deposits, $1 Ghost Taxes, "+ Add $1 / Load $5 Pass" Whop Apple Pay button, and **Demo Settle Pot** button).
-4. **Group Lore & Catch-Up (`app/(tabs)/lore.tsx`):**
-   - Auto-curated memory cards from group chats (saved quotes, photo check-ins, upcoming hometown break dates) + one-tap **"Catch Me Up"** digest for busy exam weeks.
+### Four Crisp Mobile Tabs (`apps/mobile/app/(tabs)/`)
+1. **`Arena` (`index.tsx`):** Active League header (Pot `$40.00` · Payout in `11d 4h` · Your Balance `🪙 25 Nickels`), **"Today's Dive: One in a Krillion"** hero button, quick-launch carousel for **Wordle Blitz**, **Cup Pong**, **Mini-Golf**, and **5x5 Salvo**, plus active 1v1 challenges.
+2. **`Wagers` (`wagers.tsx`):** Kalshi-style clean order cards for your friend group—tap Over/Under prop lines on your friends before they play, fire a 5-Nickel 1v1 challenge, or build a 3-leg **"One in a Krillion" Parlay**.
+3. **`League` (`league.tsx`):** Fantasy H2H weekly matchups, Season Standings, **Whop Buy-In & Instant Demo Payout**, and **"+ Create Custom League"** wizard (pick Hockey / NBA / AI Models / Custom Prompt + Weekly / Bi-Weekly / Monthly payout cadence).
+4. **`Chat Sync` (`connect.tsx`):** One-tap iMessage / Telegram group link code (`@nickel link KRILL5`), live feed of group trash talk & bot announcements, and "Poke Stragglers" button.
 
-#### Zero-Xcode Dev & Build Workflow (2 Windows + 1 Mac)
-1. **Local UI Dev (All 3 Teammates):**
-   - Run `npx convex dev` + `npx expo start --tunnel`. Any Windows or Mac laptop edits TypeScript/React Native and sees changes live in <1 second on physical phones.
-2. **Cloud Native Compilation & Device QA on Revyl:**
-   - Include `.revyl/config.yaml` and build via Capy's `tools.mobile.build` on Revyl's cloud runners:
-     - **Android (`.apk`):** `bun install` -> `bunx expo prebuild --platform android` -> `./gradlew assembleRelease` -> installable `.apk` for physical Android demo devices + cloud Pixel 7.
-     - **iOS (`.app`):** `bun install` -> `bunx expo prebuild --platform ios` -> `xcodebuild -sdk iphonesimulator` on Revyl's 12-core macOS 26.6 Xcode 27 runner -> tested live on Revyl cloud **iPhone 18 Pro** (`tools.capy.phone`).
-
----
-
-## 5. Parallel 3-Person + Capy Execution Plan (Finish Before 6:00 PM PST)
-
-| Window | Teammate 1 (Backend & AI) | Teammate 2 (Mobile Gameplay UI) | Teammate 3 (Keiki, Whop & Pitch) |
-| :--- | :--- | :--- | :--- |
-| **Phase 1 (60 min)**<br/>*Scaffold & Keys* | Init Convex project, deploy `schema.ts`, wire Nace/Jev `systemOne` router with API key. | Scaffold Expo Router app (`apps/mobile`), connect Convex provider, build theme + navigation tabs. | Claim Keiki dedicated iMessage line (`photon`/`blooio`) + Telegram bot at sponsor booth; grab Whop sandbox/live keys. |
-| **Phase 2 (120 min)**<br/>*Core Loop* | Implement `submitGuess`, anti-cheat `getRoundLiveState`, points math, and Lore Trivia generator. | Build `round/[id].tsx` Wordle keyboard, flip animations, haptics, and live spectator mini-grids. | Wire `@onkeiki/agents` tools (`link_group`, `start_daily_round`, `submit_dm_guess`) + Whop checkout & webhook. |
-| **Phase 3 (90 min)**<br/>*Integration & Cloud Build* | Wire proactive Keiki `/notice` triggers on round completion + Ghost Tax cron/demo trigger. | Build Pot/Vault screen, Lore timeline, deep linking (`potluck://`), and kick off **Revyl** iOS + Android builds. | End-to-end test real iMessage group chat -> phone tap -> $1 Whop checkout -> confetti group reply. |
-| **Phase 4 (60 min)**<br/>*Polish & 90s Stage Demo* | Seed realistic "Hometown Crew" lore & 30-day history so leaderboards look lived-in. | Install Revyl `.apk` + physical iPhone build; verify zero layout bugs on cloud iPhone 18 Pro via Revyl. | Rehearse live **2-phone stage demo** (Phone A = real iMessage group chat; Phone B = live multiplayer Wordle + Whop payout). |
-
----
-
-## 6. Winning 90-Second Demo Script for Judges (7:00 PM)
-
-1. **0:00–0:15 (The Hook):** *"Raise your hand if your hometown group chat slowly died freshman year of college. Existing bots spam soulless green squares; Potluck gives your group chat a daily 60-second ritual with real $1 stakes toward your next reunion."*
-2. **0:15–0:45 (Live Cross-Chat + Multiplayer Demo):** Trigger a live drop on stage. Show **Phone 1 (iMessage Group Chat)** receive the Keiki prompt. Two teammates open the link on **Phone 1 & Phone 2**—point out **live anonymized tile colors updating in real time** via Convex as both type guesses. Solve in 3 guesses -> watch Keiki fire an instant confetti roast back into iMessage!
-3. **0:45–1:10 (Speed + Whop Stakes):** Send rapid-fire banter in the group chat—show **Nace/Jev System One** reacting with a native iMessage tapback in **35ms** without spamming text, while quietly saving a quote into **Friday Friend Trivia**. Tap **"+ $1 Ghost Tax / Fund Thanksgiving Pot"** via **Whop Apple Pay** -> watch the group pot tick up live and trigger **Season Finale Payout**.
-4. **1:10–1:30 (Why It Scales):** *"Built from scratch today on Windows and Mac without Xcode using Capy, Revyl, Convex, Keiki, Whop, and System One. Every friend group already has a chat—Potluck gives them a reason to open it tomorrow."*
+### Division of Labor (Finish Before 6:00 PM PST)
+- **Track A — Convex + System One Engine:** Deploy `schema.ts`, build `gradeKrillionDive` + `triageGroupMessage` on Nace/Jev `systemOne()`, Wordle & Salvo anti-cheat mutations, custom Fantasy AI/Sports prompt generator, and Daily Nickel + Season Payout crons.
+- **Track B — Expo Arcade & Fantasy App + Revyl Builds:** Build the **Nickel** dark/neon-mint mobile UI, the 4 playable <45s games (*One in a Krillion* 25s dive UI, *Wordle Blitz*, *Cup Pong / Mini-Golf* swipe physics, *5x5 Salvo*), League Customizer, and run cloud Android `.apk` + iOS `iPhone 18 Pro` builds on **Revyl**.
+- **Track C — Keiki iMessage Agent + Whop Rails:** Connect `@onkeiki/agents` on a dedicated `photon`/`blooio` line + Telegram, wire Whop Apple Pay buy-in checkouts + webhook + season payout demo, and script the 90-second 2-phone live stage pitch.
