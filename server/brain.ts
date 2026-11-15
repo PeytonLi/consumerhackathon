@@ -504,7 +504,7 @@ export async function researchPunishment(request: string): Promise<string | null
       body: JSON.stringify({
         model: process.env.NICKEL_RESEARCH_MODEL ?? "gpt-5.4-mini",
         tools: [{ type: "web_search" }],
-        input: "Search the web for real last place punishments that friend groups and fantasy leagues actually do (Reddit threads, league blogs). Pick ONE that is genuinely funny and publicly embarrassing, that fits this request from the group chat: \"" + request.slice(0, 200) + "\". It must be legal, safe, and not permanent: no tattoos, no alcohol, nothing sexual, nothing dangerous. Do not pick any of these: " + [store.punishment, ...PUNISHMENTS.slice(0, 6)].filter(Boolean).join("; ") + ". Reply with only the punishment as a verb phrase that completes the sentence \"Last place ...\", under 110 characters, no emojis, no quotes, no period.",
+        input: "Search the web for real last place punishments that friend groups and fantasy leagues actually do (Reddit threads, league blogs). Pick ONE that is genuinely funny and publicly embarrassing, that fits this request from the group chat: \"" + request.slice(0, 200) + "\". It must be legal, safe, and not permanent: no tattoos, no alcohol, nothing sexual, nothing dangerous. Do not pick any of these: " + [store.punishment, ...PUNISHMENTS.slice(0, 6)].filter(Boolean).join("; ") + ". Reply with only the punishment, starting with a third-person singular verb such as wears, runs or performs, so it completes the sentence \"Last place ...\", under 110 characters, no emojis, no quotes, no period.",
       }),
       signal: AbortSignal.timeout(25000),
     });
