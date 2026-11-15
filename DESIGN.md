@@ -388,7 +388,7 @@ export default defineSchema({
    - Because Convex queries are reactive, completing your daily 25s round automatically pushes the unblurred Stories feed over WebSocket in `<50ms` with zero manual refetch.
 2. **Serializable OCC Nickel Poaching (`convex/nickels.ts -> poachUnclaimedNickels`):**
    - At `round.poachOpensAt` (2 hours before daily reset, or triggered instantly via a Demo button), `internal.nickels.openPoachWindow` sets `poachable: true` for every member with `unclaimedDailyNickels > 0` and fires a Keiki group notice.
-   - `poachUnclaimedNickels({ leagueId, thiefUserId, victimUserId })` runs inside a single Convex mutation:
+   - `poachUnclaimedNickels({ sessionToken, leagueId, victimUserId })` runs inside a single Convex mutation. The thief is resolved server-side from `sessionToken` (see the identity contract in `PLAN.md` Step 1), never passed in by the client:
      - Asserts `victimMembership.poachable === true && victimMembership.unclaimedDailyNickels > 0`.
      - Atomically sets `victimMembership.unclaimedDailyNickels = 0`, `victimMembership.poachable = false`, `victimMembership.timesPoached += 1`.
      - Credits `thiefMembership.nickelBalance += stolenAmount` and `thiefMembership.poachedNickelsTotal += stolenAmount`.
@@ -580,7 +580,7 @@ export async function mintWhopCheckout(params: {
 - Settlement atomically:
   1. Ranks `memberships` by `seasonFantasyPoints` (tiebroken by `wins`, then `krillionCount`).
   2. Splits `potBalanceCents` across `payoutSplit` (`[70, 30]` -> 70% 1st, 30% 2nd).
-  3. Calls Whop transfer/payout action (and logs `whop_payout` ledger rows with claimable Whop Wallet receipt status).
+  3. Schedules an internal Whop payout action that calls `payouts.createQuote`, then `payouts.create` with the returned `quote_token` and an `idempotencyKey` of `${leagueId}:${seasonNumber}:${userId}`, and logs `whop_payout` ledger rows with claimable Whop Wallet receipt status. Network calls can't run inside a mutation, so this is a separate action.
   4. Writes the immutable `wrappedSnapshots` document for `seasonNumber`.
   5. Increments `seasonNumber + 1`, resets `seasonFantasyPoints = 0`, and schedules the next cycle!
 
@@ -606,7 +606,7 @@ export async function mintWhopCheckout(params: {
 3. **One-Tap Instagram Stories & iMessage Share:**
    - Wraps Slide 4/5 in a clean `<View ref={cardRef} collapsable={false}>`.
    - `const uri = await captureRef(cardRef, { format: "png", quality: 1, width: 1080, height: 1920 })`.
-   - `await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: "Share Nickel Wrapped" })` -> opens native iOS/Android share sheet directly to **Instagram Stories**, **Close Friends**, or **iMessage**.
+   - `await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: "Share Nickel Wrapped" })` -> opens the native iOS/Android share sheet, where the user picks **Instagram** or **iMessage**. It doesn't open the Stories composer directly; that needs a Meta App ID and the `instagram-stories://` scheme.
 
 ---
 
@@ -620,12 +620,11 @@ Every package is supported out-of-the-box in **Expo Go** (instant QR scan on Win
 
 ### 11.2 Two-Loop Development + Cloud Compilation Strategy
 1. **Inner Loop (<1s Hot Reload on 2 Windows + 1 Mac):**
-   - Run `bunx convex dev` + `bunx expo start --tunnel`.
-   - All 3 teammates scan the QR code on physical iPhones/Androids—no local Xcode, CocoaPods, or Android SDK needed on any laptop.
+   - Run `bunx convex dev` + `bunx expo start --tunnel --go`.
+   - All 3 teammates scan the QR code on physical iPhones/Androids—no local Xcode, CocoaPods, or Android SDK needed on any laptop. They scan with **Expo Go** (SDK 58). `--go` matters: with `expo-dev-client` installed, `expo start` otherwise targets a dev build, which no one can install on a physical iPhone without Xcode signing.
 2. **Outer Loop (Revyl Cloud Native Compilation & Cloud Phones):**
-   - Capy triggers `tools.mobile.build` targeting `apps/mobile`:
-     - **Android Installable `.apk`:** `["bun install", "bunx expo prebuild --platform android --clean", "cd android && ./gradlew assembleRelease"]` -> outputs `android/app/build/outputs/apk/release/app-release.apk` (installable directly onto any Android phone + Revyl cloud `Pixel 7`).
-     - **iOS Simulator `.app`:** `["bun install", "bunx expo prebuild --platform ios --clean", "cd ios && pod install", "xcodebuild -workspace ios/*.xcworkspace -scheme Nickel -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build"]` -> runs on Revyl's 12-core macOS 26.6 Xcode 27 cloud runner and installs directly onto Revyl's cloud **`iPhone 18 Pro`** via `tools.capy.phone` for automated deep-link, layout, and haptics/flow testing.
+   - Capy triggers `tools.mobile.build` from the repository root, so the archive includes the Bun workspace and the `convex/_generated/` files the app imports. It installs Bun on the runner, then prebuilds and builds a Release iOS Simulator `.app` and an Android `.apk`. The exact commands are in `PLAN.md` Step 6.2; keep them there so the two docs can't drift.
+   - Outputs install onto Revyl's cloud **`iPhone 18 Pro`** and **`Pixel 7`** via `tools.capy.phone`, and the `.apk` also sideloads onto any Android phone.
 
 ---
 
@@ -668,4 +667,4 @@ Wire a hidden **"Judge Demo Drawer"** (triple-tap League header) with 4 instant 
 | **Nace / Jev API** | Venue Wi-Fi spike > 2.5s or missing key | `systemOne.ts` auto-falls back in 2.5s to deterministic lexical + curated rarity dictionary so *One in a Krillion* never hangs |
 | **Keiki iMessage Line** | Carrier/Apple delay on dedicated line provisioning | Same Keiki agent runs simultaneously on Telegram group + in-app live Chat Sync feed |
 | **Whop Sandbox / Bank Rails** | Instant bank payout requires KYC settlement window | Real Whop Checkout runs live via Apple Pay/test card; Demo Drawer also supports instant verified ledger payout receipt if bank transfer is pending |
-| **Physical iOS Signing** | Mac has no Xcode / Apple Developer cert | Physical iPhones run live via `expo start --tunnel`, Android phones install standalone Revyl `.apk`, and cloud `iPhone 18 Pro` runs native `.app` on Revyl |
+| **Physical iOS Signing** | Mac has no Xcode / Apple Developer cert | Physical iPhones run live in Expo Go via `expo start --tunnel --go`, Android phones install standalone Revyl `.apk`, and cloud `iPhone 18 Pro` runs native `.app` on Revyl |
