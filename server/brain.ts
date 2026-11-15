@@ -405,8 +405,8 @@ const ascending = () => {
 
 export async function generateArt(token: string, role: string) {
   const photo = store.profiles[token]?.photo;
-  const gemini = process.env.GEMINI_API_KEY, fal = process.env.FAL_KEY;
-  if (!photo || (!gemini && !fal) || artPending.has(token + role)) return;
+  const openai = process.env.OPENAI_API_KEY, gemini = process.env.GEMINI_API_KEY, fal = process.env.FAL_KEY;
+  if (!photo || (!openai && !gemini && !fal) || artPending.has(token + role)) return;
   artPending.add(token + role);
   const prompt = (role === "loser"
     ? "Redraw this exact person as a funny cartoon caricature ugly-crying dramatically: giant waterfalls of tears, red nose, wearing a white dunce cap, holding an empty wallet."
@@ -414,7 +414,19 @@ export async function generateArt(token: string, role: string) {
     " Keep their face, hair and skin tone recognizable. Bold flat sticker illustration, thick outlines, bright colors, square portrait, plain pastel background, no text.";
   try {
     let bytes: Uint8Array | null = null;
-    if (gemini) {
+    if (openai) {
+      const [, mime, data] = photo.match(/^data:(image\/[a-z]+);base64,(.+)$/)!;
+      const form = new FormData();
+      form.set("model", process.env.NICKEL_IMAGE_MODEL ?? "gpt-image-1");
+      form.set("prompt", prompt);
+      form.set("size", "1024x1024");
+      form.set("quality", "low");
+      form.set("image", new Blob([Buffer.from(data, "base64")], { type: mime }), "face." + mime.split("/")[1]);
+      const res = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { authorization: "Bearer " + openai }, body: form });
+      const out = (await res.json()) as { data?: { b64_json?: string }[]; error?: { message?: string } };
+      if (!out.data?.[0]?.b64_json) throw new Error("OpenAI returned no image, status " + res.status + " " + (out.error?.message ?? ""));
+      bytes = Buffer.from(out.data[0].b64_json, "base64");
+    } else if (gemini) {
       const [, mime, data] = photo.match(/^data:(image\/[a-z]+);base64,(.+)$/)!;
       const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + (process.env.NICKEL_IMAGE_MODEL ?? "gemini-2.5-flash-image") + ":generateContent", { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": gemini }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mime, data } }] }] }) });
       const out = (await res.json()) as { candidates?: { content?: { parts?: { inlineData?: { data: string }; inline_data?: { data: string } }[] } }[] };
