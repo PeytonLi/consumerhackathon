@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>Nickel buy-in</title>
+<!--POT-->
+<link rel="stylesheet" href="/nickel.css">
+<style>
+  :root { --game: light-dark(#34c759, #30d158); }
+  .stage { justify-content: flex-start; align-items: stretch; overflow-y: auto; gap: var(--s3); padding: var(--s4) 0; }
+  .stage.center { justify-content: center; align-items: center; }
+  .hero { padding: var(--s5) var(--s4); text-align: center; display: flex; flex-direction: column; gap: 6px; align-items: center; flex: none; }
+  .hero .t-display { color: var(--ink); }
+  .bar2 { width: 100%; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; margin-top: 10px; }
+  .bar2 i { display: block; height: 100%; background: var(--game); border-radius: 4px; transition: width var(--t-sheet) var(--ease); }
+  .rowi { flex: none; }
+  .rowi .avatar { width: 30px; height: 30px; font-size: 13px; }
+  .state { font: 600 13px/1 var(--font); color: var(--ink-3); }
+  .state.paid { color: var(--game); }
+  .people { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px 12px; width: 100%; max-width: 320px; }
+  .person { display: flex; flex-direction: column; align-items: center; gap: 8px; font: 500 15px/1 var(--font); color: var(--ink-2); }
+  .person.on { color: var(--ink); font-weight: 600; }
+  .person.on .avatar { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5.5px var(--you); }
+  .name-in { width: 100%; max-width: 320px; height: 56px; border: 0; outline: none; border-radius: var(--r-pill); padding: 0 20px; background: var(--surface); font: 500 17px/1 var(--font); text-align: center; -webkit-user-select: text; user-select: text; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div id="me"></div>
+    <div class="name"><b id="title">Buy-in</b><span id="league"></span></div>
+    <div></div>
+  </header>
+  <main class="stage" id="stage"></main>
+  <footer class="dock" id="dock"></footer>
+</div>
+<div class="glass toast" id="toast" role="status"></div>
+<script>
+let P = window.POT;
+const CHECKOUT = window.CHECKOUT;
+const params = new URLSearchParams(location.search);
+if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
+const $ = (id) => document.getElementById(id);
+const stage = $("stage"), dock = $("dock");
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
+const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", "#5e5ce6"];
+const hue = (name) => HUES[[...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % HUES.length];
+const avatar = (name, cls = "") => '<span class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + esc(name[0]) + "</span>";
+const money = (c) => "$" + (c % 100 ? (c / 100).toFixed(2) : c / 100);
+const meKey = "nickel.me." + (params.get("via") ?? "link");
+const me = () => sessionStorage.getItem(meKey);
+if (params.get("u")) sessionStorage.setItem(meKey, params.get("u").replace(/[^A-Za-z]/g, "").replace(/^./, (c) => c.toUpperCase()));
+
+function toast(text) { const t = $("toast"); t.textContent = text; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 1800); }
+async function call(body) {
+  const res = await fetch("/api/pot/" + P.id, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
+  const data = await res.json();
+  if (data.pot) P = data.pot;
+  return data;
+}
+
+function askName() {
+  stage.className = "stage center";
+  const names = Object.keys(P.members);
+  stage.innerHTML = '<p class="t-title">Who\'s paying?</p>' + (names.length ? '<div class="people">' + names.map((m) => '<button class="person" type="button" data-name="' + esc(m) + '">' + avatar(m, "lg") + esc(m) + "</button>").join("") + "</div>" : "") +
+    '<input class="name-in" id="own" placeholder="' + (names.length ? "Or type your first name" : "Your first name") + '" maxlength="14" autocomplete="given-name">';
+  dock.innerHTML = '<button class="glass primary" id="confirm" type="button">Continue</button>';
+  let picked = "";
+  stage.querySelectorAll(".person").forEach((b) => b.onclick = () => { picked = b.dataset.name; stage.querySelectorAll(".person").forEach((x) => x.classList.toggle("on", x === b)); });
+  $("confirm").onclick = () => {
+    const name = ($("own").value.trim().replace(/[^A-Za-z]/g, "") || picked);
+    if (!name) return toast("Pick or type a name");
+    sessionStorage.setItem(meKey, name[0].toUpperCase() + name.slice(1).toLowerCase());
+    draw();
+  };
+}
+
+function draw() {
+  if (!P) {
+    stage.className = "stage center";
+    stage.innerHTML = '<p class="t-title">This buy-in ended</p><p class="t-label">Text Nickel to start a new one</p>';
+    dock.hidden = true;
+    return;
+  }
+  $("league").textContent = P.league;
+  if (!me()) return askName();
+  $("me").innerHTML = avatar(me());
+  const names = Object.keys(P.members);
+  const paid = names.filter((n) => P.members[n] === "paid");
+  const mine = P.members[me()];
+  stage.className = "stage";
+  stage.innerHTML =
+    '<div class="card hero"><p class="t-label">Pot</p><p class="t-display">' + money(names.length * P.amountCents) + '</p><p class="t-label">' + money(P.amountCents) + " each, proposed by " + esc(P.proposer) + '</p>' +
+    '<div class="bar2"><i style="width:' + (names.length ? Math.round(paid.length / names.length * 100) : 0) + '%"></i></div><p class="t-caption">' + paid.length + " of " + names.length + " paid</p></div>" +
+    '<div class="rows">' + names.map((n) => '<div class="rowi' + (n === me() ? " me" : "") + '">' + avatar(n) + "<b>" + esc(n) + '</b><span class="state' + (P.members[n] === "paid" ? " paid" : "") + '">' + (P.members[n] === "paid" ? "Paid" : "Agreed") + "</span></div>").join("") + "</div>";
+  dock.hidden = false;
+  if (mine === "paid") {
+    dock.innerHTML = '<button class="glass primary" type="button" disabled>You paid ' + money(P.amountCents) + '</button><p class="t-caption">Winner takes the pot at the end of the season</p>';
+  } else if (!mine) {
+    dock.innerHTML = '<button class="glass primary" id="agree" type="button">Agree to ' + money(P.amountCents) + '</button><p class="t-caption">Nothing is charged until you pay</p>';
+    $("agree").onclick = async () => { await call({ member: me(), action: "agree" }); draw(); };
+  } else {
+    dock.innerHTML = '<button class="glass primary" id="pay" type="button">Pay ' + money(P.amountCents) + '</button><p class="t-caption">' + (CHECKOUT ? "Secure checkout by Stripe" : "Payments are in test mode. No card is charged.") + "</p>";
+    $("pay").onclick = async () => {
+      $("pay").disabled = true;
+      const out = await call({ member: me(), action: "pay" });
+      if (out.checkoutUrl) return location.href = out.checkoutUrl;
+      toast("Paid");
+      draw();
+    };
+  }
+}
+draw();
+if (P) setInterval(async () => { if (!me() || document.activeElement === $("own")) return; const before = JSON.stringify(P); await call(); if (JSON.stringify(P) !== before) draw(); }, 4000);
+</script>
+</body>
+</html>

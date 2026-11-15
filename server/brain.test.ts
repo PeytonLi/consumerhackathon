@@ -68,6 +68,24 @@ describe("group chat turns", () => {
     expect(turn("nickel leaderboard").line).toBe("Nickels: Sritej +5, Maya +5, Peyton -5.");
   });
 
+  it("runs a buy-in: propose, agree, pay, status", () => {
+    expect(turn("nickel who's in on the pot", "Maya").line).toBe("No buy-in yet. Say: Nickel, $5 buy-in.");
+    const made = turn("Nickel, $5 buy-in", "Sritej");
+    expect(made.line).toBe('Sritej proposed a $5 buy-in. Say "Nickel, I\'m in" to agree. Nobody pays until you tap the card.');
+    expect(made.url).toMatch(/\/p\/pot-[a-z0-9]+\?u=sritej$/);
+    const id = made.card!.path.slice(3).split("?")[0];
+    const joined = turn("nickel im in", "Maya");
+    expect(joined.line).toBe("Maya is in. 2 in, $10 pot. Tap the card to pay your $5.");
+    expect(joined.pay).toEqual({ amountCents: 500, memo: "Nickel buy-in, Cupertino Day Ones" });
+    expect(turn("nickel i'm in", "").line).toBe("Tell me your name first: Nickel, I'm Sritej. Then say you are in.");
+    brain.joinPot(id, "Maya", "paid");
+    brain.joinPot(id, "Maya", "in");
+    expect(brain.getPot(id)!.members).toEqual({ Sritej: "in", Maya: "paid" });
+    expect(turn("nickel who paid", "Alex").line).toBe("$5 buy-in. 2 in, $5 of $10 paid. Still owed: Sritej.");
+    expect(brain.potCard(brain.getPot(id)!).sub).toBe("2 in for a $10 pot. 1 paid.");
+    expect(turn("nickel $500 buy in", "Alex").line).toBe("Buy-ins run from $1 to $100. Pick a number in there.");
+  });
+
   it("takes the topic and picks the agent supplies", () => {
     const made = turn("nickel fantasy professors", "Dev", { fantasyTopic: "Berkeley professors", fantasyPicks: ["Sahai", "DeNero", "Hug"] });
     expect(brain.getFantasy(made.card!.path.slice(3))).toMatchObject({ topic: "Berkeley professors", rosterSize: 3 });

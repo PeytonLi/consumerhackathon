@@ -1,4 +1,4 @@
-import { cardPng, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
+import { cardPng, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -57,9 +57,9 @@ Bun.serve({
       return json({ ...result, league, standings: fantasyStandings(league) }, result.ok ? 200 : 409);
     }
 
-    const og = path.match(/^\/og\/(r|f)\/([a-z0-9-]+)\.png$/);
+    const og = path.match(/^\/og\/(r|f|p)\/([a-z0-9-]+)\.png$/);
     if (og) {
-      const card = og[1] === "r" ? (getRound(og[2]) ? roundCard(getRound(og[2])!) : null) : getFantasy(og[2]) ? fantasyCard(getFantasy(og[2])!) : null;
+      const card = og[1] === "p" ? (getPot(og[2]) ? potCard(getPot(og[2])!) : null) : og[1] === "r" ? (getRound(og[2]) ? roundCard(getRound(og[2])!) : null) : getFantasy(og[2]) ? fantasyCard(getFantasy(og[2])!) : null;
       if (!card) return new Response("Not found", { status: 404 });
       return new Response((await cardPng(card)) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
     }
@@ -70,6 +70,28 @@ Bun.serve({
       const data = found ?? { id: round[1], game: "missing", title: "Nickel" };
       const tags = found ? headTags(roundCard(found), base, "") : "";
       return html((await Bun.file(site + "play.html").text()).replace("<!--ROUND-->", tags + "\n<script>window.ROUND = " + inline(data) + ";</script>"));
+    }
+
+    const potApi = path.match(/^\/api\/pot\/([a-z0-9-]+)$/);
+    if (potApi) {
+      if (request.method === "POST") {
+        const body = (await request.json().catch(() => ({}))) as { member?: string; action?: string };
+        const checkout = process.env.NICKEL_CHECKOUT_URL;
+        if (body.action === "pay" && checkout) {
+          joinPot(potApi[1], body.member ?? "", "in");
+          return json({ ok: true, pot: getPot(potApi[1]), checkoutUrl: checkout });
+        }
+        joinPot(potApi[1], body.member ?? "", body.action === "pay" ? "paid" : "in");
+      }
+      const pot = getPot(potApi[1]);
+      return pot ? json({ ok: true, pot }) : json({ ok: false }, 404);
+    }
+
+    const potPage = path.match(/^\/p\/([a-z0-9-]+)\/?$/);
+    if (potPage) {
+      const pot = getPot(potPage[1]);
+      const tags = pot ? headTags(potCard(pot), base, "") : "";
+      return html((await Bun.file(site + "pot.html").text()).replace("<!--POT-->", tags + "\n<script>window.POT = " + inline(pot) + "; window.CHECKOUT = " + (process.env.NICKEL_CHECKOUT_URL ? "true" : "false") + ";</script>"));
     }
 
     const fantasy = path.match(/^\/f\/([a-z0-9-]+)\/?$/);

@@ -22,6 +22,7 @@ export interface FantasyLeague {
 
 export interface TurnReply {
   addressed: boolean;
+  pay?: { amountCents: number; memo: string };
   line?: string;
   url?: string;
   card?: { kicker: string; title: string; sub: string; path: string };
@@ -42,12 +43,14 @@ const POOLS: [RegExp, string[]][] = [
 const dataDir = process.env.NICKEL_DATA_DIR ?? new URL("../.data/", import.meta.url).pathname;
 const dataFile = dataDir + "/store.json";
 const seedRounds = JSON.parse(readFileSync(new URL("../apps/preview/rounds.json", import.meta.url), "utf8")) as Record<string, Omit<Round, "id">>;
-const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number }[] } = existsSync(dataFile)
+const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number }[]; pots: Record<string, Pot>; latestPot: string | null } = existsSync(dataFile)
   ? JSON.parse(readFileSync(dataFile, "utf8"))
-  : { rounds: {}, fantasy: {}, latestFantasy: null, names: {}, nickels: {}, results: [] };
+  : { rounds: {}, fantasy: {}, latestFantasy: null, names: {}, nickels: {}, results: [], pots: {}, latestPot: null };
 store.names ??= {};
 store.nickels ??= {};
 store.results ??= [];
+store.pots ??= {};
+store.latestPot ??= null;
 
 function save() {
   mkdirSync(dataDir, { recursive: true });
@@ -172,6 +175,77 @@ export function fantasyCard(league: FantasyLeague) {
   };
 }
 
+
+export interface Pot {
+  id: string;
+  amountCents: number;
+  league: string;
+  proposer: string;
+  members: Record<string, "in" | "paid">;
+  createdAt: number;
+}
+
+export function getPot(id: string): Pot | null {
+  return store.pots[id] ?? null;
+}
+
+const dollars = (cents: number) => "$" + (cents % 100 ? (cents / 100).toFixed(2) : String(cents / 100));
+
+export function potSummary(pot: Pot) {
+  const names = Object.keys(pot.members);
+  const paid = names.filter((n) => pot.members[n] === "paid");
+  return { names, paid, committedCents: names.length * pot.amountCents, paidCents: paid.length * pot.amountCents };
+}
+
+export function joinPot(id: string, member: string, state: "in" | "paid"): { ok: boolean; pot?: Pot; error?: string } {
+  const pot = store.pots[id];
+  const who = person(member);
+  if (!pot || !who) return { ok: false, error: "Not found" };
+  if (pot.members[who] !== "paid") pot.members[who] = state;
+  save();
+  return { ok: true, pot };
+}
+
+export function potCard(pot: Pot) {
+  const s = potSummary(pot);
+  return {
+    kicker: "Buy-in",
+    title: dollars(pot.amountCents) + " buy-in",
+    sub: s.names.length + " in for a " + dollars(s.committedCents) + " pot. " + s.paid.length + " paid.",
+    league: pot.league,
+    members: s.names.length ? s.names : MEMBERS,
+    hue: "#34c759",
+    path: "/p/" + pot.id,
+  };
+}
+
+function potTurn(text: string, lower: string, sender: string): { line: string; pot: Pot | null; pay?: { amountCents: number; memo: string } } | null {
+  const open = store.latestPot ? store.pots[store.latestPot] : null;
+  const amount = lower.match(/\$\s?(\d{1,3}(?:\.\d{2})?)|(\d{1,3}(?:\.\d{2})?)\s?(?:dollars?|bucks)/);
+  if (amount && /buy.?in|pot|stakes?|ante|put|throw|each/.test(lower)) {
+    const cents = Math.round(Number(amount[1] ?? amount[2]) * 100);
+    if (cents < 100 || cents > 10000) return { line: "Buy-ins run from $1 to $100. Pick a number in there.", pot: null };
+    const pot: Pot = { id: newId("pot"), amountCents: cents, league: LEAGUE_NAME, proposer: sender || "Someone", members: sender ? { [sender]: "in" } : {}, createdAt: Date.now() };
+    store.pots[pot.id] = pot;
+    store.latestPot = pot.id;
+    save();
+    return { line: (sender || "Someone") + " proposed a " + dollars(cents) + " buy-in. Say \"Nickel, I'm in\" to agree. Nobody pays until you tap the card.", pot };
+  }
+  if (!open) return /buy.?in|\bpot\b|pay ?out|payout/.test(lower) ? { line: "No buy-in yet. Say: Nickel, $5 buy-in.", pot: null } : null;
+  if (/\b(i'?m in|im in|count me in|i agree|agreed|i'?m down|im down|deal me in|lock me in)\b/.test(lower)) {
+    if (!sender) return { line: "Tell me your name first: Nickel, I'm Sritej. Then say you are in.", pot: open };
+    joinPot(open.id, sender, "in");
+    const s = potSummary(open);
+    return { line: sender + " is in. " + s.names.length + " in, " + dollars(s.committedCents) + " pot. Tap the card to pay your " + dollars(open.amountCents) + ".", pot: open, pay: { amountCents: open.amountCents, memo: "Nickel buy-in, " + open.league } };
+  }
+  if (/buy.?in|\bpot\b|who'?s in|who paid|pay ?out|payout/.test(lower)) {
+    const s = potSummary(open);
+    const owes = s.names.filter((n) => open.members[n] !== "paid");
+    return { line: dollars(open.amountCents) + " buy-in. " + s.names.length + " in, " + dollars(s.paidCents) + " of " + dollars(s.committedCents) + " paid." + (owes.length ? " Still owed: " + owes.join(", ") + "." : s.names.length ? " Everyone has paid." : ""), pot: open };
+  }
+  return null;
+}
+
 export function recordResult(roundId: string, payload: { name?: string; opponent?: string; won?: boolean; score?: string; tries?: string; time?: string }): { ok: boolean; line?: string } {
   const round = getRound(roundId);
   const name = person(payload.name);
@@ -216,13 +290,20 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   }
   const sender = introduced || person(input.sender) || (phone ? store.names[phone] ?? "" : "");
   const base = input.baseUrl.replace(/\/+$/, "");
-  const reply = (line: string, card: ReturnType<typeof roundCard> | ReturnType<typeof fantasyCard>): TurnReply => ({
+  const reply = (line: string, card: ReturnType<typeof roundCard> | ReturnType<typeof fantasyCard> | ReturnType<typeof potCard>): TurnReply => ({
     addressed: true,
     line,
     url: base + card.path,
     card: { kicker: (card.kicker + " \u00b7 " + card.league).toUpperCase(), title: card.title, sub: card.sub, path: card.path },
   });
   const latest = store.latestFantasy ? store.fantasy[store.latestFantasy] : null;
+
+  const money = /fantasy/.test(lower) ? null : potTurn(text, lower, sender);
+  if (money) {
+    if (!money.pot) return { addressed: true, line: money.line };
+    const card = potCard(money.pot);
+    return { ...reply(money.line, { ...card, path: card.path + (sender ? "?u=" + sender.toLowerCase() : "") }), pay: money.pay };
+  }
 
   if (/fantasy/.test(lower) && (input.fantasyTopic || /(start|create|make|new|set ?up|run|open|draft|do)\b/.test(lower))) {
     const [head, list] = text.split(/:\s*/, 2);
