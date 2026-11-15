@@ -125,8 +125,8 @@ function createFantasy(topic: string, picks: string[], sender: string): FantasyL
 }
 
 function createRound(game: Round["game"], sender: string, opponent: string): Round {
-  const members = withMember(sender);
-  const base = { league: LEAGUE_NAME, members, closes: "9:00 PM" };
+  const members = withMember(opponent).concat(sender && !withMember(opponent).includes(sender) ? [sender] : []);
+  const base = { league: LEAGUE_NAME, members, closes: "9:00 PM", challenger: sender || undefined };
   let round: Round;
   if (game === "rps") {
     const hands = ["rock", "paper", "scissors"];
@@ -146,7 +146,7 @@ export function roundCard(round: Round) {
   const title = round.title + (round.number ? " #" + round.number : "");
   return {
     kicker: opponent ? "Challenge" : "Nickel",
-    title: opponent && round.game === "rps" ? "You vs " + opponent : title,
+    title: opponent ? (typeof round.challenger === "string" ? round.challenger : "You") + " vs " + opponent : title,
     sub: opponent ? title + (round.stake ? " for " + round.stake + " Nickels" : "") : round.seconds ? round.seconds + " seconds. Closes " + (round.closes ?? "tonight") + "." : "Tap to play",
     league: round.league,
     members: round.members,
@@ -169,7 +169,7 @@ export function fantasyCard(league: FantasyLeague) {
   };
 }
 
-export function handleTurn(input: { text: string; sender?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[] }): TurnReply {
+export function handleTurn(input: { text: string; sender?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string }): TurnReply {
   const text = input.text.trim();
   const lower = text.toLowerCase();
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
@@ -204,11 +204,14 @@ export function handleTurn(input: { text: string; sender?: string; baseUrl: stri
     if (/fantasy/.test(lower)) return reply("Fantasy " + latest.topic + " standings.", fantasyCard(latest));
   }
 
-  const game: Round["game"] = /word/.test(lower) ? "wordle" : /krill/.test(lower) ? "krillion" : /rock|paper|scissors|rps/.test(lower) ? "rps" : /challenge|\bvs\b|versus|against|1v1/.test(lower) ? "rps" : "wordle";
-  const opponent = person(text.match(/(?:challenge|vs\.?|versus|against)\s+@?([A-Za-z]+)/i)?.[1]);
-  if (opponent && opponent.toLowerCase() !== "me") {
+  const asked = (input.game ?? "").toLowerCase();
+  const game: Round["game"] = asked === "wordle" || asked === "krillion" || asked === "rps" ? asked : /word/.test(lower) ? "wordle" : /krill/.test(lower) ? "krillion" : /rock|paper|scissors|rps/.test(lower) ? "rps" : /challenge|\bvs\b|versus|against|1v1/.test(lower) ? "rps" : "wordle";
+  const skip = new Set(["between", "me", "and", "to", "a", "an", "the", "with", "my", "us", "him", "her", "them", "nickel", "for", "in", "at"]);
+  const afterVerb = text.match(/(?:challenge|vs\.?|versus|against|between|and)\s+(.+)$/i)?.[1] ?? "";
+  const opponent = person(input.opponent) || person(afterVerb.split(/\s+/).map((w) => w.replace(/[^A-Za-z]/g, "")).find((w) => w && !skip.has(w.toLowerCase())));
+  if (opponent && /challenge|\bvs\b|versus|against|1v1|between/.test(lower + (input.opponent ? " challenge" : ""))) {
     const round = createRound(game, sender, opponent);
-    return reply((sender || "Someone") + " challenged " + opponent + " to " + round.title + ".", roundCard(round));
+    return reply(sender ? sender + " challenged " + opponent + " to " + round.title + "." : opponent + ", you have been challenged to " + round.title + ".", roundCard(round));
   }
   if (/play|today|game|word|krill|rock|rps|deal|start/.test(lower)) {
     const round = game === "wordle" && !/new/.test(lower) ? getRound("wordle-212")! : createRound(game, sender, "");

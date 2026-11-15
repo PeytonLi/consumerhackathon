@@ -23,7 +23,11 @@ describe("group chat turns", () => {
     expect(reply.url).toMatch(/^https:\/\/nickel\.test\/r\/rps-[a-z0-9]+$/);
     const round = brain.getRound(reply.card!.path.slice(3))!;
     expect(round.opponent).toBe("Maya");
-    expect(brain.cardSvg(brain.roundCard(round))).toContain("You vs Maya");
+    expect(brain.cardSvg(brain.roundCard(round))).toContain("Sritej vs Maya");
+    const loose = turn("nickel can u set up a wordle challenge between me and peyton", "");
+    expect(loose.line).toBe("Peyton, you have been challenged to Wordle Blitz.");
+    expect(loose.card!.title).toBe("You vs Peyton");
+    expect(turn("nickel run it", "", { opponent: "alex", game: "krillion" }).line).toBe("Alex, you have been challenged to One in a Krillion.");
   });
 
   it("opens today's game when asked to play", () => {

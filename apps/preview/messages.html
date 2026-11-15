@@ -408,7 +408,7 @@ async function sendGroup(text) {
   nickelSays(after, escText(reply.line));
   if (reply.card) {
     const round = reply.card.path.match(/^\/r\/(.+)$/)?.[1];
-    const vs = reply.card.title.match(/^You vs (.+)$/)?.[1];
+    const vs = reply.card.title.match(/ vs (.+)$/)?.[1];
     if (round && vs) opponents[round] = vs;
     const row = document.createElement("div");
     row.className = "row";
