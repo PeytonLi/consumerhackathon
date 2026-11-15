@@ -45,7 +45,6 @@
     "closed": true,
     "closedAt": "yesterday at 9:00 PM",
     "prompt": "Countries with exactly 4 letters",
-    "result": "You finished 2nd · Deep Cut · 850m",
     "next": "wordle-212",
     "seconds": 25,
     "members": [
@@ -54,7 +53,12 @@
       "Sritej",
       "Alex",
       "Dev"
-    ]
+    ],
+    "mine": {
+      "place": "2nd",
+      "tier": "Deep Cut",
+      "depth": 850
+    }
   },
   "rps-dev": {
     "game": "rps",

@@ -7,8 +7,10 @@ node apps/preview/server.mjs   # http://localhost:4173, set PORT to change it
 ```
 
 - `/` is a simulated Messages app: the group chat with the Nickel bot, and the private Nickel chat with Keiki Vault cards. Messages itself is fake; the game pages are the real pages a link or a Vault card would open.
-- `/r/<roundId>` is one game, picked by the round in `rounds.json`. There is no game picker. Unknown rounds still return 200 with an "isn't open anymore" screen, because Keiki Vault shows its own error page for anything 400 or above.
-- `?via=link` asks "Which one are you?" the first time. `?via=vault` signs in as the card's recipient, the way the Keiki Vault `#kv` token would.
+- `/r/<roundId>` is one game, picked by the round in `rounds.json`. There is no game picker. Unknown rounds still return 200 with a "This game ended" screen, because Keiki Vault shows its own error page for anything 400 or above.
+- `nickel.css` is the shared design system every game page loads. The rules behind it are in `GAME-UI.md` at the repo root.
+- `?theme=dark` or `?theme=light` forces a color scheme. Otherwise the page follows the phone.
+- `?via=link` asks "Who's playing?" the first time. `?via=vault` signs in as the card's recipient, the way the Keiki Vault `#kv` token would.
 
 Rounds in `rounds.json`:
 
