@@ -200,4 +200,17 @@ describe("group chat turns", () => {
     expect(brain.dueNudges()).toEqual([{ name: "Zed", phone: "+15550002222", text: "Zed, you have $5 in the pot and you have not played today. Play before midnight or it is up for grabs." }]);
     expect(brain.dueNudges()).toEqual([]);
   });
+
+  it("switches between demo and Stripe payments from the chat", () => {
+    expect(brain.payMode()).toBe("demo");
+    expect(turn("nickel real payments", "Maya").line).toBe("Stripe is not connected yet, so payments stay in demo mode. No card is charged.");
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
+    expect(turn("nickel test payments", "Maya").line).toBe("Payments run through Stripe in test mode. Use card 4242 4242 4242 4242, any future date, any CVC. No real money moves.");
+    expect(turn("nickel fake payments for the demo", "Maya").line).toBe("Payments are in demo mode. The pay button marks you paid and no card is charged.");
+    expect(brain.payMode()).toBe("demo");
+    process.env.STRIPE_SECRET_KEY = "sk_live_x";
+    expect(turn("nickel make payments real", "Maya").line).toMatch(/^Payments are live through Stripe/);
+    expect(brain.payMode()).toBe("live");
+    delete process.env.STRIPE_SECRET_KEY;
+  });
 });

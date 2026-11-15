@@ -103,7 +103,7 @@ function draw() {
     dock.innerHTML = '<button class="glass primary" id="agree" type="button">Agree to ' + money(P.amountCents) + '</button><p class="t-caption">Nothing is charged until you pay</p>';
     $("agree").onclick = async () => { await call({ member: me(), action: "agree" }); draw(); };
   } else {
-    dock.innerHTML = '<button class="glass primary" id="pay" type="button">Pay ' + money(P.amountCents) + '</button><p class="t-caption">' + (CHECKOUT ? "Secure checkout by Stripe" : "Payments are in test mode. No card is charged.") + "</p>";
+    dock.innerHTML = '<button class="glass primary" id="pay" type="button">Pay ' + money(P.amountCents) + '</button><p class="t-caption">' + (CHECKOUT === "live" ? "Secure checkout by Stripe" : CHECKOUT === "test" ? "Stripe test mode. Use card 4242 4242 4242 4242." : "Demo payment. No card is charged.") + "</p>";
     $("pay").onclick = async () => {
       $("pay").disabled = true;
       const out = await call({ member: me(), action: "pay" });

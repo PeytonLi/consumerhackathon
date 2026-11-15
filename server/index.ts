@@ -1,4 +1,4 @@
-import { researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
+import { payMode, startCheckout, confirmCheckout, researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -134,7 +134,8 @@ Bun.serve({
     if (potApi) {
       if (request.method === "POST") {
         const body = (await request.json().catch(() => ({}))) as { member?: string; action?: string };
-        const checkout = process.env.NICKEL_CHECKOUT_URL;
+        const checkout = body.action === "pay" && payMode() !== "demo" ? await startCheckout(potApi[1], body.member ?? "", base) : null;
+        if (body.action === "pay" && payMode() !== "demo" && !checkout) return json({ ok: false, error: "Stripe did not open a checkout. Try again." }, 502);
         if (body.action === "pay" && checkout) {
           joinPot(potApi[1], body.member ?? "", "in");
           return json({ ok: true, pot: getPot(potApi[1]), checkoutUrl: checkout });
@@ -147,9 +148,10 @@ Bun.serve({
 
     const potPage = path.match(/^\/p\/([a-z0-9-]+)\/?$/);
     if (potPage) {
+      if (url.searchParams.get("paid")) await confirmCheckout(potPage[1], url.searchParams.get("paid")!);
       const pot = getPot(potPage[1]);
       const tags = pot ? headTags(potCard(pot), base, "") : "";
-      return page((await Bun.file(site + "pot.html").text()).replace("<!--POT-->", tags + "\n<script>window.POT = " + inline(pot) + "; window.CHECKOUT = " + (process.env.NICKEL_CHECKOUT_URL ? "true" : "false") + ";</script>"));
+      return page((await Bun.file(site + "pot.html").text()).replace("<!--POT-->", tags + "\n<script>window.POT = " + inline(pot) + "; window.CHECKOUT = " + inline(payMode()) + ";</script>"));
     }
 
     const fantasy = path.match(/^\/f\/([a-z0-9-]+)\/?$/);

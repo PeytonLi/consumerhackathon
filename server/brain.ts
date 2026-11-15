@@ -50,7 +50,7 @@ const POOLS: [RegExp, string[]][] = [
 const dataDir = process.env.NICKEL_DATA_DIR ?? new URL("../.data/", import.meta.url).pathname;
 const dataFile = dataDir + "/store.json";
 const seedRounds = JSON.parse(readFileSync(new URL("../apps/preview/rounds.json", import.meta.url), "utf8")) as Record<string, Omit<Round, "id">>;
-const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number; loser?: string; roasted?: boolean }[]; quips: number; art: Record<string, number>; nudged: Record<string, string>; profiles: Record<string, Profile>; pots: Record<string, Pot>; latestPot: string | null; stats: Record<string, { played: number; wins: number; losses: number }>; punishment: string | null } = existsSync(dataFile)
+const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number; loser?: string; roasted?: boolean }[]; quips: number; payMode?: "demo" | "stripe"; art: Record<string, number>; nudged: Record<string, string>; profiles: Record<string, Profile>; pots: Record<string, Pot>; latestPot: string | null; stats: Record<string, { played: number; wins: number; losses: number }>; punishment: string | null } = existsSync(dataFile)
   ? JSON.parse(readFileSync(dataFile, "utf8"))
   : { rounds: {}, fantasy: {}, latestFantasy: null, names: {}, nickels: {}, results: [], pots: {}, latestPot: null, stats: {}, punishment: null, quips: 0, profiles: {}, nudged: {}, art: {} };
 store.names ??= {};
@@ -221,6 +221,41 @@ export function joinPot(id: string, member: string, state: "in" | "paid"): { ok:
   if (pot.members[who] !== "paid") pot.members[who] = state;
   save();
   return { ok: true, pot };
+}
+
+
+export function payMode(): "demo" | "test" | "live" {
+  const key = process.env.STRIPE_SECRET_KEY ?? "";
+  return !key || store.payMode === "demo" ? "demo" : key.startsWith("sk_live") || key.startsWith("rk_live") ? "live" : "test";
+}
+
+export async function startCheckout(potId: string, member: string, base: string): Promise<string | null> {
+  const pot = store.pots[potId];
+  const who = person(member);
+  if (!pot || !who) return null;
+  const form = new URLSearchParams({
+    mode: "payment",
+    "line_items[0][quantity]": "1",
+    "line_items[0][price_data][currency]": "usd",
+    "line_items[0][price_data][unit_amount]": String(pot.amountCents),
+    "line_items[0][price_data][product_data][name]": "Nickel buy-in, " + pot.league,
+    "metadata[pot]": pot.id,
+    "metadata[member]": who,
+    success_url: base + "/p/" + pot.id + "?paid={CHECKOUT_SESSION_ID}",
+    cancel_url: base + "/p/" + pot.id,
+  });
+  const res = await fetch("https://api.stripe.com/v1/checkout/sessions", { method: "POST", headers: { authorization: "Bearer " + process.env.STRIPE_SECRET_KEY, "content-type": "application/x-www-form-urlencoded" }, body: form });
+  const out = (await res.json()) as { url?: string; error?: { message?: string } };
+  if (!out.url) console.error("Stripe checkout failed", res.status, out.error?.message);
+  return out.url ?? null;
+}
+
+export async function confirmCheckout(potId: string, sessionId: string): Promise<boolean> {
+  if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId) || !process.env.STRIPE_SECRET_KEY) return false;
+  const res = await fetch("https://api.stripe.com/v1/checkout/sessions/" + sessionId, { headers: { authorization: "Bearer " + process.env.STRIPE_SECRET_KEY } });
+  const out = (await res.json()) as { payment_status?: string; metadata?: { pot?: string; member?: string } };
+  if (out.payment_status !== "paid" || out.metadata?.pot !== potId || !out.metadata.member) return false;
+  return joinPot(potId, out.metadata.member, "paid").ok;
 }
 
 export function potCard(pot: Pot) {
@@ -697,6 +732,15 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   if (/\b(profile|set ?me ?up|sign ?me ?up|sign ?up|add me|player card|my (photo|picture|pic|card|account))\b/.test(lower) && !/buy.?in/.test(lower)) {
     const mine = profileFor(phone, sender);
     return reply((sender ? sender + ", your" : "Your") + " player card: name and photo. One time, then every link opens as you.", profileCard(mine));
+  }
+
+  if (/\b(demo|fake|test|real|live|stripe)\b.*\bpay(ment)?s?\b|\bpay(ment)?s?\b.*\b(demo|fake|test|real|live|stripe)\b/.test(lower) && !/\$\s?\d/.test(lower)) {
+    if (/\b(demo|fake)\b/.test(lower)) store.payMode = "demo";
+    else if (/\b(real|live|stripe|test)\b/.test(lower)) store.payMode = "stripe";
+    save();
+    const mode = payMode();
+    const wantedStripe = store.payMode !== "demo";
+    return { addressed: true, line: mode === "live" ? "Payments are live through Stripe. Cards are charged for real. Say demo payments to switch to fake ones." : mode === "test" ? "Payments run through Stripe in test mode. Use card 4242 4242 4242 4242, any future date, any CVC. No real money moves." : wantedStripe ? "Stripe is not connected yet, so payments stay in demo mode. No card is charged." : "Payments are in demo mode. The pay button marks you paid and no card is charged." };
   }
 
   const money = fantasyTalk ? null : potTurn(text, lower, sender);
