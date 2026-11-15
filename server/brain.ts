@@ -1,5 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 
 export interface Round {
@@ -49,9 +50,9 @@ const POOLS: [RegExp, string[]][] = [
 const dataDir = process.env.NICKEL_DATA_DIR ?? new URL("../.data/", import.meta.url).pathname;
 const dataFile = dataDir + "/store.json";
 const seedRounds = JSON.parse(readFileSync(new URL("../apps/preview/rounds.json", import.meta.url), "utf8")) as Record<string, Omit<Round, "id">>;
-const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number; loser?: string; roasted?: boolean }[]; quips: number; nudged: Record<string, string>; profiles: Record<string, Profile>; pots: Record<string, Pot>; latestPot: string | null; stats: Record<string, { played: number; wins: number; losses: number }>; punishment: string | null } = existsSync(dataFile)
+const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number; loser?: string; roasted?: boolean }[]; quips: number; art: Record<string, number>; nudged: Record<string, string>; profiles: Record<string, Profile>; pots: Record<string, Pot>; latestPot: string | null; stats: Record<string, { played: number; wins: number; losses: number }>; punishment: string | null } = existsSync(dataFile)
   ? JSON.parse(readFileSync(dataFile, "utf8"))
-  : { rounds: {}, fantasy: {}, latestFantasy: null, names: {}, nickels: {}, results: [], pots: {}, latestPot: null, stats: {}, punishment: null, quips: 0, profiles: {}, nudged: {} };
+  : { rounds: {}, fantasy: {}, latestFantasy: null, names: {}, nickels: {}, results: [], pots: {}, latestPot: null, stats: {}, punishment: null, quips: 0, profiles: {}, nudged: {}, art: {} };
 store.names ??= {};
 store.nickels ??= {};
 store.results ??= [];
@@ -60,6 +61,7 @@ store.latestPot ??= null;
 store.stats ??= {};
 store.punishment ??= null;
 store.quips ??= 0;
+store.art ??= {};
 store.nudged ??= {};
 store.profiles ??= {};
 
@@ -371,6 +373,14 @@ export async function hydrate(): Promise<"convex" | "file"> {
   const json = await convex.query(stateGet, { key: "store" });
   if (json) Object.assign(store, JSON.parse(json));
   else await convex.mutation(statePut, { key: "store", json: JSON.stringify(store), secret: process.env.NICKEL_SYNC_SECRET });
+  store.art ??= {};
+  for (const key of Object.keys(store.art)) {
+    if (existsSync(artDir + "/" + key + ".jpg")) continue;
+    const saved = await convex.query(stateGet, { key: "art:" + key });
+    if (!saved) continue;
+    mkdirSync(artDir, { recursive: true });
+    writeFileSync(artDir + "/" + key + ".jpg", Buffer.from(saved, "base64"));
+  }
   return "convex";
 }
 
@@ -439,8 +449,13 @@ export async function generateArt(token: string, role: string) {
       if (!out.images?.[0]?.url) throw new Error("fal returned no image, status " + res.status);
       bytes = new Uint8Array(await (await fetch(out.images[0].url)).arrayBuffer());
     }
+    const flat = spawnSync("ffmpeg", ["-loglevel", "error", "-f", "lavfi", "-i", "color=white:s=640x640", "-i", "pipe:0", "-filter_complex", "[1]scale=640:640[a];[0][a]overlay", "-frames:v", "1", "-q:v", "5", "-f", "mjpeg", "pipe:1"], { input: bytes, maxBuffer: 20000000 });
+    if (flat.status !== 0 || flat.stdout.length < 500) throw new Error("Portrait resize failed: " + flat.stderr);
     mkdirSync(artDir, { recursive: true });
-    writeFileSync(artDir + "/" + token + "-" + role + ".png", bytes);
+    writeFileSync(artDir + "/" + token + "-" + role + ".jpg", flat.stdout);
+    store.art[token + "-" + role] = Date.now();
+    save();
+    if (convex) await convex.mutation(statePut, { key: "art:" + token + "-" + role, json: flat.stdout.toString("base64"), secret: process.env.NICKEL_SYNC_SECRET });
   } catch (e) {
     console.error("Portrait generation failed", e);
   } finally {
@@ -452,7 +467,10 @@ export async function generateArt(token: string, role: string) {
 export function setPhoto(phone: string, name: string, photo: string): Profile {
   const profile = profileFor(phone, person(name) || (phone ? store.names[phone] ?? "" : ""));
   profile.photo = photo;
-  for (const role of ["loser", "winner"]) rmSync(artDir + "/" + profile.token + "-" + role + ".png", { force: true });
+  for (const role of ["loser", "winner"]) {
+    rmSync(artDir + "/" + profile.token + "-" + role + ".jpg", { force: true });
+    delete store.art[profile.token + "-" + role];
+  }
   save();
   return profile;
 }
@@ -475,10 +493,35 @@ export function dueNudges(now = Date.now()) {
   return due;
 }
 
+
+export async function researchPunishment(request: string): Promise<string | null> {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + key },
+      body: JSON.stringify({
+        model: process.env.NICKEL_RESEARCH_MODEL ?? "gpt-5.4-mini",
+        tools: [{ type: "web_search" }],
+        input: "Search the web for real last place punishments that friend groups and fantasy leagues actually do (Reddit threads, league blogs). Pick ONE that is genuinely funny and publicly embarrassing, that fits this request from the group chat: \"" + request.slice(0, 200) + "\". It must be legal, safe, and not permanent: no tattoos, no alcohol, nothing sexual, nothing dangerous. Do not pick any of these: " + [store.punishment, ...PUNISHMENTS.slice(0, 6)].filter(Boolean).join("; ") + ". Reply with only the punishment as a verb phrase that completes the sentence \"Last place ...\", under 110 characters, no emojis, no quotes, no period.",
+      }),
+      signal: AbortSignal.timeout(25000),
+    });
+    const out = (await res.json()) as { output?: { type: string; content?: { text?: string }[] }[] };
+    const text = out.output?.filter((o) => o.type === "message").flatMap((o) => o.content ?? []).map((c) => c.text ?? "").join(" ").trim() ?? "";
+    const phrase = text.replace(/^["'\s]*(last place|the loser)\s+/i, "").replace(/\(?\[[^\]]*\]\([^)]*\)\)?/g, "").replace(/["'.!\s]+$/, "").replace(/\s+/g, " ").trim();
+    return phrase.length >= 6 && phrase.length <= 160 ? phrase[0].toLowerCase() + phrase.slice(1) : null;
+  } catch (e) {
+    console.error("Punishment research failed", e);
+    return null;
+  }
+}
+
 export function ensureArt() {
   for (const p of ascending()) {
     const token = tokenOf(p.name);
-    if (p.role && token && !existsSync(artDir + "/" + token + "-" + p.role + ".png")) void generateArt(token, p.role);
+    if (p.role && token && !existsSync(artDir + "/" + token + "-" + p.role + ".jpg")) void generateArt(token, p.role);
   }
 }
 
@@ -487,7 +530,7 @@ const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd
 
 export function leaderboardImages(): string[] {
   const board = leaderboard();
-  const version = [...JSON.stringify([board.people.map((p) => [p.name, p.nickels, p.face]), board.punishment, board.stakes, ascending().map((p) => existsSync(artDir + "/" + tokenOf(p.name) + "-" + p.role + ".png"))])].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
+  const version = [...JSON.stringify([board.people.map((p) => [p.name, p.nickels, p.face]), board.punishment, board.stakes, ascending().map((p) => existsSync(artDir + "/" + tokenOf(p.name) + "-" + p.role + ".jpg"))])].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
   return board.people.slice(0, 8).map((_, i) => "/card/l/" + i + ".png?v=" + version);
 }
 
@@ -498,8 +541,8 @@ export function personCardSvg(index: number, as?: { token: string; role: string 
   const p = as ? { ...found, role: as.role, title: as.role === "loser" ? "If the season ended badly" : "If the season ended well" } : found;
   const board = leaderboard();
   const token = tokenOf(p.name);
-  const aiFile = artDir + "/" + token + "-" + p.role + ".png";
-  const ai = p.role && token && existsSync(aiFile) ? "data:image/png;base64," + readFileSync(aiFile).toString("base64") : "";
+  const aiFile = artDir + "/" + token + "-" + p.role + ".jpg";
+  const ai = p.role && token && existsSync(aiFile) ? "data:image/jpeg;base64," + readFileSync(aiFile).toString("base64") : "";
   const photo = token ? store.profiles[token].photo! : "";
   const src = ai || photo || (p.role ? stockArt(p.role) : "");
   const tint = p.role === "loser" ? "#ff3b30" : p.role === "winner" ? "#ffcc00" : HUES[[...p.name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % HUES.length];
