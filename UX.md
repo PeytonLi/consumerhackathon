@@ -12,6 +12,37 @@ Tags used below: **[V]** means a source verifies it. **[I]** means it's a recomm
 
 ---
 
+## Update (Nov 15): one link, one game, posted in the group
+
+Testing the preview on a cloud iPhone changed two decisions below. Where they conflict, this section wins.
+
+**Each card opens exactly one game.** No hub, no game picker. A round has its own URL, `/r/<roundId>`, and the server picks the screen from the round: the daily game, a head-to-head challenge, or yesterday's closed round. This replaces decision 1's Daily Card hub.
+
+**The main path is a link in the group chat, not a Keiki Vault card.** Nickel posts the day's drop with one link at the end of the message. iMessage shows it as a large preview card in the group, and one tap opens that game in Safari. Moves are made on the page, never typed in the chat, so the group still can't see anyone's answer.
+
+| | Link in the group (recommended) | Keiki Vault card in the 1:1 chat |
+| :--- | :--- | :--- |
+| Taps from seeing the drop to playing | 1 | 3 (open the Nickel chat, find the card, tap it) |
+| Install | None | Keiki Vault from the App Store, once |
+| Android and Mac friends | Works | Doesn't work |
+| Identity | One-time "Which one are you?" plus one confirming text, then remembered | Automatic, from the `#kv` token |
+| After a game ends | The group gets the result | The card still says "Your move", because Keiki can't edit a sent card [V] |
+| Stays inside Messages | No. It opens Safari, and iOS shows "◀ Messages" to go back | Yes |
+
+Use Vault only where it clearly earns the extra steps: a Face ID approval when real Nickels or money are staked.
+
+**Gotchas for the link path:**
+- iOS shows "Tap to Load Preview" instead of the big card when the sender isn't in the recipient's contacts [V messageflow.com]. Nickel's first private message should include its contact card, and onboarding should ask people to save it.
+- Only one link per message gets a preview, and it previews best at the end of the text [V messageflow.com].
+- Keiki's docs say links preview once the person has replied to the line [V imessage-best-practices.md]. Confirm the large preview on the real line.
+- The page gets about 100pt less height in Safari than in a Vault card, because of Safari's toolbar. Every game screen must fit in that height without scrolling.
+
+**Later, to keep play inside the group thread itself:** build our own iMessage app or an App Clip. Both need an Apple Developer account and a native build.
+
+The clickable preview of both paths is in [`apps/preview/`](apps/preview/) (`node apps/preview/server.mjs`, then open `http://localhost:4173`).
+
+---
+
 ## 0. The 15 decisions
 
 1. **One card per player per day, not per round.** Keiki can't edit or update a sent card: "a tool cannot edit its own card; return a presentation with a new id" [V keiki-vault.md]. A card per round would bury each player's 1:1 chat in stale bubbles and burn the line's message budget. Instead, the **Daily Card** is a hub that moves through every round that day. Its `#kv` token lasts 24 hours [V].
