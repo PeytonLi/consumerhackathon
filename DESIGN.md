@@ -21,7 +21,24 @@
 
 ---
 
-## 2. Critical Technical Architecture & Sponsor Fit
+## 2. Behavioral Psychology Engine: Why Every Friend Opens Nickel Every Day
+
+Pure leaderboards have a fatal flaw: by Week 2, the bottom half of the group realizes they can't catch 1st place and quietly churns. **Instagram, BeReal, Snapchat, and Candle** retain 100% of a friend group daily because they tap into **curiosity gaps, reciprocity, loss aversion, variable dopamine, and low-stakes social status**—where even the person in last place gets daily social reward.
+
+Nickel weaves **six proven psychological hooks** directly into the 30-second daily loop:
+
+| Psychological Principle | Instagram / Social Parallel | Concrete Feature in **Nickel** |
+| :--- | :--- | :--- |
+| **1. Information-Gap + Reciprocity Lock** *(Loewenstein)* | Instagram Close Friends rings / BeReal blurred feed | **Play-to-Unblur Stories Bar:** Top of the app shows live **Avatar Rings** for every friend in your group chat. Friends' *One in a Krillion* answers, trash-talk notes, front-cam reactions, and who bet against you stay **frosted/blurred** until *you* finish your 25s turn. Playing isn't a chore for points—it's the key that unlocks what your friends just said. |
+| **2. Loss Aversion > Gain** *(Kahneman, ~2.25x stronger)* | Losing a Snap streak hurts 3x more than starting one | **The "Nickel Poach" Window:** Your **+5 Daily Nickels** aren't passively banked—they sit on the table each day. If you haven't played by the final 2-hour evening window, Keiki alerts the iMessage group chat: *"Sritej's 5 Nickels unlock for poaching in 30m!"* First teammate to tap **steals your unclaimed Nickels**. |
+| **3. Ephemeral Micro-Signaling** | Instagram Notes (40-char bubble above DMs) + Story stickers | **24h Victory/Wipeout Notes & Reaction Snap:** Immediately after finishing a 25s game, drop a 1-line **Bubble Note** (*"midterms cooked my brain"*) or quick selfie reaction onto your Avatar Ring. Even bricking a *Plankton* answer becomes hilarious social content that earns tapbacks. |
+| **4. Variable-Ratio Dopamine** *(Skinner Box)* | Pulling to refresh Instagram feed / loot packs | **Daily Krill Rip-Pack:** Completing your daily round lets you swipe-rip a **Mystery Nickel Pack**—guaranteed +5 Nickels, plus variable odds for a **2x Double-Down Chip**, **Bet Shield**, or **1% Golden Krill (+50 Nickels + group confetti)**. |
+| **5. Tribal Accountability** | Group streak / "1 holdout" peer pressure | **Full-Squad Pot Multiplier:** Every day 100% of the group plays, the league's payout/point multiplier climbs (`1.1x → 1.5x → 2.0x`). If 5/6 played, the app highlights the 1 holdout with a one-tap **"Send Bounty Poke to iMessage"** button so friends do your retention push for you. |
+| **6. Identity & Shareable Receipts** | Spotify Wrapped / IG Story reposts | **Dynamic Group Superlatives:** Weekly auto-generated receipt cards for iMessage & IG Stories—*"Biggest Hater (0-5 fading Peyton)"*, *"Clutch Gene"*, *"Nickel Thief"*—giving everyone an identity beyond 1st place. |
+
+---
+
+## 3. Critical Technical Architecture & Sponsor Fit
 
 1. **TypeSafe Jev / Nace Drex (`systemOne`) — Sub-40ms Rarity Judge, Odds Maker & Chat Router:**
    - Nace's **Drex** (`POST https://console.nace.ai/v1/systemone`) is wire-compatible with TypeSafe's **Jev** (`@typesafe-ai/sdk`).
@@ -161,6 +178,8 @@ export default defineSchema({
     seasonStartsAt: v.number(),
     seasonEndsAt: v.number(),
     payoutSplit: v.array(v.number()),       // e.g. [70, 30] or [100]
+    squadStreakDays: v.number(),            // Consecutive days 100% of members played
+    squadMultiplier: v.number(),            // 1.0 -> 2.0x boost when full group plays
   })
     .index("by_invite_code", ["inviteCode"])
     .index("by_keiki_conv", ["keikiConversationId"]),
@@ -174,7 +193,12 @@ export default defineSchema({
     wins: v.number(),
     losses: v.number(),
     krillionCount: v.number(),              // Lifetime "One in a Krillion" pulls!
+    poachedNickelsTotal: v.number(),        // Nickels stolen from afk friends
+    statusNote: v.optional(v.string()),     // 24h Instagram-Notes-style bubble above ring
+    statusNoteUpdatedAt: v.optional(v.number()),
+    powerups: v.array(v.string()),          // ["double_down", "bet_shield"] from daily Mystery Rip
     buyInPaid: v.boolean(),
+    lastPlayedDate: v.optional(v.string()),
     lastStipendDate: v.optional(v.string()),
   })
     .index("by_league", ["leagueId"])
