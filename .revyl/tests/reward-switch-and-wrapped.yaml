@@ -1,0 +1,22 @@
+test:
+  metadata:
+    name: reward-switch-and-wrapped
+    platform: web
+    tags:
+      - smoke
+      - league
+  build:
+    name: nickel-web
+  blocks:
+    - type: instructions
+      step_description: "Open the path /c/KRILL5?tab=league."
+    - type: validation
+      step_description: "Standings list five friends with Peyton first, and a button to pay the $5 buy-in with Whop is visible."
+    - type: instructions
+      step_description: "In the Rewards control tap Points."
+    - type: validation
+      step_description: "The Whop buy-in button is gone and a field labelled The stakes is shown."
+    - type: instructions
+      step_description: "In the Rewards control tap Both, then tap the Wrapped tab."
+    - type: validation
+      step_description: "The heading Nickel Wrapped is shown with a Season leader card and one archetype per friend."

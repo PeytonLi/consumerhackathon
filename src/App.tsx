@@ -60,6 +60,7 @@ function readLocation() {
     tab: tab && TABS.includes(tab) ? tab : "play",
     game: game && GAME_ORDER.includes(game) ? game : null,
     handle: (query.get("u") ?? "sritej").toLowerCase(),
+    vs: (query.get("vs") ?? "").toLowerCase(),
   };
 }
 
@@ -451,6 +452,7 @@ export default function App() {
 
   const me = members.find((m) => m.handle === start.handle) ?? members[0];
   const others = members.filter((m) => m.id !== me.id);
+  const rival = others.find((m) => m.handle === start.vs);
   const reward = describeRewardMode({
     rewardMode: league.rewardMode,
     potBalanceCents: league.potBalanceCents,
@@ -551,7 +553,9 @@ export default function App() {
             All games
           </button>
           <div className="mt-5 mb-7">
-            <p className="kicker text-accent">{GAMES[game].seconds} seconds</p>
+            <p className="kicker text-accent">
+              {rival && game === start.game ? "Challenge / " + me.name + " vs " + rival.name : GAMES[game].seconds + " seconds"}
+            </p>
             <h2 className="mt-2 font-serif text-5xl leading-none">{GAMES[game].title}</h2>
           </div>
           {gameResult && (

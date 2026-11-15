@@ -26,7 +26,14 @@ export interface CardView {
   code: string;
   game: GameKind;
   tab: TabKind;
+  from?: string;
+  vs?: string;
 }
+
+const personName = (raw: string | null | undefined) => {
+  const clean = (raw ?? "").replace(/[^A-Za-z]/g, "").slice(0, 12);
+  return clean ? clean[0].toUpperCase() + clean.slice(1).toLowerCase() : undefined;
+};
 
 export function cardViewFromUrl(url: URL): CardView | null {
   const match = url.pathname.match(/^\/(?:c|og)\/([A-Za-z0-9]{3,12})(?:\.png|\.svg)?$/);
@@ -37,6 +44,8 @@ export function cardViewFromUrl(url: URL): CardView | null {
     code: match[1].toUpperCase(),
     game: g && GAME_KINDS.includes(g) ? g : "krillion",
     tab: tab && TAB_KINDS.includes(tab) ? tab : "play",
+    from: personName(url.searchParams.get("u")),
+    vs: personName(url.searchParams.get("vs")),
   };
 }
 
@@ -55,6 +64,9 @@ export function cardCopy(view: CardView) {
     return { league, played, total, kicker: "Season recap", headline: "Nickel Wrapped", sub: "Who carried, who faded, who poached.", cta: "Open your recap" };
   }
   const game = GAMES[view.game];
+  if (view.vs) {
+    return { league, played, total, kicker: "Challenge  /  " + game.title, headline: (view.from ?? "You") + " vs " + view.vs, sub: game.seconds + " seconds each. Higher score takes the nickels.", cta: "Tap to play" };
+  }
   return { league, played, total, kicker: "Today's round  /  " + game.seconds + " seconds", headline: game.title, sub: game.blurb, cta: "Tap to play" };
 }
 
@@ -146,11 +158,12 @@ export function injectCardMeta(indexHtml: string, view: CardView, origin: string
   return indexHtml.replace(/<!--card-meta-->[\s\S]*?<!--\/card-meta-->/, meta);
 }
 
-export function buildCardReply(params: { text: string; baseUrl: string; leagueCode?: string; handle?: string }) {
+export function buildCardReply(params: { text: string; baseUrl: string; leagueCode?: string; handle?: string; opponent?: string }) {
   const intent = parseIntent(params.text);
   const league = findLeague(params.leagueCode);
-  const view: CardView = { code: league.code, game: intent.game, tab: intent.tab };
-  const url = params.baseUrl.replace(/\/+$/, "") + cardPath({ code: league.code, game: intent.game, tab: intent.tab, handle: params.handle });
+  const vs = intent.tab === "play" ? personName(params.opponent ?? params.text.match(/(?:challenge|vs\.?|versus|against)\s+@?([A-Za-z]+)/i)?.[1]) : undefined;
+  const view: CardView = { code: league.code, game: intent.game, tab: intent.tab, from: personName(params.handle), vs };
+  const url = params.baseUrl.replace(/\/+$/, "") + cardPath({ code: league.code, game: intent.game, tab: intent.tab, handle: params.handle, vs: vs?.toLowerCase() });
   const copy = cardCopy(view);
   return {
     addressed: intent.addressed,
@@ -192,8 +205,8 @@ export async function handleNickelRequest(request: Request, loadIndexHtml: (path
   }
 
   if (url.pathname === "/api/keiki/card" && request.method === "POST") {
-    const body = (await request.json().catch(() => ({}))) as { text?: string; leagueCode?: string; handle?: string };
-    return Response.json(buildCardReply({ text: body.text ?? "", baseUrl: origin, leagueCode: body.leagueCode, handle: body.handle }));
+    const body = (await request.json().catch(() => ({}))) as { text?: string; leagueCode?: string; handle?: string; opponent?: string };
+    return Response.json(buildCardReply({ text: body.text ?? "", baseUrl: origin, leagueCode: body.leagueCode, handle: body.handle, opponent: body.opponent }));
   }
 
   return null;

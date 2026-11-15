@@ -144,11 +144,12 @@ export function parseIntent(text: string): { addressed: boolean; game: GameKind;
   return { addressed, game, tab };
 }
 
-export function cardPath(params: { code: string; game?: GameKind; tab?: TabKind; handle?: string }): string {
+export function cardPath(params: { code: string; game?: GameKind; tab?: TabKind; handle?: string; vs?: string }): string {
   const query = new URLSearchParams();
   if (params.tab && params.tab !== "play") query.set("tab", params.tab);
   if (params.game && (!params.tab || params.tab === "play")) query.set("g", params.game);
   if (params.handle) query.set("u", params.handle);
+  if (params.vs) query.set("vs", params.vs);
   const qs = query.toString();
   return "/c/" + params.code.toUpperCase() + (qs ? "?" + qs : "");
 }

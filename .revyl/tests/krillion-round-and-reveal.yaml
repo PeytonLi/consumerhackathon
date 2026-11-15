@@ -1,0 +1,26 @@
+test:
+  metadata:
+    name: krillion-round-and-reveal
+    platform: web
+    tags:
+      - smoke
+      - games
+  build:
+    name: nickel-web
+  blocks:
+    - type: instructions
+      step_description: "Open the path /c/KRILL5?g=krillion."
+    - type: validation
+      step_description: "The page shows the heading One in a Krillion and a Start the clock button. No chat or message thread is shown."
+    - type: instructions
+      step_description: "Tap Start the clock, type vaquita in the Your answer field, then tap Lock it in."
+    - type: validation
+      step_description: "A result shows +140 and the tier One in a Krillion at 1000 m."
+    - type: instructions
+      step_description: "Tap See what everyone put."
+    - type: validation
+      step_description: "The Today list shows 4 of 5 played and readable answers for Peyton, Alex and Maya."
+    - type: instructions
+      step_description: "Tap Poach."
+    - type: validation
+      step_description: "The balance at the top reads 35 nickels and the poach banner is gone."

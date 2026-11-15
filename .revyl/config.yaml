@@ -1,0 +1,11 @@
+build:
+  framework: web
+  profiles:
+    preview:
+      web:
+        app_id: "nickel-web"
+        setup_commands:
+          - bun install
+        build_commands:
+          - bun run build
+        output_path: dist

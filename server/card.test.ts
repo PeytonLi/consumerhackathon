@@ -21,6 +21,15 @@ describe("chat card", () => {
     expect(buildCardReply({ text: "nickel wrapped", baseUrl: "https://nickel.test" }).tab).toBe("wrapped");
   });
 
+  it("turns a challenge into a head-to-head card", () => {
+    const reply = buildCardReply({ text: "nickel, challenge Peyton to cup pong", baseUrl: "https://nickel.test", handle: "sritej" });
+    expect(reply.url).toBe("https://nickel.test/c/KRILL5?g=cup_pong&u=sritej&vs=peyton");
+    expect(reply.title).toBe("Sritej vs Peyton - Cupertino Day Ones");
+    const svg = cardSvg(cardViewFromUrl(new URL(reply.url))!);
+    expect(svg).toContain("Sritej vs Peyton");
+    expect(svg).toContain("CUP PONG");
+  });
+
   it("renders an emoji-free card and unfurl tags that point at the PNG", () => {
     const view = cardViewFromUrl(new URL("https://nickel.test/c/krill5?g=wordle"))!;
     expect(view).toEqual({ code: "KRILL5", game: "wordle", tab: "play" });

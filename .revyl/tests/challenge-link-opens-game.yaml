@@ -1,0 +1,18 @@
+test:
+  metadata:
+    name: challenge-link-opens-game
+    platform: web
+    tags:
+      - smoke
+      - card
+  build:
+    name: nickel-web
+  blocks:
+    - type: instructions
+      step_description: "Open the path /c/KRILL5?g=cup_pong&u=sritej&vs=peyton."
+    - type: validation
+      step_description: "The page shows the heading Cup Pong with the label Challenge / Sritej vs Peyton and a Throw button."
+    - type: instructions
+      step_description: "Tap Throw five times."
+    - type: validation
+      step_description: "A result card shows a score and the text of 5 cups."

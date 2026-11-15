@@ -11,6 +11,7 @@ export const sendNickelCardTool = defineTool({
     "Get the Nickel card link for this chat. Call it whenever someone addresses Nickel by @nickel or by name. Pass their message as request. Returns a short line and a url. iMessage turns the url into a large tappable card that opens the game, the board, the standings, or the season recap.",
   input: Schema.Struct({
     request: Schema.String,
+    opponent: Schema.optional(Schema.String),
     leagueCode: Schema.optional(Schema.String),
   }),
   execute: (input, ctx) => {
@@ -19,6 +20,7 @@ export const sendNickelCardTool = defineTool({
       text: input.request,
       baseUrl: baseUrl(),
       leagueCode: input.leagueCode,
+      opponent: input.opponent,
       handle: typeof name === "string" ? name.toLowerCase().replace(/[^a-z0-9]/g, "") : undefined,
     });
     return Effect.succeed({
