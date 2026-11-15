@@ -24,6 +24,7 @@ export interface FantasyLeague {
 
 export interface TurnReply {
   addressed: boolean;
+  images?: string[];
   react?: { emoji: string; tapback: "dislike" | "laugh" | "question" };
   roast?: string;
   pay?: { amountCents: number; memo: string };
@@ -378,11 +379,121 @@ export function leaderboard() {
     const last = [...store.results].reverse().find((r) => r.name === name || r.line.includes(name));
     return { name, nickels: store.nickels[name] ?? 0, ...stats, last: last?.line ?? "", face: faceOf(name) };
   }).sort((a, b) => b.nickels - a.nickels || b.wins - a.wins || a.name.localeCompare(b.name));
+  const pot = store.latestPot ? store.pots[store.latestPot] : null;
+  const stakes = pot && Object.values(pot.members).filter((m) => m === "paid").length >= 2 ? "$" + pot.amountCents / 100 + " buy-in" : null;
   return {
     league: LEAGUE_NAME,
-    punishment: store.punishment,
+    stakes,
+    punishment: stakes ? null : store.punishment,
     people: people.map((p, i) => ({ ...p, rank: i + 1, title: i === people.length - 1 && people.length > 1 ? TITLES[5] : TITLES[Math.min(i, 4)] })),
   };
+}
+
+
+const artDir = dataDir + "/art";
+const artPending = new Set<string>();
+const stock: Record<string, string> = {};
+const stockArt = (role: string) => (stock[role] ??= "data:image/jpeg;base64," + readFileSync(new URL("../apps/preview/art/" + role + ".jpg", import.meta.url)).toString("base64"));
+const tokenOf = (name: string) => Object.values(store.profiles).find((x) => x.name === name && x.photo)?.token ?? "";
+const ascending = () => {
+  const board = leaderboard();
+  const n = board.people.length;
+  return [...board.people].reverse().map((p) => ({ ...p, n, role: p.rank === n && n > 1 ? "loser" : p.rank === 1 && n > 1 ? "winner" : "" }));
+};
+
+async function generateArt(token: string, role: string) {
+  const photo = store.profiles[token]?.photo;
+  const gemini = process.env.GEMINI_API_KEY, fal = process.env.FAL_KEY;
+  if (!photo || (!gemini && !fal) || artPending.has(token + role)) return;
+  artPending.add(token + role);
+  const prompt = (role === "loser"
+    ? "Redraw this exact person as a funny cartoon caricature ugly-crying dramatically: giant waterfalls of tears, red nose, wearing a white dunce cap, holding an empty wallet."
+    : "Redraw this exact person as a smug cartoon caricature wearing a huge shiny gold crown and a royal red cape, arms crossed, sparkles around them.") +
+    " Keep their face, hair and skin tone recognizable. Bold flat sticker illustration, thick outlines, bright colors, square portrait, plain pastel background, no text.";
+  try {
+    let bytes: Uint8Array | null = null;
+    if (gemini) {
+      const [, mime, data] = photo.match(/^data:(image\/[a-z]+);base64,(.+)$/)!;
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + (process.env.NICKEL_IMAGE_MODEL ?? "gemini-2.5-flash-image") + ":generateContent", { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": gemini }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mime, data } }] }] }) });
+      const out = (await res.json()) as { candidates?: { content?: { parts?: { inlineData?: { data: string }; inline_data?: { data: string } }[] } }[] };
+      const b64 = out.candidates?.[0]?.content?.parts?.map((p) => p.inlineData?.data ?? p.inline_data?.data).find(Boolean);
+      if (!b64) throw new Error("Gemini returned no image, status " + res.status);
+      bytes = Buffer.from(b64, "base64");
+    } else {
+      const res = await fetch("https://fal.run/fal-ai/nano-banana/edit", { method: "POST", headers: { "content-type": "application/json", authorization: "Key " + fal }, body: JSON.stringify({ prompt, image_urls: [photo] }) });
+      const out = (await res.json()) as { images?: { url: string }[] };
+      if (!out.images?.[0]?.url) throw new Error("fal returned no image, status " + res.status);
+      bytes = new Uint8Array(await (await fetch(out.images[0].url)).arrayBuffer());
+    }
+    mkdirSync(artDir, { recursive: true });
+    writeFileSync(artDir + "/" + token + "-" + role + ".png", bytes);
+  } catch (e) {
+    console.error("Portrait generation failed", e);
+  } finally {
+    artPending.delete(token + role);
+  }
+}
+
+export function ensureArt() {
+  for (const p of ascending()) {
+    const token = tokenOf(p.name);
+    if (p.role && token && !existsSync(artDir + "/" + token + "-" + p.role + ".png")) void generateArt(token, p.role);
+  }
+}
+
+const ordinal = (n: number) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th");
+const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "\u2026" : s);
+
+export function leaderboardImages(): string[] {
+  const board = leaderboard();
+  const version = [...JSON.stringify([board.people.map((p) => [p.name, p.nickels, p.face]), board.punishment, board.stakes, ascending().map((p) => existsSync(artDir + "/" + tokenOf(p.name) + "-" + p.role + ".png"))])].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
+  return board.people.slice(0, 8).map((_, i) => "/card/l/" + i + ".png?v=" + version);
+}
+
+export function personCardSvg(index: number): string | null {
+  const p = ascending()[index];
+  if (!p) return null;
+  const board = leaderboard();
+  const token = tokenOf(p.name);
+  const aiFile = artDir + "/" + token + "-" + p.role + ".png";
+  const ai = p.role && token && existsSync(aiFile) ? "data:image/png;base64," + readFileSync(aiFile).toString("base64") : "";
+  const photo = token ? store.profiles[token].photo! : "";
+  const src = ai || photo || (p.role ? stockArt(p.role) : "");
+  const tint = p.role === "loser" ? "#ff3b30" : p.role === "winner" ? "#ffcc00" : HUES[[...p.name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % HUES.length];
+  const h = [...p.name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0;
+  const eyes = ['<circle cx="36" cy="42" r="9" fill="#fff"/><circle cx="64" cy="40" r="13" fill="#fff"/><circle cx="38" cy="45" r="4"/><circle cx="60" cy="37" r="4"/>', '<path d="M27 44q9-11 18 0M55 44q9-11 18 0" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>', '<circle cx="36" cy="42" r="11" fill="#fff"/><circle cx="64" cy="42" r="11" fill="#fff"/><circle cx="41" cy="43" r="4"/><circle cx="59" cy="43" r="4"/>', '<rect x="20" y="34" width="60" height="15" rx="6"/>'];
+  const mouths = ['<path d="M33 62q17 18 34 0z"/><path d="M44 69q6 13 12 0z" fill="#ff6b81"/>', '<path d="M36 72q14-11 28 0" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>', '<ellipse cx="50" cy="69" rx="7" ry="9"/>', '<path d="M32 65h36" stroke="#000" stroke-width="4" stroke-linecap="round"/>'];
+  const art = src
+    ? '<image x="290" y="170" width="500" height="500" preserveAspectRatio="xMidYMid slice" clip-path="url(#a)" href="' + src + '"/>'
+    : '<rect x="290" y="170" width="500" height="500" rx="60" fill="' + tint + '"/><g transform="translate(290 170) scale(5)">' + eyes[h % 4] + mouths[(h >> 3) % 4] + "</g>";
+  const props = ai || (!photo && p.role) ? "" : p.role === "winner"
+    ? '<g transform="translate(385 40) scale(5.2) rotate(-6 30 20)"><path d="M4 36L2 10l14 12L30 2l14 20 14-12-2 26z" fill="#ffd60a" stroke="#b8860b" stroke-width="2" stroke-linejoin="round"/><circle cx="30" cy="27" r="3.5" fill="#ff375f"/></g>'
+    : p.role === "loser"
+      ? '<g transform="translate(520 -20) rotate(14 120 120) scale(4)"><path d="M30 2L52 56H8z" fill="#fff" stroke="#1c1c1e" stroke-width="2.5" stroke-linejoin="round"/><text x="30" y="46" text-anchor="middle" font-family="Inter" font-weight="600" font-size="20" fill="#ff3b30">L</text></g><path d="M430 470q-26 90 0 150q26-60 0-150zM650 470q-26 90 0 150q26-60 0-150z" fill="#40c8ff" stroke="#0a84ff" stroke-width="4"/>'
+      : "";
+  const foot = p.role === "loser"
+    ? board.stakes ? "Last place. Out " + board.stakes + "." : board.punishment ? "Last place " + clip(board.punishment.split(":")[0], 44) + "." : "Last place. Punishment pending."
+    : clip(p.last || p.title, 52);
+  return (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080"><defs>' +
+    '<linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + tint + '" stop-opacity="0.34"/><stop offset="1" stop-color="' + tint + '" stop-opacity="0"/></linearGradient>' +
+    '<clipPath id="a"><rect x="290" y="170" width="500" height="500" rx="60"/></clipPath><clipPath id="c"><rect x="40" y="40" width="1000" height="1000" rx="56"/></clipPath></defs>' +
+    '<rect width="1080" height="1080" fill="#f2f2f7"/><rect x="40" y="40" width="1000" height="1000" rx="56" fill="#ffffff"/><rect x="40" y="40" width="1000" height="460" fill="url(#t)" clip-path="url(#c)"/>' +
+    '<text x="96" y="124" font-family="Inter" font-weight="600" font-size="26" letter-spacing="2.5" fill="#6c6c70">' + esc(("Leaderboard \u00b7 " + board.league).toUpperCase()) + "</text>" +
+    '<text x="984" y="124" text-anchor="end" font-family="Inter" font-weight="600" font-size="30" fill="#1c1c1e">' + ordinal(p.rank) + " of " + p.n + "</text>" +
+    art + props +
+    '<text x="540" y="770" text-anchor="middle" font-family="Inter" font-weight="600" font-size="88" letter-spacing="-2.5" fill="#1c1c1e">' + esc(p.name) + "</text>" +
+    '<text x="540" y="826" text-anchor="middle" font-family="Inter" font-size="34" fill="#6c6c70">' + esc(p.title) + "</text>" +
+    '<text x="540" y="916" text-anchor="middle" font-family="Inter" font-weight="600" font-size="68" letter-spacing="-1.5" fill="#1c1c1e">' + (p.nickels > 0 ? "+" : "") + p.nickels + " Nickels</text>" +
+    '<text x="540" y="980" text-anchor="middle" font-family="Inter" font-weight="' + (p.role === "loser" ? "600" : "400") + '" font-size="30" fill="' + (p.role === "loser" ? "#ff3b30" : "#6c6c70") + '">' + esc(foot) + "</text></svg>"
+  );
+}
+
+export async function personCardPng(index: number): Promise<Uint8Array | null> {
+  const svg = personCardSvg(index);
+  if (!svg) return null;
+  if (!render) await cardPng(leaderboardCard());
+  return render!(svg);
 }
 
 export function leaderboardCard() {
@@ -520,7 +631,9 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   }
 
   if (/punish|loser has to|last place (has|does|gets)|reroll/.test(lower)) {
-    const fresh = !store.punishment || /new|another|reroll|different|change|worse|pick|set|\bis\b|:/.test(lower);
+    const stakes = leaderboard().stakes;
+    if (stakes) return { ...reply("This one is for money: " + stakes + ", so last place just loses it. Punishments are for games with no buy-in.", leaderboardCard()), images: leaderboardImages().map((p) => base + p) };
+    const fresh = !store.punishment || /\b(new|another|reroll|different|change|worse)\b|punishment\s*(is|:|=)\s*.{6}/.test(lower);
     const what = fresh ? setPunishment(text) : store.punishment!;
     const board = leaderboard();
     const last = board.people[board.people.length - 1];
@@ -532,6 +645,10 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     const lastResult = store.results[store.results.length - 1];
     const line = /standings|leaderboard|winning|losing|rank/.test(lower) || !lastResult ? nickelStandings() : lastResult.line + " " + nickelStandings();
     const out = reply(line, leaderboardCard());
+    if (/standings|leaderboard|rank|winning|losing/.test(lower)) {
+      ensureArt();
+      out.images = leaderboardImages().map((p) => base + p);
+    }
     if (lastResult?.loser && !lastResult.roasted) {
       lastResult.roasted = true;
       if (lastResult.loser === sender) out.react = { emoji: "\u{1F480}", tapback: "laugh" };

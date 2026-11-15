@@ -415,6 +415,13 @@ async function sendGroup(text) {
   }
   nickelSays(after, escText(reply.line));
   if (reply.roast) nickelSays(after, escText(reply.roast));
+  if (reply.images) {
+    const strip = document.createElement("div");
+    strip.className = "row";
+    strip.style.marginTop = "3px";
+    strip.innerHTML = '<div class="face n">N</div><div style="display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x mandatory;max-width:78%;border-radius:16px;scrollbar-width:none">' + reply.images.map((src) => '<img src="' + src + '" alt="" style="flex:none;width:230px;height:230px;border-radius:16px;scroll-snap-align:start">').join("") + "</div>";
+    after.append(strip);
+  }
   if (reply.card) {
     const round = reply.card.path.match(/^\/r\/(.+)$/)?.[1];
     const vs = reply.card.title.match(/ vs (.+)$/)?.[1];

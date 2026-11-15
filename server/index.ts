@@ -1,4 +1,4 @@
-import { getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
+import { ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -93,9 +93,15 @@ Bun.serve({
       return new Response(body, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...(profile ? { "set-cookie": "nickel_me=" + profile.token + "; Path=/; Max-Age=31536000; SameSite=Lax" } : {}) } });
     }
 
-    if (path === "/api/leaderboard") return json(leaderboard());
+    const board = () => { ensureArt(); const b = leaderboard(); return { ...b, cards: leaderboardImages(), order: [...b.people].reverse().map((p) => p.name) }; };
+    const personCard = path.match(/^\/card\/l\/(\d)\.png$/);
+    if (personCard) {
+      const png = await personCardPng(Number(personCard[1]));
+      return png ? new Response(png as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=60" } }) : new Response("Not found", { status: 404 });
+    }
+    if (path === "/api/leaderboard") return json(board());
     if (path === "/og/l.png") return new Response((await cardPng(leaderboardCard())) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
-    if (path === "/l") return page((await Bun.file(site + "leaderboard.html").text()).replace("<!--BOARD-->", headTags(leaderboardCard(), base, "") + "\n<script>window.BOARD = " + inline(leaderboard()) + ";</script>"));
+    if (path === "/l") return page((await Bun.file(site + "leaderboard.html").text()).replace("<!--BOARD-->", headTags(leaderboardCard(), base, "") + "\n<script>window.BOARD = " + inline(board()) + ";</script>"));
 
     const potApi = path.match(/^\/api\/pot\/([a-z0-9-]+)$/);
     if (potApi) {

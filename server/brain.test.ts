@@ -151,4 +151,28 @@ describe("group chat turns", () => {
     expect(brain.leaderboard().people.find((p) => p.name === "Abhi")!.face).toBe(brain.getProfile(token)!.face);
     expect(brain.saveProfile("me-nope", { name: "x" }).ok).toBe(false);
   });
+
+  it("sends the leaderboard as images, loser first, and swaps punishment for money once a pot is paid", () => {
+    const reply = turn("nickel leaderboard", "Maya");
+    const board = brain.leaderboard();
+    expect(reply.images).toHaveLength(Math.min(board.people.length, 8));
+    expect(reply.images![0]).toMatch(/^https:\/\/nickel\.test\/card\/l\/0\.png\?v=/);
+    const loser = brain.personCardSvg(0)!;
+    const winner = brain.personCardSvg(board.people.length - 1)!;
+    expect(loser).toContain(">" + board.people[board.people.length - 1].name + "<");
+    expect(loser).toContain(board.people.length + "th of " + board.people.length);
+    expect(loser).toContain("Last place");
+    expect(winner).toContain(">" + board.people[0].name + "<");
+    expect(winner).toContain("1st of");
+    expect(brain.personCardSvg(99)).toBeNull();
+    expect(turn("nickel who won", "Maya").images).toBeUndefined();
+    expect(board.stakes).toBeNull();
+    const pot = turn("Nickel, $10 buy-in", "Alex");
+    const id = pot.card!.path.slice(3).split("?")[0];
+    brain.joinPot(id, "Alex", "paid");
+    brain.joinPot(id, "Dev", "paid");
+    expect(brain.leaderboard()).toMatchObject({ stakes: "$10 buy-in", punishment: null });
+    expect(turn("nickel punishment", "Maya").line).toBe("This one is for money: $10 buy-in, so last place just loses it. Punishments are for games with no buy-in.");
+    expect(brain.personCardSvg(0)).toContain("Last place. Out $10 buy-in.");
+  });
 });

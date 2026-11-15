@@ -32,6 +32,9 @@
   .mug .cone { width: 54px; top: -44px; transform: translateX(-30%) rotate(14deg); }
   .mug .nose { position: absolute; left: 50%; top: 56%; width: 24px; height: 24px; margin: -12px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ff8a80, #ff3b30 60%); box-shadow: 0 2px 4px rgb(0 0 0 / .25); }
   .mug.last .pic { transform: rotate(-7deg); filter: saturate(.6); }
+  .slide.shot { padding: 0; width: 84vw; max-width: 380px; background: none; }
+  .slide.shot::before { display: none; }
+  .slide.shot img { display: block; width: 100%; aspect-ratio: 1; border-radius: var(--r-big); }
   .slide h2 { margin: 4px 0 0; font: 700 28px/1.1 var(--font); letter-spacing: -0.025em; }
   .slide .big { font: 700 56px/1 var(--round); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; margin-top: 6px; }
   .slide .big small { font: 600 15px/1 var(--font); color: var(--ink-2); letter-spacing: 0; margin-left: 6px; }
@@ -92,19 +95,8 @@ function mug(p, lastPlace) {
 
 function draw() {
   $("league").textContent = B.league;
-  const n = B.people.length;
-  $("stage").innerHTML = '<div class="reel" id="reel">' + B.people.map((p) => {
-    const lastPlace = p.rank === n && n > 1;
-    return '<article class="slide" style="--hue:' + hue(p.name) + '">' +
-      '<span class="rank">' + (ORD[p.rank - 1] ?? p.rank + "th") + " of " + n + "</span>" +
-      mug(p, lastPlace) +
-      "<h2>" + esc(p.name) + '</h2><span class="tag">' + esc(p.title) + "</span>" +
-      '<p class="big">' + (p.nickels > 0 ? "+" : "") + p.nickels + "<small>Nickels</small></p>" +
-      '<div class="stats"><div class="stat"><b>' + p.played + '</b><span>Played</span></div><div class="stat"><b>' + p.wins + '</b><span>Won</span></div><div class="stat"><b>' + p.losses + "</b><span>Lost</span></div></div>" +
-      (lastPlace && B.punishment ? '<p class="doom">If the season ended today, ' + esc(p.name) + " " + esc(B.punishment) + ".</p>" : '<p class="last">' + esc(p.last || "No games yet") + "</p>") +
-      "</article>";
-  }).join("") + '</div><div class="dots" id="dots">' + B.people.map((_, i) => '<i class="' + (i === 0 ? "on" : "") + '"></i>').join("") + "</div>";
-  $("dock").innerHTML = '<p class="t-caption">' + (B.punishment ? "Last place " + esc(B.punishment.split(":")[0]) : 'No punishment set. Text "Nickel, punishment"') + "</p>";
+  $("stage").innerHTML = '<div class="reel" id="reel">' + B.cards.map((src, i) => '<article class="slide shot"><img src="' + src + '" alt="' + esc(B.order[i]) + '" loading="' + (i < 2 ? "eager" : "lazy") + '"></article>').join("") + '</div><div class="dots" id="dots">' + B.cards.map((_, i) => '<i class="' + (i === 0 ? "on" : "") + '"></i>').join("") + "</div>";
+  $("dock").innerHTML = '<p class="t-caption">' + (B.stakes ? "Playing for money: " + esc(B.stakes) + ". Swipe up to the winner." : B.punishment ? "Last place " + esc(B.punishment.split(":")[0]) + ". Swipe up to the winner." : 'Loser first. Swipe up to the winner.') + "</p>";
   const reel = $("reel");
   reel.onscroll = () => {
     const mid = reel.scrollLeft + reel.clientWidth / 2;
@@ -112,9 +104,6 @@ function draw() {
     [...reel.children].forEach((el, i) => { const d = Math.abs(el.offsetLeft + el.offsetWidth / 2 - mid); if (d < dist) { dist = d; best = i; } });
     [...$("dots").children].forEach((d, i) => d.classList.toggle("on", i === best));
   };
-  const who = ((window.ME && window.ME.name) || params.get("u") || "").toLowerCase();
-  const mine = B.people.findIndex((p) => p.name.toLowerCase() === who);
-  if (mine > 0) reel.children[mine].scrollIntoView({ inline: "center", block: "nearest" });
 }
 draw();
 setInterval(async () => {
