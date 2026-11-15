@@ -42,9 +42,12 @@ const POOLS: [RegExp, string[]][] = [
 const dataDir = process.env.NICKEL_DATA_DIR ?? new URL("../.data/", import.meta.url).pathname;
 const dataFile = dataDir + "/store.json";
 const seedRounds = JSON.parse(readFileSync(new URL("../apps/preview/rounds.json", import.meta.url), "utf8")) as Record<string, Omit<Round, "id">>;
-const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null } = existsSync(dataFile)
+const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number }[] } = existsSync(dataFile)
   ? JSON.parse(readFileSync(dataFile, "utf8"))
-  : { rounds: {}, fantasy: {}, latestFantasy: null };
+  : { rounds: {}, fantasy: {}, latestFantasy: null, names: {}, nickels: {}, results: [] };
+store.names ??= {};
+store.nickels ??= {};
+store.results ??= [];
 
 function save() {
   mkdirSync(dataDir, { recursive: true });
@@ -169,11 +172,49 @@ export function fantasyCard(league: FantasyLeague) {
   };
 }
 
-export function handleTurn(input: { text: string; sender?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string }): TurnReply {
+export function recordResult(roundId: string, payload: { name?: string; opponent?: string; won?: boolean; score?: string; tries?: string; time?: string }): { ok: boolean; line?: string } {
+  const round = getRound(roundId);
+  const name = person(payload.name);
+  if (!round || !name) return { ok: false };
+  if (store.results.some((r) => r.roundId === roundId && r.name === name)) return { ok: true, line: store.results.find((r) => r.roundId === roundId && r.name === name)!.line };
+  const stake = typeof round.stake === "number" ? round.stake : 5;
+  const rival = person(payload.opponent ?? (typeof round.opponent === "string" ? round.opponent : ""));
+  const bump = (who: string, delta: number) => { if (who) store.nickels[who] = (store.nickels[who] ?? 0) + delta; };
+  let line: string;
+  if (round.game === "rps") {
+    bump(name, payload.won ? stake : -stake);
+    bump(rival, payload.won ? -stake : stake);
+    const score = String(payload.score ?? "").replace(/[^0-9]+/, "-");
+    line = (payload.won ? name + " beat " + rival : rival + " beat " + name) + " " + score + " at Rock Paper Scissors. " + stake + " Nickels moved.";
+  } else {
+    const solved = !/x/i.test(String(payload.tries ?? "X"));
+    bump(name, solved ? stake : 0);
+    line = round.game === "wordle"
+      ? name + (solved ? " solved " + round.title + " in " + String(payload.tries).split("/")[0] + (payload.time ? " (" + payload.time + ")" : "") + ". Plus " + stake + " Nickels." : " missed " + round.title + ". No Nickels today.")
+      : name + " locked in " + round.title + ". Plus " + stake + " Nickels.";
+  }
+  store.results.push({ roundId, name, line, at: Date.now() });
+  save();
+  return { ok: true, line };
+}
+
+export function nickelStandings(): string {
+  const rows = Object.entries(store.nickels).sort((a, b) => b[1] - a[1]);
+  return rows.length ? "Nickels: " + rows.slice(0, 6).map(([who, n]) => who + " " + (n > 0 ? "+" : "") + n).join(", ") + "." : "No Nickels have moved yet. First to finish a game takes the lead.";
+}
+
+export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string }): TurnReply {
   const text = input.text.trim();
   const lower = text.toLowerCase();
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
-  const sender = person(input.sender);
+  const phone = (input.senderPhone ?? "").replace(/[^+0-9]/g, "");
+  const intro = person(text.match(/\b(?:i'?m|i am|this is|call me|my name is|it'?s)\s+([A-Za-z]{2,14})\b/i)?.[1]);
+  const introduced = intro && !["Down", "In", "Ready", "Up", "Here", "Back", "Game", "Not", "So", "Good", "The", "A"].includes(intro) ? intro : "";
+  if (introduced && phone) {
+    store.names[phone] = introduced;
+    save();
+  }
+  const sender = introduced || person(input.sender) || (phone ? store.names[phone] ?? "" : "");
   const base = input.baseUrl.replace(/\/+$/, "");
   const reply = (line: string, card: ReturnType<typeof roundCard> | ReturnType<typeof fantasyCard>): TurnReply => ({
     addressed: true,
@@ -189,7 +230,8 @@ export function handleTurn(input: { text: string; sender?: string; baseUrl: stri
     const cleanTopic = topic.replace(/\b(league|draft|please)\b/gi, "").replace(/[.!?]+$/, "").trim() || "anything";
     const picks = input.fantasyPicks?.length ? input.fantasyPicks : list ? list.split(/,|\n|\band\b/).map((s) => s.trim()).filter(Boolean) : [];
     const league = createFantasy(cleanTopic, picks, sender);
-    return reply("Fantasy " + league.topic + " is open. Draft " + league.rosterSize + " each.", fantasyCard(league));
+    const board = league.pool.length ? league.pool.length + " on the board, draft " + league.rosterSize + " each." : "Write in your own picks, " + league.rosterSize + " each.";
+    return reply("Fantasy " + league.topic + " is open. " + board, fantasyCard(league));
   }
 
   if (latest) {
@@ -199,25 +241,36 @@ export function handleTurn(input: { text: string; sender?: string; baseUrl: stri
       const delta = Number(score[1].replace(/\s/g, ""));
       scorePick(latest.id, pick.name, delta, sender);
       const top = fantasyStandings(latest)[0];
-      return reply(pick.name + " " + (delta > 0 ? "+" : "") + delta + ". " + (top.points ? top.member + " leads Fantasy " + latest.topic + "." : "Nobody has drafted " + pick.name + " yet."), fantasyCard(latest));
+      const tail = !pick.owner ? "Nobody owns " + pick.name + " yet, so it is still up for grabs." : top.points > 0 ? top.member + " leads Fantasy " + latest.topic + " with " + top.points + "." : "Fantasy " + latest.topic + " is still wide open.";
+      return reply(pick.name + " " + (delta > 0 ? "+" : "") + delta + ". " + tail, fantasyCard(latest));
     }
-    if (/fantasy/.test(lower)) return reply("Fantasy " + latest.topic + " standings.", fantasyCard(latest));
+    if (/fantasy/.test(lower)) {
+      const top = fantasyStandings(latest)[0];
+      return reply(top.points > 0 ? top.member + " leads Fantasy " + latest.topic + " with " + top.points + "." : "Fantasy " + latest.topic + ": nobody has scored yet.", fantasyCard(latest));
+    }
+  }
+
+  if (/who won|who'?s winning|results?\b|standings|leaderboard|score\b/.test(lower)) {
+    const last = store.results[store.results.length - 1];
+    return { addressed: true, line: /standings|leaderboard|winning/.test(lower) || !last ? nickelStandings() : last.line + " " + nickelStandings() };
   }
 
   const asked = (input.game ?? "").toLowerCase();
   const game: Round["game"] = asked === "wordle" || asked === "krillion" || asked === "rps" ? asked : /word/.test(lower) ? "wordle" : /krill/.test(lower) ? "krillion" : /rock|paper|scissors|rps/.test(lower) ? "rps" : /challenge|\bvs\b|versus|against|1v1/.test(lower) ? "rps" : "wordle";
-  const skip = new Set(["between", "me", "and", "to", "a", "an", "the", "with", "my", "us", "him", "her", "them", "nickel", "for", "in", "at"]);
+  const skip = new Set(["between", "me", "and", "to", "a", "an", "the", "with", "my", "us", "him", "her", "them", "nickel", "for", "in", "at", "wordle", "krillion", "rps", "rock", "game"]);
   const afterVerb = text.match(/(?:challenge|vs\.?|versus|against|between|and)\s+(.+)$/i)?.[1] ?? "";
   const opponent = person(input.opponent) || person(afterVerb.split(/\s+/).map((w) => w.replace(/[^A-Za-z]/g, "")).find((w) => w && !skip.has(w.toLowerCase())));
-  if (opponent && /challenge|\bvs\b|versus|against|1v1|between/.test(lower + (input.opponent ? " challenge" : ""))) {
+  if (opponent && opponent !== sender && /challenge|\bvs\b|versus|against|1v1|between/.test(lower + (input.opponent ? " challenge" : ""))) {
     const round = createRound(game, sender, opponent);
-    return reply(sender ? sender + " challenged " + opponent + " to " + round.title + "." : opponent + ", you have been challenged to " + round.title + ".", roundCard(round));
+    const terms = round.game === "rps" ? "Best of 3, 5 Nickels on it." : round.seconds + " seconds, 5 Nickels on it.";
+    return reply((sender ? sender + " just called out " + opponent + ". " : opponent + ", you just got called out. ") + round.title + ". " + terms, roundCard(round));
   }
   if (/play|today|game|word|krill|rock|rps|deal|start/.test(lower)) {
     const round = game === "wordle" && !/new/.test(lower) ? getRound("wordle-212")! : createRound(game, sender, "");
-    return reply(round.title + " is open. " + (round.seconds ?? 30) + " seconds.", roundCard(round));
+    return reply(round.title + " is live. " + (round.seconds ? round.seconds + " seconds on the clock." : "Best of 3."), roundCard(round));
   }
-  return { addressed: true, line: "Say: challenge Maya, play wordle, or start a fantasy league for anything." };
+  if (introduced) return { addressed: true, line: "Got it, " + introduced + ". You are in. Say challenge and a name to start one." };
+  return { addressed: true, line: "Try: challenge Maya, play wordle, who won, or start a fantasy league for anything." };
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

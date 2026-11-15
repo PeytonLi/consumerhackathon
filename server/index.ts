@@ -1,4 +1,4 @@
-import { cardPng, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
+import { cardPng, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -40,9 +40,12 @@ Bun.serve({
     if (request.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type" } });
 
     if (path === "/api/turn" && request.method === "POST") {
-      const body = (await request.json().catch(() => ({}))) as { text?: string; sender?: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string };
-      return json(handleTurn({ text: String(body.text ?? ""), sender: body.sender, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined }));
+      const body = (await request.json().catch(() => ({}))) as { text?: string; sender?: string; senderPhone?: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string };
+      return json(handleTurn({ text: String(body.text ?? ""), sender: body.sender, senderPhone: body.senderPhone, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined }));
     }
+
+    const resultApi = path.match(/^\/api\/rounds\/([a-z0-9-]+)\/result$/);
+    if (resultApi && request.method === "POST") return json(recordResult(resultApi[1], (await request.json().catch(() => ({}))) as Parameters<typeof recordResult>[1]));
 
     const fantasyApi = path.match(/^\/api\/fantasy\/([a-z0-9-]+)(?:\/(draft|score))?$/);
     if (fantasyApi) {
