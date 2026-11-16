@@ -139,7 +139,7 @@ export function sweepForfeits(now = Date.now()): Forfeit[] {
         delete pot.members[name];
         if (pot.paidAt) delete pot.paidAt[name];
       }
-      for (const name of active) queue({ key: "forfeit:" + pot.id + ":" + day + ":" + name, potId: pot.id, name, cents: share, kind: "forfeit", note: "Collected from " + list(idle) + ", who did not play " + when });
+      if (share > 0) for (const name of active) queue({ key: "forfeit:" + pot.id + ":" + day + ":" + name, potId: pot.id, name, cents: share, kind: "forfeit", note: "Collected from " + list(idle) + ", who did not play " + when });
       pot.forfeitCents = (pot.forfeitCents ?? 0) + keptCents;
       const forfeit: Forfeit = { day, out: idle, shares: Object.fromEntries(active.map((name) => [name, share])), keptCents, line };
       (pot.forfeits ??= []).push(forfeit);
@@ -161,15 +161,15 @@ export function withForfeitNews(turn: TurnReply): TurnReply {
 }
 
 export function walletCard(addCents = 0, cashout = false) {
-  const query = cashout ? "?cashout=1" : addCents ? "?add=" + Math.min(Math.max(addCents, TOPUP_MIN), TOPUP_MAX) : "";
+  const add = addCents ? Math.min(Math.max(addCents, TOPUP_MIN), TOPUP_MAX) : 0;
   return {
     kicker: "Wallet",
-    title: cashout ? "Cash out" : addCents ? "Add " + dollars(Math.max(addCents, TOPUP_MIN)) : "Your wallet",
+    title: cashout ? "Cash out" : add ? "Add " + dollars(add) : "Your wallet",
     sub: "Your Nickel balance. Buy-ins and stakes come out of it.",
     league: leaderboard().league,
     members: [] as string[],
     hue: "#34c759",
-    path: "/wallet" + query,
+    path: "/wallet" + (cashout ? "?cashout=1" : add ? "?add=" + add : ""),
   };
 }
 
