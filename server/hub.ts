@@ -59,7 +59,8 @@ function events() {
   return state().results.map((r) => {
     const duel = r.line.match(/^([A-Za-z]+) beat ([A-Za-z]+) /);
     const game = getRound(r.roundId)?.title ?? "";
-    return duel ? { winner: duel[1], loser: duel[2], game, at: r.at } : { winner: r.loser ? "" : r.name, loser: r.loser ?? "", game, at: r.at };
+    const loser = r.loser || ((r as typeof r & { solved?: boolean }).solved === false || r.line.startsWith(r.name + " missed ") || r.line.startsWith(r.name + " wiped out on ") ? r.name : "");
+    return duel ? { winner: duel[1], loser: duel[2], game, at: r.at } : { winner: loser ? "" : r.name, loser, game, at: r.at };
   });
 }
 
