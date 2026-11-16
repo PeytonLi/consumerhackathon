@@ -6,8 +6,9 @@ import { hubCard, hubLine, hubTurn, notePicks, renamePlayer, wantsHub } from "./
 import { scoreResult, type Points, type ResultPayload } from "./points.js";
 import { customScore, customTurn, leagueIsClosed, punishmentPool, type PreparedTurn } from "./custom.js";
 import { ALL_PUNISHMENTS } from "./punishments.js";
-import { attachAuth, claimPath, nameClaimed } from "./auth.js";
+import { attachAuth, claimPath, nameClaimed, type AuthStore } from "./auth.js";
 import { ledgerOf, payBuyIn, walletCard, walletTurn } from "./wallet.js";
+import { demoMode, roster, rosterNames } from "./roster.js";
 
 export interface Round {
   id: string;
@@ -70,7 +71,13 @@ store.quips ??= 0;
 store.art ??= {};
 store.nudged ??= {};
 store.profiles ??= {};
-attachAuth(() => store, save);
+attachAuth(() => store, () => {
+  for (const session of Object.values((store as typeof store & AuthStore).auth?.sessions ?? {})) {
+    const profile = store.profiles[session.token];
+    if (profile) profile.claimedAt ??= session.at;
+  }
+  save();
+});
 
 function save() {
   mkdirSync(dataDir, { recursive: true });
@@ -87,12 +94,17 @@ const person = (raw: unknown) => {
   const clean = (typeof raw === "string" ? raw : "").replace(/[^A-Za-z]/g, "").slice(0, 14);
   return clean ? clean[0].toUpperCase() + clean.slice(1).toLowerCase() : "";
 };
-const withMember = (name: string) => (name && !MEMBERS.includes(name) ? [...MEMBERS, name] : MEMBERS);
+const group = () => (demoMode() ? MEMBERS : rosterNames());
+const withMember = (name: string, base = group()) => (name && !base.includes(name) ? [...base, name] : base);
 export const internals = { store, save, person };
 
 export function getRound(id: string): Round | null {
   if (store.rounds[id]) return store.rounds[id];
-  return seedRounds[id] ? ({ id, ...seedRounds[id] } as Round) : null;
+  if (!seedRounds[id]) return null;
+  const seed = seedRounds[id];
+  if (demoMode()) return { id, ...seed } as Round;
+  const { mine, ...round } = seed;
+  return { id, ...round, members: rosterNames(), ...(seed.opponent ? { opponent: "Nickel" } : {}), ...(seed.board ? { played: [], board: [] } : {}) } as Round;
 }
 
 export function getFantasy(id: string): FantasyLeague | null {
@@ -163,7 +175,7 @@ function createRound(game: Round["game"], sender: string, opponent: string): Rou
   let round: Round;
   if (game === "rps") {
     const hands = ["rock", "paper", "scissors"];
-    round = { id: newId("rps"), game, title: "Rock Paper Scissors", opponent: opponent || "Dev", bestOf: 3, stake: 5, devMoves: Array.from({ length: 5 }, () => hands[Math.floor(Math.random() * 3)]), ...base };
+    round = { id: newId("rps"), game, title: "Rock Paper Scissors", opponent: opponent || (demoMode() ? "Dev" : "Nickel"), bestOf: 3, stake: 5, devMoves: Array.from({ length: 5 }, () => hands[Math.floor(Math.random() * 3)]), ...base };
   } else if (game === "krillion") {
     round = { id: newId("krill"), game, title: "One in a Krillion", number: 88 + Object.keys(store.rounds).length, prompt: PROMPTS[Math.floor(Math.random() * (process.env.NACE_API_KEY ? PROMPTS.length : 1))], seconds: 25, opponent: opponent || undefined, ...base };
   } else {
@@ -247,7 +259,7 @@ export function potCard(pot: Pot) {
     title: dollars(pot.amountCents) + " buy-in",
     sub: s.names.length + " in for a " + dollars(s.committedCents) + " pot. " + s.paid.length + " paid.",
     league: pot.league,
-    members: s.names.length ? s.names : MEMBERS,
+    members: s.names.length ? s.names : group(),
     hue: "#34c759",
     path: "/p/" + pot.id,
   };
@@ -318,7 +330,7 @@ export const ROASTS = [
 const quip = (list: string[]) => list[store.quips++ % list.length];
 
 
-export interface Profile { token: string; phone?: string; name: string; account?: string; photo?: string; createdAt: number }
+export interface Profile { token: string; phone?: string; name: string; account?: string; photo?: string; createdAt: number; claimedAt?: number }
 const publicProfile = (p: Profile) => ({ token: p.token, name: p.name, account: p.account ?? "", face: p.photo ? "/face/" + p.token + "?v=" + p.photo.length : null });
 
 export function profileFor(phone: string, name: string): Profile {
@@ -424,12 +436,13 @@ export async function hydrate(): Promise<"convex" | "file"> {
   return "convex";
 }
 
-export function leaderboard() {
-  const names = [...new Set([...Object.keys(store.nickels), ...Object.values(store.names), ...Object.keys(store.stats), ...Object.values(store.profiles).map((p) => p.name).filter(Boolean)])];
-  const people = (names.length ? names : MEMBERS).map((name) => {
+export function leaderboard(only?: string[]) {
+  const signed = roster();
+  const names = signed.demo ? [...new Set([...Object.keys(store.nickels), ...Object.values(store.names), ...Object.keys(store.stats), ...Object.values(store.profiles).map((p) => p.name).filter(Boolean)])] : signed.members.map((m) => m.name);
+  const people = (only ?? (names.length ? names : group())).map((name) => {
     const stats = store.stats[name] ?? { played: 0, wins: 0, losses: 0 };
-    const last = [...store.results].reverse().find((r) => r.name === name || r.line.includes(name));
-    return { name, nickels: store.nickels[name] ?? 0, ...stats, last: last?.line ?? "", face: faceOf(name) };
+    const last = [...store.results].reverse().find((r) => r.name === name || new RegExp("\\b" + name + "\\b").test(r.line));
+    return { name, nickels: store.nickels[name] ?? 0, ...stats, last: last?.line ?? "", face: signed.members.find((m) => m.name === name)?.face ?? (signed.demo ? faceOf(name) : null) };
   }).sort((a, b) => b.nickels - a.nickels || b.wins - a.wins || a.name.localeCompare(b.name));
   const pot = store.latestPot ? store.pots[store.latestPot] : null;
   const stakes = pot && Object.values(pot.members).filter((m) => m === "paid").length >= 2 ? "$" + pot.amountCents / 100 + " buy-in" : null;
@@ -446,7 +459,7 @@ const artDir = dataDir + "/art";
 const artPending = new Set<string>();
 const stock: Record<string, string> = {};
 const stockArt = (role: string) => (stock[role] ??= "data:image/jpeg;base64," + readFileSync(new URL("../apps/preview/art/" + role + ".jpg", import.meta.url)).toString("base64"));
-const tokenOf = (name: string) => Object.values(store.profiles).find((x) => x.name === name && x.photo)?.token ?? "";
+const tokenOf = (name: string) => (demoMode() ? Object.values(store.profiles).find((x) => x.name === name && x.photo)?.token : roster().members.find((m) => m.name === name && m.face)?.token) ?? "";
 const ascending = () => {
   const board = leaderboard();
   const n = board.people.length;
@@ -629,8 +642,8 @@ export function leaderboardCard() {
   const last = board.people[board.people.length - 1];
   return {
     kicker: "Leaderboard",
-    title: top.nickels > 0 ? top.name + " leads" : "Leaderboard",
-    sub: store.punishment ? "Last place " + store.punishment.split(":")[0] + ". Right now: " + last.name + "." : top.nickels > 0 ? top.name + " is up " + top.nickels + " Nickels." : "Nobody has scored yet.",
+    title: top && top.nickels > 0 ? top.name + " leads" : "Leaderboard",
+    sub: !top ? "Nobody has joined yet." : store.punishment ? "Last place " + store.punishment.split(":")[0] + ". Right now: " + last.name + "." : top.nickels > 0 ? top.name + " is up " + top.nickels + " Nickels." : "Nobody has scored yet.",
     league: LEAGUE_NAME,
     members: board.people.map((p) => p.name),
     hue: "#ff9500",
@@ -693,6 +706,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   const text = input.text.trim();
   const lower = text.toLowerCase();
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
+  const contact = (input.senderPhone ?? "").replace(/[^+0-9]/g, "");
+  if (contact) profileFor(contact, store.names[contact] ?? "");
   const walletReply = walletTurn(input);
   if (walletReply) return walletReply;
   const hubReply = hubTurn(input);
@@ -811,6 +826,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     const board = leaderboard();
     const last = board.people[board.people.length - 1];
     const card = leaderboardCard();
+    if (!last) return reply("Last place " + what + ". Nobody is on the board yet.", card);
     return reply("Last place " + what + ". Right now that is " + last.name + ".", { ...card, path: card.path + "?u=" + last.name.toLowerCase() });
   }
 

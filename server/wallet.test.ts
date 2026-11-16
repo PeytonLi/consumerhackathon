@@ -151,7 +151,7 @@ describe("buy-ins from the wallet", () => {
     expect(hub.settlePot(id)).toMatchObject({ ok: true, balanceCents: 1000, payout: { name: "Peyton", amountCents: 1000 } });
     expect(wallet.ledgerOf("Peyton").at(-1)).toMatchObject({ type: "win", amountCents: 1000, reason: "Won the $10 pot", potId: id });
     const out = hub.hub({ token: "me-abc", name: "Peyton", face: null });
-    expect(Object.keys(out).at(-1)).toBe("walletLedger");
+    expect(Object.keys(out).slice(-2)).toEqual(["walletLedger", "roster"]);
     expect(out.walletLedger.map((e) => e.type)).toEqual(["win", "buyin", "refund", "buyin", "topup"]);
     expect(hub.hub(null).walletLedger).toEqual([]);
     expect(wallet.walletView("Peyton")).toMatchObject({ name: "Peyton", balanceCents: 1000, limits: { minCents: 100, maxCents: 1000, capCents: 5000, quick: [100, 200, 500, 1000] } });

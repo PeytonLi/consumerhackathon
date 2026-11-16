@@ -11,11 +11,16 @@
 <style>
   :root { --game: light-dark(#5856d6, #5e5ce6); --paid: light-dark(#248a3d, #30d158); --tile: color-mix(in srgb, var(--ink) 6%, transparent); }
   .app { padding-left: 0; padding-right: 0; }
-  .bar { padding: 0 var(--gutter); }
-  .bar .avatar { width: 32px; height: 32px; font-size: 14px; }
+  .bar { grid-template-columns: 44px minmax(0, 1fr) auto; padding: 0 max(var(--gutter), env(safe-area-inset-right)) 0 max(var(--gutter), env(safe-area-inset-left)); }
+  .bar .name span { white-space: normal; text-wrap: balance; }
+  .bar > :last-child { min-width: 44px; }
+  .bar .pill { font-size: 14px; padding: 0 10px; }
+  .t-caption, .line .end, .line .go { color: var(--ink-2); }
+  .bar .mine { width: 44px; height: 44px; margin-left: -4px; display: grid; place-items: center; }
+  .bar .avatar { width: 36px; height: 36px; font-size: 15px; }
   .stage { position: relative; justify-content: flex-start; align-items: stretch; gap: var(--s6); overflow: hidden auto; padding: var(--s2) 0 calc(104px + env(safe-area-inset-bottom)); scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .stage::-webkit-scrollbar { display: none; }
-  .sec { flex: none; display: flex; flex-direction: column; gap: var(--s3); padding: 0 var(--gutter); min-width: 0; }
+  .sec { flex: none; display: flex; flex-direction: column; gap: var(--s3); padding: 0 max(var(--gutter), env(safe-area-inset-right)) 0 max(var(--gutter), env(safe-area-inset-left)); min-width: 0; }
   .sec:empty { display: none; }
   .sec.bleed { padding: 0; }
   .bleed .sec-head { padding: 0 var(--gutter); }
@@ -27,12 +32,13 @@
   .avatar { overflow: hidden; }
   .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; grid-area: 1 / 1; }
   .avatar.sm { width: 28px; height: 28px; font-size: 12px; }
+  .avatar.md { width: 44px; height: 44px; font-size: 18px; }
   .press { transition: transform 350ms var(--spring); }
 
   .you { display: flex; align-items: center; gap: var(--s3); width: 100%; padding: var(--s4); text-align: left; box-shadow: inset 0 0 0 2px var(--you); }
   .you .avatar { width: 52px; height: 52px; font-size: 22px; }
   .you .who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-  .you .who b { font: 700 20px/1.1 var(--font); letter-spacing: -0.02em; }
+  .you .who b { font: 700 20px/1.1 var(--font); letter-spacing: -0.02em; overflow-wrap: anywhere; }
   .you .tot { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
   .you .tot b { font: 700 30px/1 var(--round); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 
@@ -47,18 +53,18 @@
   .slide .top { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
   .slide .rank { font: 700 15px/1 var(--round); color: var(--ink-2); }
   .slide .tag { background: color-mix(in srgb, var(--surface) 70%, transparent); }
-  .slide .nm { margin-top: 2px; font: 700 26px/1.1 var(--font); letter-spacing: -0.025em; }
+  .slide .nm { max-width: 100%; overflow-wrap: anywhere; margin-top: 2px; font: 700 26px/1.1 var(--font); letter-spacing: -0.025em; }
   .slide .big { font: 700 48px/1 var(--round); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
   .slide .big small { font: 600 15px/1 var(--font); color: var(--ink-2); letter-spacing: 0; margin-left: 6px; }
-  .slide .note { min-height: 34px; font: 500 13px/1.3 var(--font); color: var(--ink-2); text-align: center; text-wrap: balance; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .slide .note { min-height: 34px; font: 500 13px/1.3 var(--font); color: var(--ink-2); text-align: center; text-wrap: balance; }
   .slide .note.doom { color: var(--ink); font-weight: 600; }
-  .mug { position: relative; width: 92px; height: 92px; margin-top: 22px; flex: none; }
-  .mug .pic { display: block; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; background: var(--hue); box-shadow: 0 0 0 4px var(--surface); }
+  .mug { position: relative; width: 148px; height: 148px; margin-top: 18px; flex: none; }
+  .mug .pic { display: block; width: 100%; height: 100%; border-radius: 34px; overflow: hidden; background: var(--hue); box-shadow: 0 0 0 4px var(--surface), 0 10px 24px light-dark(rgb(30 30 60 / .14), rgb(0 0 0 / .5)); }
   .mug .pic img, .mug .pic svg { width: 100%; height: 100%; object-fit: cover; display: block; }
   .mug .prop { position: absolute; left: 50%; pointer-events: none; }
-  .mug .crown { width: 54px; top: -27px; transform: translateX(-50%) rotate(-8deg); }
-  .mug .cone { width: 46px; top: -38px; transform: translateX(-30%) rotate(14deg); }
-  .mug.last .pic { transform: rotate(-7deg); filter: saturate(.6); }
+  .mug .crown { width: 64px; top: -30px; transform: translateX(-50%) rotate(-8deg); }
+  .mug .cone { width: 50px; top: -40px; transform: translateX(10%) rotate(14deg); }
+  .mug.last.plain .pic { transform: rotate(-5deg); filter: saturate(.6); }
   .crown.land { animation: crown 420ms var(--spring) both; }
   @keyframes crown { 0% { scale: .6; opacity: 0; } 60% { scale: 1.12; opacity: 1; } 100% { scale: 1; } }
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; }
@@ -66,8 +72,10 @@
   .stat { padding: 11px 4px; text-align: center; background: var(--bg); border-radius: 14px; display: block; }
   .stat b { display: block; font: 700 19px/1.1 var(--round); font-variant-numeric: tabular-nums; }
   .stat > span { display: block; margin-top: 5px; font: 500 12px/1 var(--font); color: var(--ink-2); }
-  .pager { display: flex; justify-content: center; padding: 0 var(--gutter); overflow-x: auto; scrollbar-width: none; }
-  .pager button { flex: none; width: 40px; height: 44px; display: grid; place-items: center; }
+  .pager { display: flex; padding: 0 var(--gutter); overflow-x: auto; scrollbar-width: none; }
+  .pager button:first-child { margin-left: auto; }
+  .pager button:last-child { margin-right: auto; }
+  .pager button { flex: none; width: 44px; height: 44px; display: grid; place-items: center; }
   .pager .avatar { opacity: .5; transition: opacity var(--t-lock) var(--ease), transform var(--t-lock) var(--ease), box-shadow var(--t-lock) var(--ease); }
   .pager .on .avatar { opacity: 1; transform: scale(1.12); box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink); overflow: visible; }
   .pager .on .avatar img { border-radius: 50%; }
@@ -85,6 +93,36 @@
   .mem li { display: flex; gap: var(--s3); padding: 13px var(--s4); font: 400 16px/1.35 var(--font); text-wrap: pretty; }
   .mem li + li { box-shadow: inset 0 1px 0 var(--hair); }
   .mem li::before { content: ""; flex: none; width: 8px; height: 8px; margin-top: 7px; border-radius: 3px; background: var(--game); }
+  .line.tap { width: 100%; text-align: left; min-height: 68px; }
+  .line.tap:active { background: var(--tile); }
+  .line .txt b { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+  .line .txt b > span:first-child { overflow-wrap: anywhere; }
+  .line .tag { flex: none; height: 22px; padding: 0 8px; font-size: 12px; }
+  .line .tag.todo { color: light-dark(#9c4d00, #ffb340); background: color-mix(in srgb, var(--them) 14%, transparent); }
+  .line .go { flex: none; font-size: 16px; color: var(--ink-3); }
+  .line .end, .line .go { color: var(--ink-2); }
+  .line.ghosted .txt b { color: var(--ink-2); }
+  .invite { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s3) var(--s3) var(--s4); }
+  .invite p { flex: 1; min-width: 0; margin: 0; font: 500 13px/1.35 var(--font); color: var(--ink-2); text-wrap: pretty; }
+  .invite p b { color: var(--ink); font-weight: 600; white-space: nowrap; }
+  .btn { flex: none; height: 44px; padding: 0 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-pill); font: 600 15px/1 var(--font); text-decoration: none; color: var(--ink); background: var(--surface-2); transition: transform 350ms var(--spring); }
+  .btn.go-blue { color: var(--on-color); background: var(--you); }
+  .setup { display: flex; align-items: center; gap: var(--s3); padding: var(--s4); box-shadow: inset 0 0 0 2px var(--them); }
+  .setup .who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .setup .who b { font: 700 18px/1.15 var(--font); letter-spacing: -0.02em; }
+  .setup .who span { font: 500 13px/1.35 var(--font); color: var(--ink-2); text-wrap: pretty; }
+  .join { display: flex; flex-direction: column; align-items: stretch; gap: var(--s3); padding: var(--s5) var(--s4) var(--s4); border-radius: var(--r-big); text-align: center; }
+  .join .t-body { color: var(--ink-2); font-size: 15px; text-wrap: balance; }
+  .join .code { display: flex; flex-direction: column; gap: 6px; padding: var(--s4); border-radius: var(--r-card); background: var(--bg); }
+  .join .code b { font: 700 34px/1 var(--round); letter-spacing: 0.02em; }
+  .join .code span { font: 600 17px/1.2 var(--round); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .join a { text-decoration: none; }
+  .join ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; text-align: left; counter-reset: step; }
+  .join li { display: flex; gap: 10px; font: 500 14px/1.35 var(--font); color: var(--ink-2); counter-increment: step; }
+  .join li::before { content: counter(step); flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 12px/1 var(--round); color: var(--ink); background: var(--surface-2); }
+  .sk { border-radius: var(--r-card); background: var(--surface); }
+  .stale { flex: none; align-self: center; height: 32px; margin-bottom: 8px; padding: 0 14px; display: flex; align-items: center; font: 600 13px/1 var(--font); white-space: nowrap; }
+  .toast { white-space: nowrap; }
   .none { padding: var(--s5) var(--s4); text-align: center; display: flex; flex-direction: column; gap: 6px; }
   .none b { font: 600 16px/1.25 var(--font); }
   .none span { font: 500 13px/1.35 var(--font); color: var(--ink-2); text-wrap: balance; }
@@ -92,6 +130,7 @@
   .pot { display: flex; flex-direction: column; gap: 10px; padding: var(--s4); color: inherit; text-decoration: none; }
   .pot .row1 { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
   .pot .amt { font: 700 34px/1 var(--round); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+  .pot .amt small { font: 500 15px/1 var(--font); letter-spacing: 0; color: var(--ink-2); margin-left: 6px; }
   .pot .tag.open { color: var(--paid); background: color-mix(in srgb, var(--paid) 14%, transparent); }
   .meter { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
   .meter i { display: block; height: 100%; border-radius: 4px; background: var(--paid); transform-origin: left; transition: transform var(--t-sheet) var(--ease); }
@@ -103,25 +142,30 @@
   .stack .avatar:first-child { margin-left: 0; }
 
   .tabs { position: absolute; z-index: 10; left: 50%; translate: -50% 0; bottom: max(var(--s4), env(safe-area-inset-bottom)); height: 52px; padding: 4px; display: flex; }
-  .tabs button { position: relative; height: 44px; padding: 0 15px; font: 600 15px/1 var(--font); color: var(--ink-2); transition: color var(--t-lock) var(--ease); }
+  .tabs button { position: relative; height: 44px; min-width: 44px; padding: 0 11px; font: 600 14px/1 var(--font); color: var(--ink-2); transition: color var(--t-lock) var(--ease); }
   .tabs button.on { color: var(--ink); }
   .tabs .thumb { position: absolute; top: 4px; left: 0; height: 44px; width: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--ink) 10%, transparent); transition: transform 260ms var(--ease), width 260ms var(--ease); }
 
-  .sheet { display: flex; flex-direction: column; max-height: calc(100dvh - 72px); padding-left: 0; padding-right: 0; visibility: hidden; transition: transform 240ms var(--ease), visibility 0s 240ms; }
+  @media (max-width: 379px) { .tabs button { padding: 0 8px; font-size: 13px; } }
+  .sheet { display: flex; flex-direction: column; max-height: calc(100dvh - 72px - env(safe-area-inset-top)); padding-left: 0; padding-right: 0; visibility: hidden; transition: transform 240ms var(--ease), visibility 0s 240ms; }
   .sheet.on { visibility: visible; transition: transform var(--t-sheet) var(--spring); }
   .sheet.drag { transition: none; }
   .grab { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--s5) var(--s5) var(--s4); touch-action: none; cursor: grab; }
-  .grab .mug { width: 80px; height: 80px; margin-top: 0; }
-  .grab .mug .pic { box-shadow: none; }
-  .grab .t-title { margin: 6px 0 0; }
-  .sheet-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--s3); padding: 0 var(--s5); scrollbar-width: none; overscroll-behavior: contain; }
+  .grab .mug { width: 104px; height: 104px; margin-top: 0; }
+  .grab .mug .pic { box-shadow: none; border-radius: 28px; }
+  .grab .t-title { margin: 6px 0 0; overflow-wrap: anywhere; }
+  .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 4px; }
+  .chips .tag { background: var(--tile); }
+  .sheet-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--s3); padding: 0 var(--s5) var(--s4); scrollbar-width: none; overscroll-behavior: contain; -webkit-mask-image: linear-gradient(#000 calc(100% - 20px), transparent); mask-image: linear-gradient(#000 calc(100% - 20px), transparent); }
+  .sheet-body > * { flex: none; }
   .sheet .stat { background: var(--tile); }
   .sheet .lastline { margin: 0; font: 500 14px/1.35 var(--font); color: var(--ink-2); text-align: center; text-wrap: balance; }
   .sheet .t-label { margin-top: var(--s2); }
   .sheet .mem { background: var(--tile); border-radius: var(--r-card); }
   .sheet .mem li { font-size: 15px; padding: 12px 14px; }
   .sheet .quiet { padding: var(--s4); border-radius: var(--r-card); background: var(--tile); font: 500 14px/1.35 var(--font); color: var(--ink-2); text-align: center; text-wrap: balance; }
-  .sheet .dock { flex: none; padding: var(--s4) var(--s5) 0; }
+  .sheet .dock { flex: none; flex-direction: row; padding: var(--s2) var(--s5) 0; }
+  .sheet .dock > * { flex: 1; min-width: 0; }
   .sheet .dock a { text-decoration: none; color: inherit; }
 
   @supports (animation-timeline: view()) {
@@ -147,25 +191,33 @@
     <div class="name"><b>Nickel</b><span id="league"></span></div>
     <div id="stakes"></div>
   </header>
+  <div class="glass stale" id="stale" role="status" hidden>Offline. Showing the last update.</div>
   <main class="stage enter" id="stage">
     <section class="sec" id="you" style="--i:0"></section>
     <section class="sec bleed" id="board" style="--i:1"></section>
-    <section class="sec" id="memory" style="--i:2"></section>
-    <section class="sec" id="money" style="--i:3"></section>
+    <section class="sec" id="people" style="--i:2"></section>
+    <section class="sec" id="memory" style="--i:3"></section>
+    <section class="sec" id="money" style="--i:4"></section>
     <section class="sec" id="activity" style="--i:4"></section>
   </main>
   <nav class="glass tabs" id="tabs" aria-label="Sections">
     <i class="thumb" id="thumb"></i>
     <button type="button" data-to="board" class="on">Board</button>
+    <button type="button" data-to="people">People</button>
     <button type="button" data-to="memory">Memory</button>
     <button type="button" data-to="money">Money</button>
-    <button type="button" data-to="activity">Activity</button>
+    <button type="button" data-to="activity">Recent</button>
   </nav>
 </div>
+<div class="glass toast" id="toast" role="status"></div>
 <div class="scrim" id="scrim"></div>
 <section class="glass sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-name"></section>
 <script>
-let H = window.HUB || { me: null, league: { name: "", stakes: null, punishment: null }, people: [], group: { memory: [] }, pots: [], payouts: [], recent: [] };
+const JOIN = { code: "", line: "", text: "", sms: "" };
+let H = window.HUB || { me: null, league: { name: "", stakes: null, punishment: null }, people: [], group: { memory: [] }, pots: [], payouts: [], recent: [], roster: { members: [], pending: [], join: JOIN, demo: false } };
+let loaded = !!window.HUB, failed = false;
+const roster = () => H.roster || { members: H.people.map((p) => ({ name: p.name, token: null, face: p.face, ready: !!p.face, demo: false, played: p.played > 0, rank: p.rank, role: "", portrait: null, portraitKind: null, streak: null, last: p.last })), pending: [], join: JOIN, demo: false };
+const member = (name) => roster().members.find((m) => m.name === name);
 const params = new URLSearchParams(location.search);
 if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
 const $ = (id) => document.getElementById(id);
@@ -181,12 +233,20 @@ const FMT = { n: (v) => (v > 0 ? "+" : "") + v, usd: (v) => (v > 0 ? "+" : v < 0
 const CHECK = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const CROWN = '<svg class="prop crown" viewBox="0 0 60 40" aria-hidden="true"><path d="M4 36L2 10l14 12L30 2l14 20 14-12-2 26z" fill="#ffd60a" stroke="#b8860b" stroke-width="2" stroke-linejoin="round"/><circle cx="30" cy="27" r="3.5" fill="#ff375f"/></svg>';
 const CONE = '<svg class="prop cone" viewBox="0 0 60 60" aria-hidden="true"><path d="M30 2L52 56H8z" fill="#fff" stroke="#1c1c1e" stroke-width="2.5" stroke-linejoin="round"/><text x="30" y="46" text-anchor="middle" font-family="system-ui" font-weight="800" font-size="20" fill="#ff3b30">L</text></svg>';
-const meKey = "nickel.me.link";
-if (params.get("u")) sessionStorage.setItem(meKey, params.get("u").replace(/[^A-Za-z]/g, "").replace(/^./, (c) => c.toUpperCase()));
-const meName = () => (H.me && H.me.name) || (window.ME && window.ME.name) || sessionStorage.getItem(meKey) || "";
+const meName = () => (H.me && H.me.name) || "";
 const find = (name) => H.people.find((p) => p.name === name);
 const faceOf = (name) => { const p = find(name); return (p && p.face) || (H.me && H.me.name === name && H.me.face) || ""; };
-const avatar = (name, cls = "", inner = "") => '<span class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + (faceOf(name) ? '<img src="' + esc(faceOf(name)) + '" alt="">' : esc(name[0] || "?")) + inner + "</span>";
+const avatar = (name, cls = "", inner = "") => '<span class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + (faceOf(name) ? '<img src="' + esc(faceOf(name)) + '" alt="" loading="lazy" decoding="async">' : esc(name[0] || "?")) + inner + "</span>";
+const GO = '<svg class="i go" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>';
+const brief = (line) => String(line || "").split(/[:.]\s/)[0].replace(/[.:]$/, "").replace(/(\d)-(\d)/g, "$1\u2011$2");
+const detail = (line) => String(line || "").slice(brief(line).length).replace(/^[:.]\s*/, "");
+const streakText = (m) => (!m || !m.streak ? "No games yet" : m.streak.count > 1 ? (m.streak.won ? "Won " : "Lost ") + m.streak.count + " in a row" : m.streak.won ? "Won the last game" : "Lost the last game");
+const streakShort = (m) => (m && m.streak ? (m.streak.won ? "W" : "L") + m.streak.count : "0");
+const mineToken = (name) => (H.me && H.me.name === name ? H.me.token : window.ME && window.ME.name === name ? window.ME.token : "");
+function mug(p, eager) {
+  const m = member(p.name), art = m && m.portrait, src = art || p.face, last = isLast(p);
+  return '<span class="mug' + (last ? " last" : "") + (art ? "" : " plain") + '"><span class="pic">' + (src ? '<img src="' + esc(src) + '" alt="" decoding="async" loading="' + (eager ? "eager" : "lazy") + '">' : goofy(p.name)) + "</span>" + (art ? "" : (isTop(p) ? CROWN : "") + (last ? CONE : "")) + "</span>";
+}
 const count = (key, value, fmt) => '<span data-k="' + esc(key) + '" data-v="' + value + '" data-f="' + fmt + '">' + FMT[fmt](value) + "</span>";
 const ago = (at) => {
   if (!at) return "";
@@ -218,33 +278,73 @@ const isLast = (p) => H.people.length > 1 && p.rank === H.people.length;
 const isTop = (p) => p.rank === 1 && p.nickels > 0;
 const doom = () => (H.league.stakes ? "Last place. Out the " + esc(H.league.stakes) + "." : H.league.punishment ? "Last place " + esc(H.league.punishment.split(":")[0]) + "." : "");
 
+function setupHtml() {
+  if (!H.me || (H.me.name && H.me.face)) return "";
+  return '<div class="card setup"><span class="who"><b>' + (H.me.name ? "Add your photo" : "Finish your card") + "</b><span>" + (H.me.name ? "The board shows your face once your card has a photo." : "Add your name and a photo to get on the board.") + '</span></span><a class="btn go-blue press" href="/me/' + esc(H.me.token) + '">' + (H.me.name ? "Add photo" : "Finish") + "</a></div>";
+}
+
+function joinHtml() {
+  const j = roster().join;
+  return '<div class="card join"><h2 class="t-title">Nobody has joined yet</h2><p class="t-body">Everyone in the group chat does this once.</p>' +
+    '<div class="code"><b>' + esc(j.code) + "</b><span>to " + esc(j.line) + "</span></div>" +
+    "<ol><li>Text the code to that number.</li><li>Nickel texts back your player card.</li><li>Add your name and a photo. You are on the board.</li></ol>" +
+    '<a class="glass primary" href="' + esc(j.sms) + '">Text the code</a><button class="secondary fill" type="button" data-invite>Invite the group</button></div>';
+}
+
+function loadingHtml() {
+  return failed
+    ? '<div class="card none"><b>Could not load the league</b><span>Check your connection and try again.</span></div><button class="secondary fill" type="button" data-retry>Try again</button>'
+    : '<div class="sk" style="height:88px" aria-hidden="true"></div><div class="sk" style="height:420px;border-radius:var(--r-big)" aria-hidden="true"></div><div class="sk" style="height:200px" aria-hidden="true"></div><p class="t-caption" style="text-align:center" role="status">Loading the league</p>';
+}
+
 function youHtml() {
+  if (!loaded) return loadingHtml();
+  if (!roster().members.length && !roster().pending.length) return joinHtml();
   const p = find(meName());
-  if (!p) return "";
-  return '<button class="card you press" type="button" data-person="' + esc(p.name) + '">' + avatar(p.name) +
+  if (!p) return setupHtml();
+  return setupHtml() + '<button class="card you press" type="button" data-person="' + esc(p.name) + '">' + avatar(p.name) +
     '<span class="who"><span class="t-label">You</span><b>' + esc(p.name) + '</b><span class="t-caption">' + ordinal(p.rank) + " of " + H.people.length + " \u00b7 " + esc(p.title) + "</span></span>" +
     '<span class="tot"><b>' + count("you:n", p.nickels, "n") + '</b><span class="t-caption">Nickels \u00b7 ' + count("you:usd", p.balanceCents, "usd") + "</span></span></button>";
 }
 
+const blank = () => !loaded || (!roster().members.length && !roster().pending.length);
+
 function boardHtml() {
+  if (blank()) return "";
   const order = reelOrder();
-  if (!order.length) return head("Leaderboard", "") + '<div class="sec">' + none("Nobody is on the board yet", "Text Nickel in the group to start a game.") + "</div>";
+  if (!order.length) return head("Leaderboard", "") + '<div class="sec">' + none("Nobody is on the board yet", "The board fills in as people finish their player cards.") + "</div>";
   return head("Leaderboard", "Last place first") +
-    '<div class="reel" id="reel">' + order.map((p) => {
+    '<div class="reel" id="reel">' + order.map((p, i) => {
       const last = isLast(p);
-      const note = last && doom() ? '<span class="note doom">' + doom() + "</span>" : '<span class="note">' + esc(p.last || (p.played ? "" : "No games yet")) + "</span>";
+      const note = last && doom() ? '<span class="note doom">' + doom() + "</span>" : '<span class="note">' + esc(brief(p.last) || "No games yet") + "</span>";
       return '<button class="slide press" type="button" data-person="' + esc(p.name) + '" style="--hue:' + hue(p.name) + '">' +
         '<span class="top"><span class="rank">' + ordinal(p.rank) + " of " + order.length + '</span><span class="tag">' + esc(p.title) + "</span></span>" +
-        '<span class="mug' + (last ? " last" : "") + '"><span class="pic">' + (p.face ? '<img src="' + esc(p.face) + '" alt="">' : goofy(p.name)) + "</span>" + (isTop(p) ? CROWN : "") + (last ? CONE : "") + "</span>" +
+        mug(p, i < 2) +
         '<span class="nm">' + esc(p.name) + "</span>" +
         '<span class="big">' + count("s:n:" + p.name, p.nickels, "n") + "<small>Nickels</small></span>" +
-        '<span class="stats"><span class="stat"><b>' + p.wins + '</b><span>Wins</span></span><span class="stat"><b>' + p.losses + '</b><span>Losses</span></span><span class="stat"><b>' + count("s:usd:" + p.name, p.balanceCents, "usd") + "</b><span>Balance</span></span></span>" +
+        '<span class="stats"><span class="stat"><b>' + p.wins + '</b><span>Wins</span></span><span class="stat"><b>' + p.losses + '</b><span>Losses</span></span><span class="stat"><b>' + streakShort(member(p.name)) + "</b><span>Streak</span></span></span>" +
         note + "</button>";
     }).join("") + "</div>" +
     '<div class="pager" id="pager">' + order.map((p, i) => '<button type="button" aria-label="' + esc(p.name) + '"' + (i === active ? ' class="on"' : "") + ">" + avatar(p.name, "sm") + "</button>").join("") + "</div>";
 }
 
+function peopleHtml() {
+  if (blank()) return "";
+  const r = roster(), j = r.join;
+  const rows = [...r.members].sort((a, b) => a.rank - b.rank).map((m) => {
+    const p = find(m.name), mine = mineToken(m.name);
+    return '<button class="line tap" type="button" data-person="' + esc(m.name) + '">' + avatar(m.name, "md") +
+      '<span class="txt"><b><span>' + esc(m.name) + "</span>" + (m.ready || m.demo ? "" : '<span class="tag todo">' + (mine ? "Add your photo" : "No photo yet") + "</span>") + "</b><small>" + esc(streakText(m)) + "</small></span>" +
+      '<span class="end"><b>' + (p ? FMT.n(p.nickels) : "") + "</b>" + ordinal(m.rank) + "</span>" + GO + "</button>";
+  }).join("");
+  const waiting = r.pending.map((w) => '<div class="line ghosted"><span class="avatar md ghost">?</span><span class="txt"><b><span>' + esc(w.label) + '</span></b><small>Finish your card from Nickel\'s text.</small></span><span class="tag todo">Setting up</span></div>').join("");
+  return head("People", r.members.length + " on the board" + (r.pending.length ? " \u00b7 " + r.pending.length + " setting up" : "")) +
+    '<div class="card list">' + rows + waiting + "</div>" +
+    '<div class="card invite"><p>Someone missing? They text <b>' + esc(j.code) + "</b> to <b>" + esc(j.line) + '</b>.</p><button class="btn press" type="button" data-invite>Invite</button></div>';
+}
+
 function memoryHtml() {
+  if (blank()) return "";
   const facts = (H.league.stakes ? '<div class="line"><span class="key">Stakes</span><span class="txt">' + esc(H.league.stakes) + "</span></div>" : "") +
     (H.league.punishment ? '<div class="line"><span class="key">Last place</span><span class="txt">' + esc(H.league.punishment) + "</span></div>" : "");
   const notes = H.group.memory.length ? '<ul class="mem">' + H.group.memory.map((m) => "<li>" + esc(m) + "</li>").join("") + "</ul>" : "";
@@ -254,12 +354,13 @@ function memoryHtml() {
 }
 
 function moneyHtml() {
+  if (blank()) return "";
   const pots = [...H.pots].sort((a, b) => Number(a.settled) - Number(b.settled)).map((pot) => {
     const names = Object.keys(pot.members), paid = names.filter((n) => pot.members[n] === "paid");
     return '<a class="card pot press" href="/p/' + esc(pot.id) + '">' +
-      '<span class="row1"><span class="amt">' + count("pot:" + pot.id, names.length * pot.amountCents, "pot") + '</span><span class="tag' + (pot.settled ? "" : " open") + '">' + (pot.settled ? "Settled" : "Open") + "</span></span>" +
+      '<span class="row1"><span class="amt">' + money(pot.amountCents) + '<small>each</small></span><span class="tag' + (pot.settled ? "" : " open") + '">' + (pot.settled ? "Settled" : "Open") + "</span></span>" +
       '<span class="meter"><i style="transform:scaleX(' + (names.length ? paid.length / names.length : 0) + ')"></i></span>' +
-      '<span class="row2"><span class="t-label">' + (pot.settled ? (pot.winner ? esc(pot.winner) + " took the pot" : "Closed") : money(pot.amountCents) + " each \u00b7 " + paid.length + " of " + names.length + " paid") + "</span>" +
+      '<span class="row2"><span class="t-label">' + (pot.settled ? (pot.winner ? esc(pot.winner) + " took the pot" : "Closed") : paid.length + " of " + names.length + " paid \u00b7 " + money(names.length * pot.amountCents) + " committed") + "</span>" +
       '<span class="stack">' + names.slice(0, 6).map((n) => avatar(n, "sm" + (pot.members[n] === "paid" ? "" : " ghost"))).join("") + "</span></span></a>";
   }).join("");
   const outs = [...H.payouts].sort((a, b) => b.at - a.at).map((o) => '<div class="line">' + avatar(o.name) + '<span class="txt"><b>' + esc(o.name) + "</b><small>" + esc(o.reason) + '</small></span><span class="end"><b>' + count("out:" + o.id, o.amountCents, "usd") + "</b>" + ago(o.at) + "</span></div>").join("");
@@ -269,22 +370,25 @@ function moneyHtml() {
 }
 
 function activityHtml() {
+  if (blank()) return "";
   const rows = [...H.recent].sort((a, b) => b.at - a.at).slice(0, 20).map((r) => {
-    const who = H.people.find((p) => r.line.includes(p.name));
-    return '<div class="line">' + (who ? avatar(who.name) : '<span class="avatar ghost">N</span>') + '<span class="txt">' + esc(r.line) + '</span><span class="end">' + ago(r.at) + "</span></div>";
+    const who = H.people.map((p) => [p.name, r.line.search(new RegExp("\\b" + p.name + "\\b"))]).filter((x) => x[1] >= 0).sort((a, b) => a[1] - b[1])[0];
+    return '<div class="line">' + (who ? avatar(who[0]) : '<span class="avatar ghost">N</span>') + '<span class="txt">' + esc(brief(r.line)) + (detail(r.line) ? "<small>" + esc(detail(r.line)) + "</small>" : "") + '</span><span class="end">' + ago(r.at) + "</span></div>";
   }).join("");
   return head("Recent", rows ? "Newest first" : "") + (rows ? '<div class="card list">' + rows + "</div>" : none("Quiet so far", "Finished games and payouts show up here."));
 }
 
 function sheetHtml(p) {
-  const mine = H.me && H.me.name === p.name ? H.me.token : window.ME && window.ME.name === p.name ? window.ME.token : "";
-  return '<div class="grab" id="grab" style="--hue:' + hue(p.name) + '"><span class="mug"><span class="pic">' + (p.face ? '<img src="' + esc(p.face) + '" alt="">' : goofy(p.name)) + "</span></span>" + '<h2 class="t-title" id="sheet-name">' + esc(p.name) + '</h2><p class="t-label">' + ordinal(p.rank) + " of " + H.people.length + " \u00b7 " + esc(p.title) + "</p></div>" +
+  const mine = mineToken(p.name), m = member(p.name), src = (m && m.portrait) || p.face;
+  const chips = [m && m.streak ? streakText(m) : "", m && m.joinedAt ? "Joined " + new Date(m.joinedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "", m && !m.ready && !m.demo ? "No photo yet" : ""].filter(Boolean);
+  return '<div class="grab" id="grab" style="--hue:' + hue(p.name) + '"><span class="mug"><span class="pic">' + (src ? '<img src="' + esc(src) + '" alt="">' : goofy(p.name)) + "</span></span>" + '<h2 class="t-title" id="sheet-name">' + esc(p.name) + '</h2><p class="t-label">' + ordinal(p.rank) + " of " + H.people.length + " \u00b7 " + esc(p.title) + "</p>" +
+    (chips.length ? '<p class="chips">' + chips.map((c) => '<span class="tag">' + esc(c) + "</span>").join("") + "</p>" : "") + "</div>" +
     '<div class="sheet-body"><div class="stats four">' +
     '<span class="stat"><b>' + count("sh:n:" + p.name, p.nickels, "n") + "</b><span>Nickels</span></span>" +
     '<span class="stat"><b>' + count("sh:usd:" + p.name, p.balanceCents, "usd") + "</b><span>Balance</span></span>" +
     '<span class="stat"><b>' + p.wins + "-" + p.losses + "</b><span>Record</span></span>" +
     '<span class="stat"><b>' + p.played + "</b><span>Played</span></span></div>" +
-    (p.last ? '<p class="lastline">' + esc(p.last) + "</p>" : "") +
+    (p.last ? '<p class="lastline">' + esc(brief(p.last)) + ".</p>" : "") +
     '<p class="t-label">What Nickel remembers</p>' +
     (p.memory.length ? '<ul class="mem">' + p.memory.map((m) => "<li>" + esc(m) + "</li>").join("") + "</ul>" : '<p class="quiet">Nothing on ' + esc(p.name) + " yet. Nickel is paying attention.</p>") +
     '</div><div class="dock">' + (mine ? '<a class="secondary fill" href="/me/' + esc(mine) + '">Edit my card</a>' : "") + '<button class="secondary fill" id="close" type="button">Close</button></div>';
@@ -320,16 +424,18 @@ function wireReel() {
     const crown = reel.children[best].querySelector(".crown");
     if (crown && !crowned) { crowned = true; crown.classList.add("land"); }
   };
-  reel.onscroll = mark;
+  let waiting = false;
+  reel.addEventListener("scroll", () => { if (waiting) return; waiting = true; requestAnimationFrame(() => { waiting = false; mark(); }); }, { passive: true });
   [...pager.children].forEach((b, i) => b.onclick = () => { const el = reel.children[i]; reel.scrollTo({ left: el.offsetLeft - (reel.clientWidth - el.offsetWidth) / 2, behavior: still.matches ? "auto" : "smooth" }); });
 }
 
 const cache = {};
-const parts = { you: youHtml, board: boardHtml, memory: memoryHtml, money: moneyHtml, activity: activityHtml };
+const parts = { you: youHtml, board: boardHtml, people: peopleHtml, memory: memoryHtml, money: moneyHtml, activity: activityHtml };
 function draw() {
   $("league").textContent = H.league.name;
   const mine = meName();
-  $("me").innerHTML = mine ? avatar(mine) : "";
+  $("me").innerHTML = mine && find(mine) ? '<button class="mine press" type="button" data-person="' + esc(mine) + '" aria-label="Your card">' + avatar(mine) + "</button>" : "";
+  $("tabs").hidden = blank();
   $("stakes").innerHTML = H.league.stakes ? '<span class="glass pill">' + esc(H.league.stakes) + "</span>" : "";
   for (const key in parts) {
     const next = parts[key]();
@@ -340,14 +446,18 @@ function draw() {
     if (key === "board") { wireReel(); if ($("reel")) $("reel").scrollLeft = x; }
     settle(el);
   }
+  if (open && !find(open)) closeSheet();
   if (open && find(open)) { const next = sheetHtml(find(open)); if (next !== cache.sheet) fillSheet(next); }
   spy();
 }
 
 let open = "", opener = null;
 function fillSheet(next) {
+  const y = sheet.querySelector(".sheet-body")?.scrollTop || 0, focused = sheet.contains(document.activeElement) ? document.activeElement.id : "";
   cache.sheet = next;
   sheet.innerHTML = next;
+  sheet.querySelector(".sheet-body").scrollTop = y;
+  if (focused) document.getElementById(focused)?.focus({ preventScroll: true });
   settle(sheet);
   $("close").onclick = closeSheet;
   let y0 = 0, t0 = 0, dy = 0;
@@ -386,12 +496,51 @@ function closeSheet() {
   if (opener && opener.isConnected) opener.focus({ preventScroll: true });
 }
 scrim.onclick = closeSheet;
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
-stage.addEventListener("click", (e) => { const el = e.target.closest("[data-person]"); if (el) openSheet(el.dataset.person, el); });
+document.addEventListener("keydown", (e) => {
+  if (!open) return;
+  if (e.key === "Escape") closeSheet();
+  if (e.key === "Tab") {
+    const targets = [...sheet.querySelectorAll("a, button")], first = targets[0], last = targets[targets.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+$("app").addEventListener("click", (e) => {
+  const el = e.target.closest("[data-person]");
+  if (el) return openSheet(el.dataset.person, el);
+  if (e.target.closest("[data-invite]")) return invite();
+  if (e.target.closest("[data-retry]")) { failed = false; draw(); refresh(); }
+});
+
+let toastTimer;
+function toast(text) {
+  $("toast").textContent = text;
+  $("toast").classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("toast").classList.remove("on"), 2200);
+}
+async function invite() {
+  const j = roster().join, text = "Join " + H.league.name + " on Nickel: text " + j.code + " to " + j.line + ". Nickel sends your player card back.";
+  if (navigator.share) {
+    try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  try { await navigator.clipboard.writeText(text); } catch (e) {
+    const box = document.createElement("textarea");
+    box.value = text;
+    box.style.cssText = "position:fixed;opacity:0;user-select:text;-webkit-user-select:text";
+    document.body.append(box);
+    box.select();
+    const ok = document.execCommand("copy");
+    box.remove();
+    if (!ok) return toast("Text " + j.code + " to " + j.line);
+  }
+  toast("Copied. Paste it in the group chat.");
+}
 
 const tabs = [...$("tabs").querySelectorAll("button")];
 let spot = "";
 function spy() {
+  if ($("tabs").hidden) return;
   const line = stage.scrollTop + stage.clientHeight * 0.4, end = stage.scrollTop + stage.clientHeight >= stage.scrollHeight - 4;
   let now = tabs[0];
   tabs.forEach((b) => { if ($(b.dataset.to).offsetTop <= line) now = b; });
@@ -406,13 +555,18 @@ let queued = false;
 stage.addEventListener("scroll", () => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; spy(); }); }, { passive: true });
 tabs.forEach((b) => b.onclick = () => stage.scrollTo({ top: $(b.dataset.to).offsetTop - 8, behavior: still.matches ? "auto" : "smooth" }));
 
-draw();
-setTimeout(() => stage.classList.remove("enter"), 900);
-setInterval(async () => {
-  if (document.hidden) return;
+let misses = 0;
+async function refresh() {
   const next = await fetch("/api/hub").then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  if (next && JSON.stringify(next) !== JSON.stringify(H)) { H = next; draw(); }
-}, 5000);
+  misses = next ? 0 : misses + 1;
+  $("stale").hidden = !loaded || misses < 2;
+  if (!next) { if (!loaded && !failed) { failed = true; draw(); } return; }
+  if (!loaded || JSON.stringify(next) !== JSON.stringify(H)) { H = next; loaded = true; failed = false; draw(); }
+}
+draw();
+if (!loaded) refresh();
+setTimeout(() => stage.classList.remove("enter"), 900);
+setInterval(() => { if (!document.hidden && !(failed && !loaded)) refresh(); }, 5000);
 </script>
 </body>
 </html>

@@ -1,5 +1,6 @@
 import { getRound, internals, leaderboard, potSummary, type Pot, type TurnReply } from "./brain.js";
 import { creditWin, ledgerOf } from "./wallet.js";
+import { roster, standing } from "./roster.js";
 
 export interface Fact {
   text: string;
@@ -189,7 +190,8 @@ export function settlePot(potId: string): { ok: boolean; error?: string; payout?
   const amountCents = potSummary(pot).paidCents + (pot.forfeitCents ?? 0);
   if (!amountCents) return { ok: false, error: "Nobody has paid in yet" };
   if (!s.results.length) return { ok: false, error: "No games played yet" };
-  const winner = leaderboard().people[0].name;
+  const winner = leaderboard().people[0]?.name;
+  if (!winner) return { ok: false, error: "No games played yet" };
   const payout: Payout = { id: "pay-" + Math.random().toString(36).slice(2, 7), name: winner, amountCents, reason: "Won the " + dollars(amountCents) + " pot", at: Date.now(), potId };
   pot.settled = true;
   pot.winner = winner;
@@ -258,7 +260,8 @@ export function hubTurn(input: { text: string; sender?: string; senderPhone?: st
 
 export function hub(me: { token: string; name: string; face: string | null } | null) {
   const s = state();
-  const board = leaderboard();
+  const signed = roster();
+  const board = leaderboard(signed.demo ? undefined : signed.members.map((m) => m.name));
   const all = events();
   return {
     me: me ? { token: me.token, name: me.name, face: me.face } : null,
@@ -281,6 +284,7 @@ export function hub(me: { token: string; name: string; face: string | null } | n
     payouts: [...s.payouts].reverse().map((p) => ({ id: p.id, name: p.name, amountCents: p.amountCents, reason: p.reason, at: p.at })),
     recent: [...s.results.map((r) => ({ line: r.line, at: r.at })), ...s.payouts.map((p) => ({ line: p.name + " took the " + dollars(p.amountCents) + " pot.", at: p.at }))].sort((a, b) => b.at - a.at).slice(0, 12),
     walletLedger: me ? ledgerOf(me.name).reverse() : [],
+    roster: standing(signed, board.people, all),
   };
 }
 
