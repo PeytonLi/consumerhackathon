@@ -464,6 +464,7 @@ export async function generateArt(token: string, role: string) {
       if (!out.images?.[0]?.url) throw new Error("fal returned no image, status " + res.status);
       bytes = new Uint8Array(await (await fetch(out.images[0].url)).arrayBuffer());
     }
+    if (store.profiles[token]?.photo !== photo) return;
     const flat = spawnSync("ffmpeg", ["-loglevel", "error", "-f", "lavfi", "-i", "color=white:s=640x640", "-i", "pipe:0", "-filter_complex", "[1]scale=640:640[a];[0][a]overlay", "-frames:v", "1", "-q:v", "5", "-f", "mjpeg", "pipe:1"], { input: bytes, maxBuffer: 20000000 });
     if (flat.status !== 0 || flat.stdout.length < 500) throw new Error("Portrait resize failed: " + flat.stderr);
     mkdirSync(artDir, { recursive: true });
