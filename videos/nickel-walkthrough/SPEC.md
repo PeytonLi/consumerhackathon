@@ -5,7 +5,7 @@
 - Runtime: 74.25 seconds, 1920×1080, 30 fps, H.264/AAC.
 - Editable HyperFrames HTML/CSS/GSAP, with a separately editable supplied narration lane.
 - Low-level 106 BPM instrumental bed and short cues, generated locally.
-- Join card: `K-HQF6D6`; no phone number is shown.
+- Join card: text `K-HQF6D6` to `+1 (779) 625-1378`.
 
 ## Sequence
 
@@ -21,11 +21,11 @@
 | 48.48–55.58 | Winner | Demo result and simulated ledger; no real payments. |
 | 55.58–64.12 | Wrapped | Illustrative season recap using demo leaderboard captures. |
 | 64.12–68.1 | Fantasy | Masked NVIDIA concept draft and explicitly mock timeline. |
-| 68.1–74.25 | Outro | Presenter, Nickel lockup, code and demo disclosure. |
+| 68.1–74.25 | Outro | Presenter, Nickel lockup, shared join line, code and demo disclosure. |
 
 ## Privacy and claims
 
-- The `Price Errors` / Control Center recording was excluded. Phone numbers and sandbox URLs are not shown.
+- The `Price Errors` / Control Center recording was excluded. Private phone numbers and sandbox URLs are not shown; the supplied join destination is displayed in the outro.
 - The comparisons are separate recorded runs, not synchronized live matches.
 - Scores, portraits and wallet activity are demo fixtures; no real card charge, transfer or payout is represented.
 - The narrator's product pitch includes future or illustrative concepts. It is preserved verbatim, while on-screen labels distinguish the prototype from current functionality.
