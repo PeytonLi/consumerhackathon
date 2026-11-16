@@ -201,18 +201,11 @@ describe("group chat turns", () => {
     expect(brain.dueNudges()).toEqual([]);
   });
 
-  it("switches between demo and Stripe payments from the chat", () => {
-    delete process.env.STRIPE_SECRET_KEY;
-    expect(brain.payMode()).toBe("demo");
-    expect(turn("nickel real payments", "Maya").line).toBe("Stripe is not connected yet, so payments stay in demo mode. No card is charged.");
-    process.env.STRIPE_SECRET_KEY = "sk_test_x";
-    expect(turn("nickel test payments", "Maya").line).toBe("Payments run through Stripe in test mode. Use card 4242 4242 4242 4242, any future date, any CVC. No real money moves.");
-    expect(turn("nickel fake payments for the demo", "Maya").line).toBe("Payments are in demo mode. The pay button marks you paid and no card is charged.");
-    expect(brain.payMode()).toBe("demo");
-    process.env.STRIPE_SECRET_KEY = "sk_live_x";
-    expect(turn("nickel make payments real", "Maya").line).toMatch(/^Payments are live through Stripe/);
-    expect(brain.payMode()).toBe("live");
-    delete process.env.STRIPE_SECRET_KEY;
+  it("points payment questions at the prepaid wallet", () => {
+    const line = "Buy-ins come out of your Nickel balance. Add money in your wallet through Whop: https://nickel.test/wallet.html";
+    expect(turn("nickel real payments", "Maya").line).toBe(line);
+    expect(turn("nickel make payments real", "Maya").line).toBe(line);
+    expect(turn("nickel fake payments for the demo", "Maya").line).toBe(line);
   });
 
   it("answers a first text from an unknown number with their player card", () => {

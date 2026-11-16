@@ -20,6 +20,7 @@
   .rowi .avatar { width: 30px; height: 30px; font-size: 13px; }
   .state { font: 600 13px/1 var(--font); color: var(--ink-3); }
   .state.paid { color: var(--game); }
+  .dock .t-caption a { color: var(--game); }
   .people { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px 12px; width: 100%; max-width: 320px; }
   .person { display: flex; flex-direction: column; align-items: center; gap: 8px; font: 500 15px/1 var(--font); color: var(--ink-2); }
   .person.on { color: var(--ink); font-weight: 600; }
@@ -40,7 +41,6 @@
 <div class="glass toast" id="toast" role="status"></div>
 <script>
 let P = window.POT;
-const CHECKOUT = window.CHECKOUT;
 const params = new URLSearchParams(location.search);
 if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
 const $ = (id) => document.getElementById(id);
@@ -104,12 +104,11 @@ function draw() {
     dock.innerHTML = '<button class="glass primary" id="agree" type="button">Agree to ' + money(P.amountCents) + '</button><p class="t-caption">Nothing is charged until you pay</p>';
     $("agree").onclick = async () => { await call({ member: me(), action: "agree" }); draw(); };
   } else {
-    dock.innerHTML = '<button class="glass primary" id="pay" type="button">Pay ' + money(P.amountCents) + '</button><p class="t-caption">' + (CHECKOUT === "live" ? "Secure checkout by Stripe" : CHECKOUT === "test" ? "Stripe test mode. Use card 4242 4242 4242 4242." : "Demo payment. No card is charged.") + "</p>";
+    dock.innerHTML = '<button class="glass primary" id="pay" type="button">Pay ' + money(P.amountCents) + '</button><p class="t-caption">Paid from your Nickel balance. <a href="/wallet.html">Wallet</a></p>';
     $("pay").onclick = async () => {
       $("pay").disabled = true;
       const out = await call({ member: me(), action: "pay" });
-      if (out.checkoutUrl) return location.href = out.checkoutUrl;
-      toast("Paid");
+      if (out.ok) toast("Paid");
       draw();
     };
   }

@@ -1,7 +1,8 @@
-import { payMode, startCheckout, confirmCheckout, researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
+import { researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
 import { hub, hubCard } from "./hub.js";
 import { authGate, claimStatus, turnTrusted } from "./auth.js";
 import { assistTurn, gradeKrillion, gradedResult, naceStats, punishmentAllowed } from "./nace.js";
+import { walletRoute } from "./money.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -49,6 +50,8 @@ Bun.serve({
     const page = (body: string) => html(body.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n<script>window.ME = ' + inline(me) + ";</script>"));
 
     if (request.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type" } });
+    const wallet = await walletRoute(request, session, base);
+    if (wallet) return wallet;
 
     if (path === "/api/turn" && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as { text?: string; sender?: string; senderPhone?: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string };
@@ -154,14 +157,8 @@ Bun.serve({
     const potApi = path.match(/^\/api\/pot\/([a-z0-9-]+)$/);
     if (potApi) {
       if (request.method === "POST") {
-        const body = (await request.json().catch(() => ({}))) as { member?: string; action?: string };
-        const checkout = body.action === "pay" && payMode() !== "demo" ? await startCheckout(potApi[1], body.member ?? "", base) : null;
-        if (body.action === "pay" && payMode() !== "demo" && !checkout) return json({ ok: false, error: "Stripe did not open a checkout. Try again." }, 502);
-        if (body.action === "pay" && checkout) {
-          joinPot(potApi[1], body.member ?? "", "in");
-          return json({ ok: true, pot: getPot(potApi[1]), checkoutUrl: checkout });
-        }
-        joinPot(potApi[1], body.member ?? "", body.action === "pay" ? "paid" : "in");
+        const body = (await request.json().catch(() => ({}))) as { member?: string };
+        joinPot(potApi[1], body.member ?? "", "in");
       }
       const pot = getPot(potApi[1]);
       return pot ? json({ ok: true, pot }) : json({ ok: false }, 404);
@@ -169,10 +166,9 @@ Bun.serve({
 
     const potPage = path.match(/^\/p\/([a-z0-9-]+)\/?$/);
     if (potPage) {
-      if (url.searchParams.get("paid")) await confirmCheckout(potPage[1], url.searchParams.get("paid")!);
       const pot = getPot(potPage[1]);
       const tags = pot ? headTags(potCard(pot), base, "") : "";
-      return page((await Bun.file(site + "pot.html").text()).replace("<!--POT-->", tags + "\n<script>window.POT = " + inline(pot) + "; window.CHECKOUT = " + inline(payMode()) + ";</script>"));
+      return page((await Bun.file(site + "pot.html").text()).replace("<!--POT-->", tags + "\n<script>window.POT = " + inline(pot) + ";</script>"));
     }
 
     const fantasy = path.match(/^\/f\/([a-z0-9-]+)\/?$/);

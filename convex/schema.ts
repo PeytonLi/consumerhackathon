@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { moneyTables } from "./moneySchema.js";
+import { paymentsTables } from "./paymentsSchema.js";
 import { v } from "convex/values";
 
 export const rewardModeValidator = v.union(
@@ -35,6 +36,7 @@ export const gameTypeValidator = v.union(
 
 export default defineSchema({
   ...moneyTables,
+  ...paymentsTables,
   leagueState: defineTable({ key: v.string(), json: v.string(), updatedAt: v.number() }).index("by_key", ["key"]),
 
   users: defineTable({
