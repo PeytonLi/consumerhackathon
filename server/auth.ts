@@ -135,7 +135,7 @@ export async function authGate(request: Request, socket = ""): Promise<{ request
   if (Number(request.headers.get("content-length") ?? 0) > SIZES[route]) return deny(413, "That is too much data.");
   const text = await request.text();
   if (text.length > SIZES[route]) return deny(413, "That is too much data.");
-  const forward = (body: string) => new Request(request.url, { method: "POST", headers: { "content-type": "application/json", cookie: request.headers.get("cookie") ?? "", host: request.headers.get("host") ?? "" }, body });
+  const forward = (body: string) => new Request(request.url, { method: "POST", headers: { "content-type": "application/json", cookie: request.headers.get("cookie") ?? "", host: request.headers.get("host") ?? "", "x-nickel-secret": request.headers.get("x-nickel-secret") ?? "", authorization: request.headers.get("authorization") ?? "" }, body });
   if (route === "turn") return { request: forward(text), session };
 
   if (!sameSite(request)) return deny(403, "Open this from the Nickel link.");
