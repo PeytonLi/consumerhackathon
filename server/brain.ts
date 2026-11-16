@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node
 import { hubCard, hubLine, hubTurn, notePicks, wantsHub } from "./hub.js";
 import { scoreResult, type Points, type ResultPayload } from "./points.js";
 import { attachAuth, claimPath } from "./auth.js";
+import { payBuyIn, walletCard, walletTurn } from "./wallet.js";
 
 export interface Round {
   id: string;
@@ -235,35 +236,6 @@ export function payMode(): "demo" | "test" | "live" {
   return !key || store.payMode === "demo" ? "demo" : key.startsWith("sk_live") || key.startsWith("rk_live") ? "live" : "test";
 }
 
-export async function startCheckout(potId: string, member: string, base: string): Promise<string | null> {
-  const pot = store.pots[potId];
-  const who = person(member);
-  if (!pot || !who) return null;
-  const form = new URLSearchParams({
-    mode: "payment",
-    "line_items[0][quantity]": "1",
-    "line_items[0][price_data][currency]": "usd",
-    "line_items[0][price_data][unit_amount]": String(pot.amountCents),
-    "line_items[0][price_data][product_data][name]": "Nickel buy-in, " + pot.league,
-    "metadata[pot]": pot.id,
-    "metadata[member]": who,
-    success_url: base + "/p/" + pot.id + "?paid={CHECKOUT_SESSION_ID}",
-    cancel_url: base + "/p/" + pot.id,
-  });
-  const res = await fetch("https://api.stripe.com/v1/checkout/sessions", { method: "POST", headers: { authorization: "Bearer " + process.env.STRIPE_SECRET_KEY, "content-type": "application/x-www-form-urlencoded" }, body: form });
-  const out = (await res.json()) as { url?: string; error?: { message?: string } };
-  if (!out.url) console.error("Stripe checkout failed", res.status, out.error?.message);
-  return out.url ?? null;
-}
-
-export async function confirmCheckout(potId: string, sessionId: string): Promise<boolean> {
-  if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId) || !process.env.STRIPE_SECRET_KEY) return false;
-  const res = await fetch("https://api.stripe.com/v1/checkout/sessions/" + sessionId, { headers: { authorization: "Bearer " + process.env.STRIPE_SECRET_KEY } });
-  const out = (await res.json()) as { payment_status?: string; metadata?: { pot?: string; member?: string } };
-  if (out.payment_status !== "paid" || out.metadata?.pot !== potId || !out.metadata.member) return false;
-  return joinPot(potId, out.metadata.member, "paid").ok;
-}
-
 export function potCard(pot: Pot) {
   const s = potSummary(pot);
   return {
@@ -277,7 +249,7 @@ export function potCard(pot: Pot) {
   };
 }
 
-function potTurn(text: string, lower: string, sender: string): { line: string; pot: Pot | null; pay?: { amountCents: number; memo: string } } | null {
+function potTurn(text: string, lower: string, sender: string): { line: string; pot: Pot | null; pay?: { amountCents: number; memo: string }; shortCents?: number } | null {
   const open = store.latestPot ? store.pots[store.latestPot] : null;
   const amount = lower.match(/\$\s?(\d{1,3}(?:\.\d{2})?)|(\d{1,3}(?:\.\d{2})?)\s?(?:dollars?|bucks)/);
   if (amount && /buy.?in|pot|stakes?|ante|put|throw|each/.test(lower)) {
@@ -287,14 +259,16 @@ function potTurn(text: string, lower: string, sender: string): { line: string; p
     store.pots[pot.id] = pot;
     store.latestPot = pot.id;
     save();
-    return { line: (sender || "Someone") + " proposed a " + dollars(cents) + " buy-in. Say \"Nickel, I'm in\" to agree. Nobody pays until you tap the card.", pot };
+    return { line: (sender || "Someone") + " proposed a " + dollars(cents) + " buy-in. Say \"Nickel, I'm in\" to agree. The buy-in comes out of your wallet.", pot };
   }
   if (!open) return /buy.?in|\bpot\b|pay ?out|payout/.test(lower) ? { line: "No buy-in yet. Say: Nickel, $5 buy-in.", pot: null } : null;
   if (/\b(i'?m in|im in|count me in|i agree|agreed|i'?m down|im down|deal me in|lock me in)\b/.test(lower)) {
     if (!sender) return { line: "Tell me your name first: Nickel, I'm Sritej. Then say you are in.", pot: open };
-    joinPot(open.id, sender, "in");
+    const was = open.members[sender];
+    const paid = payBuyIn(open.id, sender);
     const s = potSummary(open);
-    return { line: sender + " is in. " + s.names.length + " in, " + dollars(s.committedCents) + " pot. Tap the card to pay your " + dollars(open.amountCents) + ".", pot: open, pay: { amountCents: open.amountCents, memo: "Nickel buy-in, " + open.league } };
+    if (!paid.ok) return { line: sender + ", your wallet is " + dollars(paid.shortCents ?? open.amountCents) + " short of the " + dollars(open.amountCents) + " buy-in. You have " + dollars(paid.balanceCents ?? 0) + ". Add money, then say you are in again.", pot: open, shortCents: paid.shortCents ?? open.amountCents };
+    return { line: was === "paid" ? sender + " already paid. " + s.names.length + " in, " + dollars(s.committedCents) + " pot." : sender + " is in and paid " + dollars(open.amountCents) + " from the wallet. " + s.names.length + " in, " + dollars(s.committedCents) + " pot. " + dollars(paid.balanceCents ?? 0) + " left in the wallet.", pot: open };
   }
   if (/buy.?in|\bpot\b|who'?s in|who paid|pay ?out|payout/.test(lower)) {
     const s = potSummary(open);
@@ -688,6 +662,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   const text = input.text.trim();
   const lower = text.toLowerCase();
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
+  const walletReply = walletTurn(input);
+  if (walletReply) return walletReply;
   const hubReply = hubTurn(input);
   if (hubReply) return hubReply;
   const fantasyTalk = /fantasy/.test(lower) && !/punish/.test(lower);
@@ -756,6 +732,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   const money = fantasyTalk ? null : potTurn(text, lower, sender);
   if (money) {
     if (!money.pot) return { addressed: true, line: money.line };
+    if (money.shortCents) return reply(money.line, walletCard(sender, money.shortCents));
     const card = potCard(money.pot);
     return { ...reply(money.line, { ...card, path: card.path + (sender ? "?u=" + sender.toLowerCase() : "") }), pay: money.pay };
   }

@@ -1,5 +1,6 @@
-import { payMode, startCheckout, confirmCheckout, researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
+import { payMode, researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
 import { hub, hubCard } from "./hub.js";
+import { confirmTopUp, payBuyIn, potView, startTopUp, sweepForfeits, topUp, walletCard, walletView, walletViewer, withForfeitNews, withdraw } from "./wallet.js";
 import { authGate, claimStatus, turnTrusted } from "./auth.js";
 import { assistTurn, gradeKrillion, gradedResult, naceStats, punishmentAllowed } from "./nace.js";
 
@@ -33,6 +34,8 @@ function headTags(card: { kicker: string; title: string; sub: string; league: st
 }
 
 console.log("Nickel state: " + (await hydrate()));
+sweepForfeits(Date.now());
+setInterval(() => sweepForfeits(Date.now()), 60000);
 
 Bun.serve({
   port,
@@ -51,6 +54,7 @@ Bun.serve({
     if (request.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type" } });
 
     if (path === "/api/turn" && request.method === "POST") {
+      sweepForfeits(Date.now());
       const body = (await request.json().catch(() => ({}))) as { text?: string; sender?: string; senderPhone?: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string };
       let hasPhoto = false;
       const photoUrl = (body as { photoUrl?: string }).photoUrl;
@@ -74,7 +78,7 @@ Bun.serve({
         const due = dueNudges();
         if (due.length) turn.line += " " + due.map((n) => n.text).join(" ");
       }
-      return json(turn);
+      return json(withForfeitNews(turn));
     }
 
     const resultApi = path.match(/^\/api\/rounds\/([a-z0-9-]+)\/result$/);
@@ -156,24 +160,35 @@ Bun.serve({
     if (potApi) {
       if (request.method === "POST") {
         const body = (await request.json().catch(() => ({}))) as { member?: string; action?: string };
-        const checkout = body.action === "pay" && payMode() !== "demo" ? await startCheckout(potApi[1], body.member ?? "", base) : null;
-        if (body.action === "pay" && payMode() !== "demo" && !checkout) return json({ ok: false, error: "Stripe did not open a checkout. Try again." }, 502);
-        if (body.action === "pay" && checkout) {
-          joinPot(potApi[1], body.member ?? "", "in");
-          return json({ ok: true, pot: getPot(potApi[1]), checkoutUrl: checkout });
-        }
-        joinPot(potApi[1], body.member ?? "", body.action === "pay" ? "paid" : "in");
+        const paid = body.action === "pay" ? payBuyIn(potApi[1], body.member ?? "") : null;
+        if (paid && !paid.ok) return json({ ok: false, error: paid.error, shortCents: paid.shortCents, pot: potView(potApi[1]) }, paid.pot ? 402 : 404);
+        if (!paid) joinPot(potApi[1], body.member ?? "", "in");
       }
-      const pot = getPot(potApi[1]);
+      const pot = potView(potApi[1]);
       return pot ? json({ ok: true, pot }) : json({ ok: false }, 404);
     }
 
     const potPage = path.match(/^\/p\/([a-z0-9-]+)\/?$/);
     if (potPage) {
-      if (url.searchParams.get("paid")) await confirmCheckout(potPage[1], url.searchParams.get("paid")!);
-      const pot = getPot(potPage[1]);
+      const pot = potView(potPage[1]);
       const tags = pot ? headTags(potCard(pot), base, "") : "";
       return page((await Bun.file(site + "pot.html").text()).replace("<!--POT-->", tags + "\n<script>window.POT = " + inline(pot) + "; window.CHECKOUT = " + inline(payMode()) + ";</script>"));
+    }
+
+    if (path === "/api/wallet") {
+      const mode = payMode();
+      if (request.method !== "POST") return json({ ok: true, mode, wallet: walletView(walletViewer(session?.name, url.searchParams.get("u"))) });
+      const body = (await request.json().catch(() => ({}))) as { member?: string; action?: string; amountCents?: number };
+      const who = walletViewer(session?.name, body.member ?? "");
+      const cents = Number(body.amountCents);
+      const out = body.action === "cashout" ? withdraw(who, cents) : body.action !== "topup" ? { ok: false, error: "Not found" } : mode === "demo" ? topUp(who, cents) : await startTopUp(who, cents, base);
+      return json({ ...out, mode, wallet: walletView(who) }, out.ok ? 200 : 400);
+    }
+    if (path === "/og/wallet.png") return new Response((await cardPng(walletCard(""))) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
+    if (path === "/wallet") {
+      if (url.searchParams.get("paid")) await confirmTopUp(url.searchParams.get("paid")!);
+      const view = walletView(walletViewer(session?.name, url.searchParams.get("u")));
+      return page((await Bun.file(site + "wallet.html").text()).replace("<!--WALLET-->", headTags({ ...walletCard(""), path: "/wallet" }, base, "") + "\n<script>window.WALLET = " + inline(view) + "; window.CHECKOUT = " + inline(payMode()) + ";</script>"));
     }
 
     const fantasy = path.match(/^\/f\/([a-z0-9-]+)\/?$/);
