@@ -50,7 +50,7 @@ const boardNames = () => leaderboard().people.map((p) => p.name);
 const top = (counts: Record<string, number>) => Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
 
 function clean(raw: string) {
-  const text = raw.replace(/\p{Extended_Pictographic}|\uFE0F|\u200D|[<>]/gu, "").replace(/\s+/g, " ").trim().replace(/[.!]+$/, "").slice(0, FACT_LENGTH).trim();
+  const text = raw.replace(/<\/?[a-z][^>]*>/gi, "").replace(/\p{Extended_Pictographic}|\uFE0F|\u200D|[<>]/gu, "").replace(/\s+/g, " ").trim().replace(/[.!]+$/, "").slice(0, FACT_LENGTH).trim();
   return text.replace(/^./, (c) => c.toUpperCase());
 }
 
@@ -165,6 +165,22 @@ export function notePicks(name: string, payload: object) {
 
 export const balanceOf = (name: string) => state().balances[name] ?? 0;
 
+export function renamePlayer(old: string, name: string) {
+  const s = state();
+  if (old in s.balances) { s.balances[name] = (s.balances[name] ?? 0) + s.balances[old]; delete s.balances[old]; }
+  if (s.picks[old]) {
+    const counts = (s.picks[name] ??= {});
+    for (const [pick, count] of Object.entries(s.picks[old])) counts[pick] = (counts[pick] ?? 0) + count;
+    delete s.picks[old];
+  }
+  if (s.memory.people[old]) {
+    s.memory.people[name] = [...(s.memory.people[name] ?? []), ...s.memory.people[old]].slice(-PERSON_FACTS);
+    delete s.memory.people[old];
+  }
+  for (const fact of [...Object.values(s.memory.people).flat(), ...s.memory.group]) if (fact.by === old) fact.by = name;
+  for (const payout of s.payouts) if (payout.name === old) payout.name = name;
+}
+
 export function settlePot(potId: string): { ok: boolean; error?: string; payout?: Payout; balanceCents?: number } {
   const s = state();
   const pot = s.pots[potId];
@@ -190,7 +206,7 @@ export function hubTurn(input: { text: string; sender?: string; senderPhone?: st
   const s = state();
   const text = input.text.trim().replace(/[,\s]*@?nickel[.!?\s]*$/i, "");
   const lower = text.toLowerCase();
-  const sender = internals.person(input.sender) || s.names[(input.senderPhone ?? "").replace(/[^+0-9]/g, "")] || "";
+  const sender = s.names[(input.senderPhone ?? "").replace(/[^+0-9]/g, "")] || internals.person(input.sender) || "";
   const say = (line: string): TurnReply => ({ addressed: true, line });
 
   const asked = lower.match(/\b(?:what do (?:you|u)|do (?:you|u)|what'?s|anything)\b.*\b(?:know|remember|got)\b.*\babout\s+(.+?)[?.!\s]*$/)?.[1];
@@ -205,7 +221,7 @@ export function hubTurn(input: { text: string; sender?: string; senderPhone?: st
     return say(facts.length ? who + ": " + facts.slice(0, 5).join(". ") + "." : "Nothing on " + who + " yet. Tell me: Nickel, remember that " + who + " always picks rock.");
   }
 
-  const told = /\b(do|did|don'?t|can|will) (you|u|i|we) remember\b/.test(lower) ? undefined : text.match(/\bremember\s+(?:that\s+)?(.+)$/i)?.[1];
+  const told = /\b(do|did|don'?t|can|will) (you|u|i|we) remember\b|\b(can'?t|cannot|don'?t|didn'?t|do not|never|won'?t) remember\b/.test(lower) ? undefined : text.match(/\bremember\b(?:\s+that\b)?\s*(.*)$/i)?.[1];
   if (told !== undefined) {
     const out = remember(told, sender);
     if (out.error === "Duplicate") return say("Already have that one.");

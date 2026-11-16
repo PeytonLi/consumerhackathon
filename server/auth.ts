@@ -74,6 +74,7 @@ export function endSessions(token: string) {
 }
 
 const isClaimed = (token: string, now = Date.now()) => Object.values(state().sessions).some((s) => s.token === token && now - s.at < SESSION_MS);
+export const nameClaimed = (name: string) => Object.values(source().profiles).some((p) => p.name === name && isClaimed(p.token));
 
 export function claimStatus(session: Session | null, token: string, code: string | null): "owner" | "open" | "locked" {
   if (session?.token === token) return "owner";
@@ -106,9 +107,9 @@ let warned = false;
 export function turnTrusted(request: Request): boolean {
   const secret = process.env.NICKEL_TURN_SECRET;
   if (!secret) {
-    if (!warned) console.warn("NICKEL_TURN_SECRET is not set: every /api/turn caller can request a claim link.");
+    if (!warned) console.warn("NICKEL_TURN_SECRET is not set: messaging turns require browser sessions.");
     warned = true;
-    return true;
+    return false;
   }
   const given = request.headers.get("x-nickel-secret") ?? request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
   return same(given, secret);
@@ -136,7 +137,7 @@ export async function authGate(request: Request, socket = ""): Promise<{ request
   const text = await request.text();
   if (text.length > SIZES[route]) return deny(413, "That is too much data.");
   const forward = (body: string) => new Request(request.url, { method: "POST", headers: { "content-type": "application/json", cookie: request.headers.get("cookie") ?? "", host: request.headers.get("host") ?? "", "x-nickel-secret": request.headers.get("x-nickel-secret") ?? "", authorization: request.headers.get("authorization") ?? "" }, body });
-  if (route === "turn") return { request: forward(text), session };
+  if (route === "turn" && turnTrusted(request)) return { request: forward(text), session };
 
   if (!sameSite(request)) return deny(403, "Open this from the Nickel link.");
   const ip = clientIp(request, socket);
@@ -146,6 +147,14 @@ export async function authGate(request: Request, socket = ""): Promise<{ request
   let parsed: unknown = null;
   try { parsed = JSON.parse(text || "{}"); } catch {}
   const body: Record<string, unknown> = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+
+  if (route === "turn") {
+    if (body.photoUrl) return deny(403, "Add your photo on your player card.");
+    if (!session?.name && !/^\s*@?nickel[\s,!:]*(?:(?:(?:play|new)\s+)?(?:wordle|krillion|rock paper scissors|rps)|play|today|new game|challenge\s+[a-z]+(?:\s+(?:to|at)\s+(?:wordle|krillion|rps|rock paper scissors))?|who won|who'?s (?:winning|losing)|(?:show (?:me )?(?:the )?)?(?:leaderboard|standings|hub)|invite(?: everyone)?|how (?:do|can) (?:we|i) join)[.!?\s]*$/i.test(String(body.text ?? ""))) return deny(401, 'Open your player card first, or text "Nickel, set me up" in the group.');
+    body.sender = session?.name ?? "";
+    body.senderPhone = session ? source().profiles[session.token]?.phone ?? "" : "";
+    return { request: forward(JSON.stringify(body)), session };
+  }
 
   if (route === "claim") {
     if (limited("claim:" + ip, LIMITS.claim)) return deny(429, "Slow down. Try again in a minute.", { "retry-after": "60" });

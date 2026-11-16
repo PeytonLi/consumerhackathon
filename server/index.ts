@@ -58,7 +58,7 @@ Bun.serve({
       const body = (await request.json().catch(() => ({}))) as { text?: string; sender?: string; senderPhone?: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string };
       let hasPhoto = false;
       const photoUrl = (body as { photoUrl?: string }).photoUrl;
-      if (photoUrl && /^https:\/\//.test(photoUrl)) {
+      if (turnTrusted(request) && photoUrl && /^https:\/\//.test(photoUrl)) {
         const proc = Bun.spawn(["ffmpeg", "-loglevel", "error", "-i", photoUrl, "-vf", "scale=384:384:force_original_aspect_ratio=increase,crop=384:384", "-frames:v", "1", "-q:v", "5", "-f", "mjpeg", "pipe:1"], { stdout: "pipe", stderr: "pipe" });
         const bytes = Buffer.from(await new Response(proc.stdout).arrayBuffer());
         if ((await proc.exited) === 0 && bytes.length > 500 && bytes.length < 220000) {
@@ -162,7 +162,7 @@ Bun.serve({
         const body = (await request.json().catch(() => ({}))) as { member?: string; action?: string };
         const paid = body.action === "pay" ? payBuyIn(potApi[1], body.member ?? "") : null;
         if (paid && !paid.ok) return json({ ok: false, error: paid.error, shortCents: paid.shortCents, pot: potView(potApi[1]) }, paid.pot ? 402 : 404);
-        if (!paid) joinPot(potApi[1], body.member ?? "", "in");
+        if (!paid) { const joined = joinPot(potApi[1], body.member ?? "", "in"); if (!joined.ok) return json(joined, getPot(potApi[1]) ? 409 : 404); }
       }
       const pot = potView(potApi[1]);
       return pot ? json({ ok: true, pot }) : json({ ok: false }, 404);
@@ -202,6 +202,7 @@ Bun.serve({
     if (!/^[\w.-]+$/.test(name)) return new Response("Not found", { status: 404 });
     const file = Bun.file(site + name);
     if (!(await file.exists())) return new Response("Not found", { status: 404 });
+    if (name === "messages.html") return page(await file.text());
     return new Response(file, { headers: { "cache-control": "no-store" } });
   },
 });

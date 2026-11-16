@@ -2,10 +2,10 @@ import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
-import { hubCard, hubLine, hubTurn, notePicks, wantsHub } from "./hub.js";
+import { hubCard, hubLine, hubTurn, notePicks, renamePlayer, wantsHub } from "./hub.js";
 import { scoreResult, type Points, type ResultPayload } from "./points.js";
-import { attachAuth, claimPath } from "./auth.js";
-import { payBuyIn, walletCard, walletTurn } from "./wallet.js";
+import { attachAuth, claimPath, nameClaimed } from "./auth.js";
+import { ledgerOf, payBuyIn, walletCard, walletTurn } from "./wallet.js";
 
 export interface Round {
   id: string;
@@ -80,9 +80,9 @@ function save() {
 }
 
 const newId = (prefix: string) => prefix + "-" + Math.random().toString(36).slice(2, 7);
-const cap = (s: string) => s.trim().replace(/\s+/g, " ").replace(/^./, (c) => c.toUpperCase());
-const person = (raw: string | undefined) => {
-  const clean = (raw ?? "").replace(/[^A-Za-z]/g, "").slice(0, 14);
+const cap = (s: string) => (typeof s === "string" ? s : "").trim().replace(/\s+/g, " ").replace(/^./, (c) => c.toUpperCase());
+const person = (raw: unknown) => {
+  const clean = (typeof raw === "string" ? raw : "").replace(/[^A-Za-z]/g, "").slice(0, 14);
   return clean ? clean[0].toUpperCase() + clean.slice(1).toLowerCase() : "";
 };
 const withMember = (name: string) => (name && !MEMBERS.includes(name) ? [...MEMBERS, name] : MEMBERS);
@@ -126,7 +126,7 @@ export function draftPick(id: string, member: string, pickName: string): { ok: b
 
 export function scorePick(id: string, pickName: string, delta: number, by: string): { ok: boolean; error?: string; league?: FantasyLeague } {
   const league = store.fantasy[id];
-  const pick = league?.pool.find((p) => p.name.toLowerCase() === pickName.trim().toLowerCase());
+  const pick = typeof pickName === "string" ? league?.pool.find((p) => p.name.toLowerCase() === pickName.trim().toLowerCase()) : undefined;
   if (!league || !pick || !Number.isFinite(delta) || Math.abs(delta) > 100) return { ok: false, error: "Not found" };
   pick.points += Math.round(delta);
   league.log.push({ pick: pick.name, delta: Math.round(delta), by: person(by) || "Someone", at: Date.now() });
@@ -161,7 +161,7 @@ function createRound(game: Round["game"], sender: string, opponent: string): Rou
     const hands = ["rock", "paper", "scissors"];
     round = { id: newId("rps"), game, title: "Rock Paper Scissors", opponent: opponent || "Dev", bestOf: 3, stake: 5, devMoves: Array.from({ length: 5 }, () => hands[Math.floor(Math.random() * 3)]), ...base };
   } else if (game === "krillion") {
-    round = { id: newId("krill"), game, title: "One in a Krillion", number: 88 + Object.keys(store.rounds).length, prompt: PROMPTS[Math.floor(Math.random() * PROMPTS.length)], seconds: 25, opponent: opponent || undefined, ...base };
+    round = { id: newId("krill"), game, title: "One in a Krillion", number: 88 + Object.keys(store.rounds).length, prompt: PROMPTS[Math.floor(Math.random() * (process.env.NACE_API_KEY ? PROMPTS.length : 1))], seconds: 25, opponent: opponent || undefined, ...base };
   } else {
     round = { id: newId("wordle"), game, title: "Wordle Blitz", number: 213 + Object.keys(store.rounds).length, seconds: 45, answer: WORDS[Math.floor(Math.random() * WORDS.length)], played: [], board: [], opponent: opponent || undefined, ...base };
   }
@@ -261,7 +261,7 @@ function potTurn(text: string, lower: string, sender: string): { line: string; p
     save();
     return { line: (sender || "Someone") + " proposed a " + dollars(cents) + " buy-in. Say \"Nickel, I'm in\" to agree. The buy-in comes out of your wallet.", pot };
   }
-  if (!open) return /buy.?in|\bpot\b|pay ?out|payout/.test(lower) ? { line: "No buy-in yet. Say: Nickel, $5 buy-in.", pot: null } : null;
+  if (!open) return /buy.?in|\bpot\b|pay ?out|payout|who'?s in|who paid|\b(i'?m in|im in|count me in)\b/.test(lower) ? { line: "No buy-in yet. Say: Nickel, $5 buy-in.", pot: null } : null;
   if (/\b(i'?m in|im in|count me in|i agree|agreed|i'?m down|im down|deal me in|lock me in)\b/.test(lower)) {
     if (!sender) return { line: "Tell me your name first: Nickel, I'm Sritej. Then say you are in.", pot: open };
     const was = open.members[sender];
@@ -354,7 +354,45 @@ export function saveProfile(token: string, body: { name?: string; account?: stri
   const name = person(body.name);
   if (!name) return { ok: false, error: "Add your first name." };
   if (body.photo !== undefined && !(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(body.photo) && body.photo.length < 300000)) return { ok: false, error: "That photo did not work. Try another." };
+  const old = profile.name;
   profile.name = name;
+  if (old && old !== name && !Object.values(store.profiles).some((p) => p.name === old)) {
+    if (old in store.nickels) store.nickels[name] = (store.nickels[name] ?? 0) + store.nickels[old];
+    const was = store.stats[old];
+    const now = was ? (store.stats[name] ??= { played: 0, wins: 0, losses: 0 }) : null;
+    if (was && now) for (const key of ["played", "wins", "losses"] as const) now[key] += was[key];
+    delete store.nickels[old];
+    delete store.stats[old];
+    for (const entry of ledgerOf(old)) entry.name = name;
+    renamePlayer(old, name);
+    const replace = (text: string) => text.replace(new RegExp("\\b" + old + "\\b", "g"), name);
+    for (const result of store.results) {
+      if (result.name === old) result.name = name;
+      if (result.loser === old) result.loser = name;
+      result.line = replace(result.line);
+      const players = (result as typeof result & { players?: string[] }).players;
+      if (players) players.splice(0, players.length, ...players.map((p) => p === old ? name : p));
+    }
+    for (const round of Object.values(store.rounds)) {
+      round.members = [...new Set(round.members.map((p) => p === old ? name : p))];
+      if (round.challenger === old) round.challenger = name;
+      if (round.opponent === old) round.opponent = name;
+    }
+    for (const league of Object.values(store.fantasy)) {
+      league.members = [...new Set(league.members.map((p) => p === old ? name : p))];
+      if (league.createdBy === old) league.createdBy = name;
+      for (const pick of league.pool) if (pick.owner === old) pick.owner = name;
+      for (const entry of league.log) if (entry.by === old) entry.by = name;
+    }
+    for (const pot of Object.values(store.pots)) {
+      if (pot.proposer === old) pot.proposer = name;
+      if (pot.members[old]) { pot.members[name] = pot.members[old]; delete pot.members[old]; }
+      const saved = pot as Pot & { winner?: string; paidAt?: Record<string, number> };
+      if (saved.winner === old) saved.winner = name;
+      if (saved.paidAt?.[old]) { saved.paidAt[name] = saved.paidAt[old]; delete saved.paidAt[old]; }
+    }
+    if (store.nudged[old]) { store.nudged[name] = store.nudged[old]; delete store.nudged[old]; }
+  }
   profile.account = String(body.account ?? profile.account ?? "").trim().slice(0, 40);
   if (body.photo) profile.photo = body.photo;
   if (profile.phone) store.names[profile.phone] = name;
@@ -627,9 +665,12 @@ export function recordResult(roundId: string, payload: ResultPayload & { verifie
   const round = getRound(roundId);
   const name = person(payload.name);
   if (!round || !name) return { ok: false };
-  const done: { line: string; points?: Points } | undefined = store.results.find((r) => r.roundId === roundId && r.name === name);
+  const done: { line: string; points?: Points } | undefined = store.results.find((r) => r.roundId === roundId && (r.name === name || (round.game === "rps" && (r as typeof r & { players?: string[] }).players?.includes(name))));
   if (done) return { ok: true, line: done.line, points: done.points };
-  const rival = person(payload.opponent ?? (typeof round.opponent === "string" ? round.opponent : ""));
+  if (round.closed || (round.game === "wordle" && !/^(?:[1-6]|X)\/6$/i.test(String(payload.tries ?? "X/6"))) || (payload.seconds !== undefined && (!Number.isFinite(payload.seconds) || payload.seconds < 0)) || (payload.rarity !== undefined && (!Number.isInteger(payload.rarity) || payload.rarity < 0 || payload.rarity > 5))) return { ok: false };
+  const foe = typeof round.opponent === "string" ? round.opponent : payload.opponent;
+  const rival = person(foe === name ? (typeof round.challenger === "string" ? round.challenger : "") : foe);
+  if (round.game === "rps" && (!rival || rival === name || (round.challenger && name !== round.challenger && name !== round.opponent) || (payload.verified === false && nameClaimed(rival)))) return { ok: false };
   const bump = (who: string, delta: number) => { if (who) store.nickels[who] = (store.nickels[who] ?? 0) + delta; };
   const tally = (who: string, won: boolean) => { if (!who) return; const t = (store.stats[who] ??= { played: 0, wins: 0, losses: 0 }); t.played += 1; if (won) t.wins += 1; else t.losses += 1; };
   const scored = scoreResult(round, payload, { name, rival }, store);
@@ -669,12 +710,13 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   const fantasyTalk = /fantasy/.test(lower) && !/punish/.test(lower);
   const phone = (input.senderPhone ?? "").replace(/[^+0-9]/g, "");
   const intro = person(text.match(/\b(?:i'?m|i am|this is|call me|my name is|it'?s)\s+([A-Za-z]{2,14})\b/i)?.[1]);
-  const introduced = intro && !["Down", "In", "Ready", "Up", "Here", "Back", "Game", "Not", "So", "Good", "The", "A"].includes(intro) ? intro : "";
+  const known = person(input.sender) || (phone ? store.names[phone] ?? "" : "");
+  const introduced = input.trusted !== false && intro && (!known || /\b(call me|my name is)\b/i.test(text)) && !["Down", "In", "Ready", "Up", "Here", "Back", "Game", "Not", "So", "Good", "The", "A", "Done", "Out", "Sorry", "Over", "Rigged", "Bullshit", "Unfair", "Winning", "Losing", "Bored", "Broke", "Tired", "Busy", "Late", "Next", "Sure", "Fine", "Ok", "Okay", "Just", "Still", "Going", "Gonna", "Playing", "Paying", "Joking", "Kidding", "Confused", "On", "Off", "Too", "Really", "Very", "That", "This", "What", "Your", "You", "Me", "Nickel"].includes(intro) ? intro : "";
   if (introduced && phone) {
     store.names[phone] = introduced;
     save();
   }
-  const sender = introduced || person(input.sender) || (phone ? store.names[phone] ?? "" : "");
+  const sender = introduced || (phone ? store.names[phone] ?? "" : "") || person(input.sender);
   const base = input.baseUrl.replace(/\/+$/, "");
   const reply = (line: string, card: ReturnType<typeof roundCard> | ReturnType<typeof fantasyCard> | ReturnType<typeof potCard> | ReturnType<typeof leaderboardCard> | ReturnType<typeof profileCard>): TurnReply => ({
     addressed: true,
@@ -685,7 +727,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   const latest = store.latestFantasy ? store.fantasy[store.latestFantasy] : null;
   const claimCard = (p: Profile) => (input.trusted ? { ...profileCard(p), path: claimPath(p.token) } : profileCard(p));
 
-  if (!/challenge|fantasy|buy.?in|who won|standings|leaderboard|punish|\bplay\b|i'?m in\b|\$\d/.test(lower)) {
+  const wantsArt = /\b(image|picture|pic|photo|draw|show|generate|make)\b.*\b(me|i|myself|my)\b/.test(lower) && /\b(los\w*|last|cry\w*|win\w*|won|first|crown\w*|champ\w*|generate|draw)\b/.test(lower) && !/\bwho\b|standings|leaderboard/.test(lower);
+  if (!wantsArt && !/challenge|fantasy|buy.?in|who won|standings|leaderboard|punish|loser has to|last place|\bplay\b|i'?m in\b|\$\d/.test(lower)) {
     if (/\b(you suck|u suck|sucks?|trash|garbage|stupid|dumb|idiot|shut up|stfu|fuck (you|u|off)|hate (you|u)|useless|the worst|clown|bozo|loser)\b/.test(lower)) {
       save();
       return { addressed: true, react: { emoji: "\u{1F595}", tapback: "dislike" }, line: quip(CLAPBACKS) };
@@ -696,7 +739,6 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     }
   }
 
-  const wantsArt = /\b(image|picture|pic|photo|draw|show|generate|make)\b.*\b(me|i|myself|my)\b/.test(lower) && /\b(los\w*|last|cry\w*|win\w*|won|first|crown\w*|champ\w*|generate|draw)\b/.test(lower);
   if (input.hasPhoto || wantsArt) {
     const mine = profileFor(phone, sender);
     if (!mine.photo) return reply("I need your face first. Text me a photo of yourself, or add one on your card.", claimCard(mine));
@@ -737,7 +779,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     return { ...reply(money.line, { ...card, path: card.path + (sender ? "?u=" + sender.toLowerCase() : "") }), pay: money.pay };
   }
 
-  if (fantasyTalk && (input.fantasyTopic || /(start|create|make|new|set ?up|run|open|draft|do)\b/.test(lower))) {
+  if (fantasyTalk && (input.fantasyTopic || /(start|create|make|new|set ?up|run|open|draft|do)\b|fantasy (league )?(for|about|of|on)\b/.test(lower))) {
     const [head, list] = text.split(/:\s*/, 2);
     const topic = input.fantasyTopic ?? head.match(/\b(?:for|about|of|on)\s+(.+)$/i)?.[1] ?? head.replace(/.*fantasy\s*(league)?/i, "");
     const cleanTopic = topic.replace(/\b(league|draft|please)\b/gi, "").replace(/[.!?]+$/, "").trim() || "anything";
@@ -752,7 +794,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     const pick = score && latest.pool.find((p) => lower.includes(p.name.toLowerCase()));
     if (score && pick) {
       const delta = Number(score[1].replace(/\s/g, ""));
-      scorePick(latest.id, pick.name, delta, sender);
+      if (!scorePick(latest.id, pick.name, delta, sender).ok) return reply("Scores move 100 points at a time at most. " + pick.name + " stays at " + pick.points + ".", fantasyCard(latest));
       const top = fantasyStandings(latest)[0];
       const tail = !pick.owner ? "Nobody owns " + pick.name + " yet, so it is still up for grabs." : top.points > 0 ? top.member + " leads Fantasy " + latest.topic + " with " + top.points + "." : "Fantasy " + latest.topic + " is still wide open.";
       return reply(pick.name + " " + (delta > 0 ? "+" : "") + delta + ". " + tail, fantasyCard(latest));

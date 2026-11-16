@@ -261,7 +261,7 @@ export function walletTurn(input: { text: string; sender?: string; senderPhone?:
   const s = state();
   const lower = input.text.trim().toLowerCase().replace(/@?nickel/g, " ");
   if (/\b(remember|forget|fantasy)\b/.test(lower)) return null;
-  const sender = internals.person(input.sender) || s.names[(input.senderPhone ?? "").replace(/[^+0-9]/g, "")] || "";
+  const sender = s.names[(input.senderPhone ?? "").replace(/[^+0-9]/g, "")] || internals.person(input.sender) || "";
   const say = (line: string): TurnReply => ({ addressed: true, line });
   const found = lower.match(/(\d{1,5})(?:\.(\d{1,2}))?/);
   const cents = found ? Number(found[1]) * 100 + (found[2] ? Number(found[2].padEnd(2, "0")) : 0) : 0;
