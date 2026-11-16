@@ -182,6 +182,10 @@ Bun.serve({
       return page((await Bun.file(site + "fantasy.html").text()).replace("<!--LEAGUE-->", tags + "\n<script>window.LEAGUE = " + inline(league) + ";</script>"));
     }
 
+    if (path === "/w") return page(await Bun.file(site + "wallet.html").text());
+    if (path === "/chest") return page(await Bun.file(site + "chest.html").text());
+    if (path === "/heist") return page(await Bun.file(site + "heist.html").text());
+
     const name = path === "/" ? "messages.html" : path.replace(/^\/+/, "");
     if (!/^[\w.-]+$/.test(name)) return new Response("Not found", { status: 404 });
     const file = Bun.file(site + name);

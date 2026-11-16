@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>Nickel heist</title>
+<link rel="stylesheet" href="/nickel.css">
+<script src="/mock-api.js"></script>
+<style>
+  :root { --game: light-dark(#af52de, #bf5af2); }
+  .stage.list { justify-content: flex-start; align-items: stretch; gap: var(--s3); padding-top: var(--s2); }
+  .perks { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s2); flex: none; }
+  .perk { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 12px 4px 10px; border-radius: var(--r-card); background: var(--surface); }
+  .perk .i { font-size: 22px; color: var(--game); }
+  .perk b { font: 700 17px/1 var(--round); }
+  .perk span { font: 500 12px/1.1 var(--font); color: var(--ink-2); white-space: nowrap; }
+  .perk.none { background: transparent; box-shadow: inset 0 0 0 1.5px var(--hair); }
+  .perk.none .i, .perk.none b, .perk.none span { color: var(--ink-3); }
+  .head { padding: var(--s2) var(--s1) 0; flex: none; }
+  .loose { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 6px; }
+  .loose .rowi { flex: none; height: 64px; width: 100%; text-align: left; }
+  .loose .rowi:active { transform: scale(.98); transition: transform var(--t-press); }
+  .loose .rowi .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .loose .rowi .txt b { flex: none; }
+  .loose .rowi .t-caption { display: flex; align-items: center; gap: 4px; color: var(--ink-2); }
+  .loose .rowi .num { font: 600 15px/1 var(--round); color: var(--ink-2); }
+  .loose .rowi > .i { color: var(--ink-3); font-size: 15px; }
+  .loose .rowi.gone { opacity: .45; pointer-events: none; }
+  .who { display: flex; flex-direction: column; align-items: center; gap: var(--s2); }
+  .clock { font: 700 88px/1 var(--round); letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin: 0; transition: color var(--t-lock) var(--ease); }
+  .clock.hide { color: var(--ink-3); animation: breathe 1.2s var(--ease) infinite; }
+  .clock.dim { color: var(--ink-3); }
+  .target { display: inline-flex; align-items: center; gap: 6px; }
+  .target .i { color: var(--game); }
+  .vs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); width: 100%; }
+  .side { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 8px; }
+  .side span { font: 500 13px/1 var(--font); color: var(--ink-2); }
+  .side b { font: 700 24px/1 var(--round); letter-spacing: -0.02em; }
+  .side.win { box-shadow: inset 0 0 0 2.5px var(--you); }
+  .side.win.them { box-shadow: inset 0 0 0 2.5px var(--them); }
+  .side.win b::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; vertical-align: middle; border-radius: 50%; background: currentColor; }
+  .lost { opacity: .5; }
+  .halo { display: grid; place-items: center; width: 96px; height: 96px; border-radius: 50%; color: var(--ink-3); background: var(--surface); font-size: 40px; }
+  .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s3); text-align: center; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div id="me"></div>
+    <div class="name"><b>Heist</b><span id="sub">Loose nickels</span></div>
+    <div></div>
+  </header>
+  <main class="stage" id="stage"></main>
+  <footer class="dock" id="dock"></footer>
+</div>
+<div class="glass toast" id="toast" role="status"></div>
+<div class="scrim" id="scrim"></div>
+<section class="glass sheet" id="sheet" aria-hidden="true"></section>
+<script src="/nickel.js"></script>
+<script>
+const TARGET = 5000, HIDE = 1500, LIMIT = 9999;
+const PERKS = [["lock", "lock", "Lock"], ["double_steal", "double", "Double"], ["peek", "eye", "Peek"], ["shield", "shield", "Shield"]];
+let H, tick;
+
+const secs = (ms) => (ms / 1000).toFixed(3);
+const left = (end) => {
+  const s = Math.max(0, Math.floor((end - Date.now()) / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = String(s % 60).padStart(2, "0");
+  return h ? h + ":" + String(m).padStart(2, "0") + ":" + r : m + ":" + r;
+};
+const nickels = (n) => n + (n === 1 ? " nickel" : " nickels");
+
+async function load() {
+  clearInterval(tick);
+  setMe();
+  $("sub").textContent = "Loose nickels";
+  try { H = await api("/api/heist"); } catch { stage.className = "stage"; return nowhere("Heist closed", "Text Nickel for today's game"); }
+  list();
+}
+
+function list() {
+  stage.className = "stage list";
+  const perks = '<div class="perks">' + PERKS.map(([k, i, name]) => {
+    const n = H.perks?.[k] ?? 0;
+    return '<div class="perk' + (n ? "" : " none") + '">' + icon(i) + "<b>" + n + "</b><span>" + name + "</span></div>";
+  }).join("") + "</div>";
+  if (!H.loose.length) return show(perks + '<div class="empty"><span class="halo">' + icon("hand") + '</span><p class="t-title">Nothing loose</p><p class="t-label">Unplayed nickels show up here</p></div>');
+  show(
+    perks + '<p class="t-label head">Loose nickels</p><div class="loose">' +
+      H.loose.map((l, i) => '<button class="rowi" type="button" data-id="' + esc(l.id) + '" data-end="' + l.endsAt + '" style="animation-delay:' + i * 60 + 'ms">' + avatar(l.victim) +
+        '<span class="txt"><b>' + esc(l.victim) + '</b><span class="t-caption">' + icon("coin") + nickels(l.nickels) + " \u00b7 " + cash(l.cents) +
+        (l.peek && l.ghostMs != null ? " \u00b7 " + icon("eye") + l.ghostMs + "ms" : "") + '</span></span><span class="num">' + left(l.endsAt) + "</span>" + icon("chevron") + "</button>").join("") +
+    "</div>",
+    '<p class="t-caption">Closest to 5.000s takes it</p>'
+  );
+  stage.querySelector(".loose").onclick = (e) => {
+    const b = e.target.closest(".rowi");
+    if (b) { haptic(); play(H.loose.find((l) => l.id === b.dataset.id)); }
+  };
+  tick = setInterval(() => stage.querySelectorAll("[data-end]").forEach((b) => {
+    b.querySelector(".num").textContent = left(Number(b.dataset.end));
+    b.classList.toggle("gone", Number(b.dataset.end) <= Date.now());
+  }), 1000);
+}
+
+function play(l) {
+  clearInterval(tick);
+  stage.className = "stage";
+  $("sub").textContent = l.victim + "'s " + (l.nickels === 1 ? "nickel" : "nickels");
+  $("me").innerHTML = '<button class="glass icon-btn" id="back" type="button" aria-label="Back">' + icon("back") + "</button>";
+  $("back").onclick = load;
+  const ghost = l.peek && l.ghostMs != null ? '<span class="tag">' + icon("eye") + "Ghost " + l.ghostMs + "ms off</span>" : '<span class="tag">' + icon("lock") + "Ghost hidden</span>";
+  show(
+    '<div class="who">' + avatar(l.victim, "lg") + ghost + '</div><p class="clock" id="clock">0.000</p><p class="t-label target">' + icon("target") + "Stop at 5.000</p>",
+    '<button class="glass primary" id="go" type="button">' + icon("clock") + "Start</button>"
+  );
+  const clock = $("clock"), go = $("go");
+  let t0 = 0, frame;
+  const run = () => {
+    const ms = performance.now() - t0;
+    if (ms >= LIMIT) return stop();
+    if (ms < HIDE) clock.textContent = secs(ms);
+    else if (!clock.classList.contains("hide")) { clock.textContent = "?.???"; clock.classList.add("hide"); }
+    frame = requestAnimationFrame(run);
+  };
+  const stop = () => {
+    const ms = Math.min(LIMIT, Math.round(performance.now() - t0));
+    cancelAnimationFrame(frame);
+    haptic();
+    go.disabled = true;
+    clock.classList.remove("hide");
+    clock.textContent = secs(ms);
+    clock.classList.add("pop");
+    attempt(l, ms);
+  };
+  go.onclick = () => {
+    if (t0) return stop();
+    haptic();
+    $("back").disabled = true;
+    t0 = performance.now();
+    go.innerHTML = icon("target") + "Stop";
+    frame = requestAnimationFrame(run);
+  };
+}
+
+async function attempt(l, ms) {
+  let r;
+  try { r = await api("/api/heist/" + encodeURIComponent(l.id) + "/attempt", { ms }); }
+  catch (err) { toast(err.message); return setTimeout(load, 900); }
+  const mine = Math.abs(ms - TARGET);
+  const ghost = r.ghostMs == null ? "\u2014" : r.ghostMs + "ms";
+  haptic(r.won ? 2 : 1);
+  setTimeout(() => {
+    show(
+      '<div class="who' + (r.won ? " pop" : "") + '">' + avatar(l.victim, "lg" + (r.won ? "" : " ghost")) + '<p class="t-title">' + (r.won ? "Took it" : "Ghost held") + "</p></div>" +
+      '<p class="clock' + (r.won ? "" : " dim") + '">' + secs(ms) + "</p>" +
+      '<div class="vs"><div class="card side' + (r.won ? " win" : "") + '"><span>You</span><b>' + mine + 'ms</b></div><div class="card side' + (r.won ? "" : " win them") + '"><span>' + esc(l.victim) + "'s ghost</span><b>" + ghost + "</b></div></div>" +
+      (r.won ? '<span class="tag pop">' + icon("coin") + "+" + nickels(r.took.nickels) + " \u00b7 +" + cash(r.took.cents) + "</span>" : '<span class="tag">' + icon("lock") + "Nickel stays with " + esc(l.victim) + "</span>"),
+      '<button class="glass primary" id="done" type="button">Done</button>'
+    );
+    $("done").onclick = load;
+  }, reduced() ? 150 : 700);
+}
+
+load();
+</script>
+</body>
+</html>
