@@ -12,6 +12,7 @@ import { demoMode, roster, rosterNames } from "./roster.js";
 import { ARCADE, arcadeGame, arcadeSubmission, arcadeView, createArcade, isArcadeGame, type ArcadeGame, type ArcadeReply } from "./arcade.js";
 import { renderChatCard, renderPersonCard } from "./card-art.js";
 import { attachLive, liveTopicRefusal, liveTurn, openLiveLeague, type LiveData, type LivePick, type LiveAward } from "./live.js";
+import { attachGameEconomy, openDailyEconomy, recordEconomyPlay, type GameEconomyStore } from "./game-economy.js";
 
 export interface Round {
   id: string;
@@ -84,6 +85,7 @@ attachAuth(() => store, () => {
   save();
 });
 attachLive(() => store.fantasy, save);
+attachGameEconomy(() => store as typeof store & GameEconomyStore, save);
 
 function save() {
   mkdirSync(dataDir, { recursive: true });
@@ -643,13 +645,16 @@ function setPunishment(text: string): string {
   return store.punishment!;
 }
 
-export function recordResult(roundId: string, payload: ResultPayload & { verified?: boolean }): ArcadeReply {
+export function recordResult(roundId: string, payload: ResultPayload & { verified?: boolean; practice?: boolean }, authenticatedPhone?: string): ArcadeReply {
   const round = getRound(roundId);
   const name = person(payload.name);
-  if (!round || !name) return { ok: false };
+  if (!round || !name || payload.practice === true) return { ok: false };
   if (isArcadeGame(round.game)) {
     const checked = arcadeSubmission(round, name, payload, store.results, save);
-    if ("reply" in checked) return checked.reply;
+    if ("reply" in checked) {
+      if (checked.reply.ok && !checked.reply.result && checked.reply.attempt && payload.arcade?.action === "start" && payload.verified === true && authenticatedPhone) openDailyEconomy(round.league, authenticatedPhone, checked.reply.attempt.startedAt);
+      return checked.reply;
+    }
     payload = { ...payload, arcadeOutcome: checked.outcome, seconds: checked.seconds, tries: checked.outcome.won ? "1/1" : "X/1" };
   }
   const done: { line: string; points?: Points } | undefined = store.results.find((r) => r.roundId === roundId && (r.name === name || (round.game === "rps" && (r as typeof r & { players?: string[] }).players?.includes(name))));
@@ -679,6 +684,7 @@ export function recordResult(roundId: string, payload: ResultPayload & { verifie
   }
   notePicks(name, payload);
   store.results.push({ roundId, name, line, at: Date.now(), loser: loser || undefined, ...scored.record, ...(payload.verified === true ? {} : { unverified: true }) });
+  if (payload.verified === true && authenticatedPhone) recordEconomyPlay(round.league, authenticatedPhone, scored.total);
   save();
   return { ok: true, line, points: scored.points, ...(isArcadeGame(round.game) ? arcadeView(round, name, store.results) : {}) };
 }
@@ -694,6 +700,11 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
   const contact = (input.senderPhone ?? "").replace(/[^+0-9]/g, "");
   if (contact) profileFor(contact, store.names[contact] ?? "");
+  if (/^\s*@?nickel[\s,!:]+(?:open |show |my |daily )?(chest|heists?)[.!?\s]*$/i.test(text)) {
+    const chest = /chest/i.test(text);
+    const path = chest ? "/chest" : "/heist";
+    return { addressed: true, line: chest ? "Open your daily chest from your Nickel link. Nothing opens until you choose." : "See the loose Nickels and available heists. No attempt starts until you choose.", url: input.baseUrl.replace(/\/+$/, "") + path };
+  }
   const roast = [...text.matchAll(/\b(?:roast|make fun of|mock|clown|drag|trash[- ]?talk)\s+([a-z]+)/gi)].at(-1);
   if (roast && !/\b(?:don'?t|do not|stop|quit|never)\b[^.!?]{0,25}\b(?:roast|make fun of|mock|clown|drag|trash[- ]?talk)\b/i.test(text)) {
     const requested = person(roast[1]);
@@ -860,7 +871,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   }
 
   const asked = (input.game ?? "").toLowerCase();
-  if (/^@?nickel[,\s]+(?:games|arcade)[.!?\s]*$/i.test(text)) return { addressed: true, line: "Wordle Blitz, One in a Krillion, Rock Paper Scissors, Reaction, Free Throw, Memory, Math Sprint, Higher or Lower. Say: Nickel, play reaction." };
+  if (/^@?nickel[,\s]+(?:(?:please|pls|plz)\s+)?(?:(?:show|list)(?:\s+me)?\s+(?:the\s+)?)?(?:games|arcade|game\s+(?:menu|list))(?:[,\s]+(?:please|pls|plz))?[.!?\s]*$/i.test(text)) return { addressed: true, line: "Wordle Blitz, One in a Krillion, Rock Paper Scissors, Reaction, Free Throw, Memory, Math Sprint, Higher or Lower. Say: Nickel, play reaction." };
   const arcade = arcadeGame(asked) ?? arcadeGame(lower);
   const game: Round["game"] = arcade ?? (asked === "wordle" || asked === "krillion" || asked === "rps" ? asked : /word/.test(lower) ? "wordle" : /krill/.test(lower) ? "krillion" : /rock|paper|scissors|rps/.test(lower) ? "rps" : /challenge|\bvs\b|versus|against|1v1/.test(lower) ? "rps" : "wordle");
   const skip = new Set(["between", "me", "and", "to", "a", "an", "the", "with", "my", "us", "him", "her", "them", "pls", "please", "plz", "thanks", "gc", "chat", "here", "now", "today", "tonight", "rn", "nickel", "for", "in", "at", "wordle", "krillion", "rps", "rock", "game"]);

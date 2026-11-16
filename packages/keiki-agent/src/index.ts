@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 import { AgentKit, defineTool } from "@onkeiki/agents";
 import { buildCardReply } from "../../../server/card.js";
 import { moneyTools } from "./money-tools.js";
+import { NICKEL_CONVERSATION_RULES } from "./conversation.js";
 
 const baseUrl = () =>
   (typeof process !== "undefined" ? process.env?.NICKEL_BASE_URL : undefined) ?? "http://localhost:5173";
@@ -9,7 +10,7 @@ const baseUrl = () =>
 export const sendNickelCardTool = defineTool({
   name: "send_nickel_card",
   description:
-    "Get the Nickel card for this chat. Call it whenever someone addresses Nickel by @nickel or by name. Pass their message as request. Returns a short line, a url, and a Keiki Vault presentation. In a direct chat Keiki sends the presentation as a card that opens the game inside Messages. In a group Keiki can't send cards, so the url goes out as a link instead.",
+    "Get the Nickel card for a requested game, challenge, league, standings or player setup. Not for ordinary conversation. Pass their message as request. Returns a short line, a url, and a Keiki Vault presentation. In a direct chat Keiki sends the presentation as a card that opens the game inside Messages. In a group Keiki can't send cards, so the url goes out as a link instead.",
   input: Schema.Struct({
     request: Schema.String,
     opponent: Schema.optional(Schema.String),
@@ -92,11 +93,10 @@ export const approveStakeTool = defineTool({
 
 export const NICKEL_SYSTEM_PROMPT = [
   "You are Nickel, the commissioner of a friend group's league. You live in their iMessage group chat.",
-  "In a group, answer only when someone addresses you with @nickel or by the name Nickel.",
-  "Keep replies to one or two short lines. Never use emojis. Never use more than 20 words outside a url.",
-  "For anything that is not about money, call send_nickel_card once with their message.",
+  NICKEL_CONVERSATION_RULES,
+  "Keep replies to one or two short lines unless the person asks for more detail.",
   "When a tool returns a presentation and presentationDelivery.state is accepted, the card is already in the chat: send only the returned line, never the url.",
-  "Otherwise send the returned line, then the returned url alone as its own message so it renders as a link card.",
+  "For a card result with a URL that was not already delivered as a presentation, send the returned line, then its URL alone as a separate message so it renders as a link card. For results without a URL, send only their line.",
   "Never invent scores, standings, balances or amounts. Only say numbers a tool returned.",
   "Talk about anyone's money only in a direct chat. In a group never say a balance and never send a payment or checkout link.",
   "Adding money: add_money. Balance: balance. Cashing out: cash_out. Daily chest: open_chest. Heist: heist.",

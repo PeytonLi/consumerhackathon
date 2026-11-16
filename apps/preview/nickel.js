@@ -75,7 +75,7 @@ $("sheet").addEventListener("click", (e) => { if (e.target.closest("[data-close]
 async function api(path, body) {
   const res = await fetch(path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Try again");
+  if (!res.ok) throw Object.assign(new Error(data.error || "Try again"), { status: res.status });
   return data;
 }
 function setMe() {

@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: nickel
+    runtime: docker
+    plan: starter
+    branch: main
+    numInstances: 1
+    autoDeployTrigger: 'off'
+    healthCheckPath: /h
+    disk:
+      name: nickel-data
+      mountPath: /var/data/nickel
+      sizeGB: 1
+    envVars:
+      - key: CONVEX_URL
+        value: https://necessary-partridge-548.convex.cloud
+      - key: NICKEL_BASE_URL
+        sync: false
+      - key: NICKEL_TURN_SECRET
+        sync: false
+      - key: NICKEL_MONEY_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: NACE_API_KEY
+        sync: false
+      - key: KEIKI_AGENT_ID
+        value: b4ef3e07-3d87-43c5-a0e2-9abcfa8c3f41
