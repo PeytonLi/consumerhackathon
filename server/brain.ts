@@ -220,6 +220,7 @@ export function joinPot(id: string, member: string, state: "in" | "paid"): { ok:
   const pot = store.pots[id];
   const who = person(member);
   if (!pot || !who) return { ok: false, error: "Not found" };
+  if ((pot as Pot & { settled?: boolean }).settled) return { ok: false, error: "That pot is settled" };
   if (pot.members[who] !== "paid") pot.members[who] = state;
   save();
   return { ok: true, pot };
