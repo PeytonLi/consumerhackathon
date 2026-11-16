@@ -194,35 +194,36 @@ const nextDay = (day: string) => new Date(Date.parse(day + "T12:00:00Z") + 86400
 
 export function sweepForfeits(now = Date.now()): Forfeit[] {
   const s = state();
-  const pot = s.latestPot ? s.pots[s.latestPot] : null;
-  if (!pot || pot.settled) return [];
   const today = dayKey(now);
   const done: Forfeit[] = [];
   let touched = false;
-  for (let day = pot.sweptDay ? nextDay(pot.sweptDay) : dayKey(pot.createdAt); day < today; day = nextDay(day)) {
-    pot.sweptDay = day;
-    touched = true;
-    const results = s.results.filter((r) => dayKey(r.at) === day);
-    const paid = Object.keys(pot.members).filter((name) => pot.members[name] === "paid" && dayKey(pot.paidAt?.[name] ?? pot.createdAt) <= day);
-    const active = paid.filter((name) => results.some((r) => r.name === name || r.loser === name || r.line.includes(name)));
-    const idle = paid.filter((name) => !active.includes(name));
-    if (!active.length || !idle.length) continue;
-    const forfeited = idle.length * pot.amountCents;
-    const share = Math.min(Math.floor(forfeited / active.length), pot.amountCents);
-    const keptCents = forfeited - share * active.length;
-    const when = nextDay(day) === today ? "yesterday" : "on " + day;
-    const line = list(idle) + " did not play " + when + ". " + (idle.length > 1 ? "Their " + dollars(pot.amountCents) + " buy-ins" : idle[0] + "'s " + dollars(pot.amountCents)) + " went to " + list(active) + (active.length > 1 ? ", " + dollars(share) + " each" : "") + "." + (keptCents ? " " + dollars(keptCents) + " stays in the pot." : "");
-    for (const name of idle) {
-      delete pot.members[name];
-      if (pot.paidAt) delete pot.paidAt[name];
-      move(name, "forfeit_out", 0, "Forfeited the " + dollars(pot.amountCents) + " buy-in, did not play " + when, { potId: pot.id, stakeCents: pot.amountCents });
+  for (const pot of Object.values(s.pots)) {
+    if (pot.settled) continue;
+    for (let day = pot.sweptDay ? nextDay(pot.sweptDay) : dayKey(pot.createdAt); day < today; day = nextDay(day)) {
+      pot.sweptDay = day;
+      touched = true;
+      const results = s.results.filter((r) => dayKey(r.at) === day);
+      const paid = Object.keys(pot.members).filter((name) => pot.members[name] === "paid" && dayKey(pot.paidAt?.[name] ?? pot.createdAt) <= day);
+      const active = paid.filter((name) => results.some((r) => r.name === name || r.loser === name || r.line.includes(name)));
+      const idle = paid.filter((name) => !active.includes(name));
+      if (!active.length || !idle.length) continue;
+      const forfeited = idle.length * pot.amountCents;
+      const share = Math.min(Math.floor(forfeited / active.length), pot.amountCents);
+      const keptCents = forfeited - share * active.length;
+      const when = nextDay(day) === today ? "yesterday" : "on " + day;
+      const line = list(idle) + " did not play " + when + ". " + (idle.length > 1 ? "Their " + dollars(pot.amountCents) + " buy-ins" : idle[0] + "'s " + dollars(pot.amountCents)) + " went to " + list(active) + (active.length > 1 ? ", " + dollars(share) + " each" : "") + "." + (keptCents ? " " + dollars(keptCents) + " stays in the pot." : "");
+      for (const name of idle) {
+        delete pot.members[name];
+        if (pot.paidAt) delete pot.paidAt[name];
+        move(name, "forfeit_out", 0, "Forfeited the " + dollars(pot.amountCents) + " buy-in, did not play " + when, { potId: pot.id, stakeCents: pot.amountCents });
+      }
+      for (const name of active) move(name, "forfeit_in", share, "Collected " + dollars(share) + " from " + list(idle) + ", who did not play " + when, { potId: pot.id });
+      pot.forfeitCents = (pot.forfeitCents ?? 0) + keptCents;
+      const forfeit: Forfeit = { day, out: idle, shares: Object.fromEntries(active.map((name) => [name, share])), keptCents, line };
+      (pot.forfeits ??= []).push(forfeit);
+      s.wallet.news.push(line);
+      done.push(forfeit);
     }
-    for (const name of active) move(name, "forfeit_in", share, "Collected " + dollars(share) + " from " + list(idle) + ", who did not play " + when, { potId: pot.id });
-    pot.forfeitCents = (pot.forfeitCents ?? 0) + keptCents;
-    const forfeit: Forfeit = { day, out: idle, shares: Object.fromEntries(active.map((name) => [name, share])), keptCents, line };
-    (pot.forfeits ??= []).push(forfeit);
-    s.wallet.news.push(line);
-    done.push(forfeit);
   }
   if (touched) internals.save();
   return done;
