@@ -1,0 +1,39 @@
+[
+  {
+    "game": "reaction",
+    "practicePostRequests": 0,
+    "finished": true
+  },
+  {
+    "game": "freethrow",
+    "practicePostRequests": 0,
+    "finished": true
+  },
+  {
+    "game": "memory",
+    "practicePostRequests": 0,
+    "finished": true
+  },
+  {
+    "game": "math",
+    "practicePostRequests": 0,
+    "finished": true
+  },
+  {
+    "game": "higherlower",
+    "practicePostRequests": 0,
+    "finished": true
+  },
+  {
+    "check": "five-minute device clock skew compensated",
+    "clock": "0:20"
+  },
+  {
+    "check": "back/reopen forfeits in-progress official round",
+    "score": 0
+  },
+  {
+    "check": "reduced-motion result works without confetti canvas",
+    "canvases": 0
+  }
+]

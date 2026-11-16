@@ -3,6 +3,7 @@ import { hub, hubCard } from "./hub.js";
 import { confirmTopUp, payBuyIn, potView, startTopUp, sweepForfeits, topUp, walletCard, walletView, walletViewer, withForfeitNews, withdraw } from "./wallet.js";
 import { authGate, claimStatus, turnTrusted } from "./auth.js";
 import { assistTurn, gradeKrillion, gradedResult, naceStats, punishmentAllowed } from "./nace.js";
+import { isArcadeGame } from "./arcade.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -115,7 +116,7 @@ Bun.serve({
       const found = getRound(round[1]);
       const data = found ?? { id: round[1], game: "missing", title: "Nickel" };
       const tags = found ? headTags(roundCard(found), base, "") : "";
-      return page((await Bun.file(site + "play.html").text()).replace("<!--ROUND-->", tags + "\n<script>window.ROUND = " + inline(data) + ";</script>"));
+      return page((await Bun.file(site + (found && isArcadeGame(found.game) ? "arcade.html" : "play.html")).text()).replace("<!--ROUND-->", tags + "\n<script>window.ROUND = " + inline(data) + ";</script>"));
     }
 
     const meApi = path.match(/^\/api\/me\/([a-z0-9-]+)$/);
