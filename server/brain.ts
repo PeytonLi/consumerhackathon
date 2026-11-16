@@ -36,6 +36,7 @@ export interface TurnReply {
   line?: string;
   url?: string;
   card?: { kicker: string; title: string; sub: string; path: string };
+  presentation?: { type: "app"; id: string; url: string; caption: string; subcaption: string };
 }
 
 const LEAGUE_NAME = "Cupertino Day Ones";
@@ -705,6 +706,15 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     line,
     url: base + card.path,
     card: { kicker: (card.kicker + " \u00b7 " + card.league).toUpperCase(), title: card.title, sub: card.sub, path: card.path },
+    ...(base.startsWith("https://") && {
+      presentation: {
+        type: "app" as const,
+        id: ("nickel-" + new Date().toISOString().slice(0, 10) + card.path.replace(/[^a-z0-9]+/gi, "-")).slice(0, 128),
+        url: base + card.path,
+        caption: card.title.slice(0, 60),
+        subcaption: card.sub.slice(0, 80),
+      },
+    }),
   });
   const latest = store.latestFantasy ? store.fantasy[store.latestFantasy] : null;
   const claimCard = (p: Profile) => (input.trusted ? { ...profileCard(p), path: claimPath(p.token) } : profileCard(p));

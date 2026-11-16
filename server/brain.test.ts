@@ -35,6 +35,14 @@ describe("group chat turns", () => {
     expect(turn("nickel play krillion").url).toMatch(/\/r\/krill-/);
   });
 
+  it("attaches a Keiki Vault card so a direct chat opens the game inside Messages", () => {
+    const play = turn("@nickel play");
+    expect(play.presentation).toMatchObject({ type: "app", url: play.url, caption: play.card!.title });
+    expect(play.presentation!.id.length).toBeLessThanOrEqual(128);
+    expect(play.presentation!.subcaption.length).toBeLessThanOrEqual(80);
+    expect(brain.handleTurn({ text: "@nickel play", sender: "Sritej", baseUrl: "http://localhost:5173" }).presentation).toBeUndefined();
+  });
+
   it("runs a custom fantasy league on any topic: create, draft, write in, score", () => {
     const made = turn("Nickel, start a fantasy league for boba shops: Boba Guys, Teaspoon, Tpumps", "Maya");
     const id = made.card!.path.slice(3);
