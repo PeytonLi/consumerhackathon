@@ -1,4 +1,5 @@
 import { payMode, startCheckout, confirmCheckout, researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
+import { hub } from "./hub.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -127,6 +128,7 @@ Bun.serve({
       return png ? new Response(png as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=60" } }) : new Response("Not found", { status: 404 });
     }
     if (path === "/api/leaderboard") return json(board());
+    if (path === "/api/hub") return json(hub(me));
     if (path === "/og/l.png") return new Response((await cardPng(leaderboardCard())) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
     if (path === "/l") return page((await Bun.file(site + "leaderboard.html").text()).replace("<!--BOARD-->", headTags(leaderboardCard(), base, "") + "\n<script>window.BOARD = " + inline(board()) + ";</script>"));
 
