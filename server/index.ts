@@ -1,5 +1,8 @@
-import { payMode, startCheckout, confirmCheckout, researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
-import { hub } from "./hub.js";
+import { payMode, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
+import { hub, hubCard } from "./hub.js";
+import { confirmTopUp, payBuyIn, potView, startTopUp, sweepForfeits, topUp, walletCard, walletView, walletViewer, withForfeitNews, withdraw } from "./wallet.js";
+import { authGate, claimStatus, turnTrusted } from "./auth.js";
+import { assistTurn, gradeKrillion, gradedResult, naceStats } from "./nace.js";
 import { customRoute, prepareTurn } from "./custom.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
@@ -32,20 +35,27 @@ function headTags(card: { kicker: string; title: string; sub: string; league: st
 }
 
 console.log("Nickel state: " + (await hydrate()));
+sweepForfeits(Date.now());
+setInterval(() => sweepForfeits(Date.now()), 60000);
 
 Bun.serve({
   port,
   hostname: "0.0.0.0",
-  async fetch(request) {
+  maxRequestBodySize: 1000000,
+  async fetch(incoming, server) {
+    const gate = await authGate(incoming, server.requestIP(incoming)?.address ?? "");
+    if (gate instanceof Response) return gate;
+    const { request, session } = gate;
     const url = new URL(request.url);
     const path = url.pathname;
     const base = origin(request);
-    const me = getProfile(request.headers.get("cookie")?.match(/(?:^|;\s*)nickel_me=([a-z0-9-]+)/)?.[1] ?? "");
+    const me = getProfile(session?.token ?? "");
     const page = (body: string) => html(body.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n<script>window.ME = ' + inline(me) + ";</script>"));
 
     if (request.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type" } });
 
     if (path === "/api/turn" && request.method === "POST") {
+      sweepForfeits(Date.now());
       const body = (await request.json().catch(() => ({}))) as { text?: string; sender?: string; senderPhone?: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string };
       let hasPhoto = false;
       const photoUrl = (body as { photoUrl?: string }).photoUrl;
@@ -59,13 +69,14 @@ Bun.serve({
       }
       let text = String(body.text ?? "");
       await prepareTurn(text);
-      const turn = handleTurn({ hasPhoto, text, sender: body.sender, senderPhone: body.senderPhone, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined });
+      const trusted = turnTrusted(request);
+      const turn = await assistTurn((text) => handleTurn({ trusted, hasPhoto, text, sender: body.sender, senderPhone: body.senderPhone, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined }), text, body.sender);
       if (turn.art) await Promise.race([generateArt(turn.art.token, turn.art.role), new Promise((r) => setTimeout(r, 40000))]);
       if (turn.addressed && turn.line && Number(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false })) >= 18) {
         const due = dueNudges();
         if (due.length) turn.line += " " + due.map((n) => n.text).join(" ");
       }
-      return json(turn);
+      return json(withForfeitNews(turn));
     }
 
     const custom = await customRoute(request.method, url, () => request.json().catch(() => ({})));
@@ -74,7 +85,16 @@ Bun.serve({
     if (custom) return page((await Bun.file(site + "custom.html").text()).replace("<!--GAME-->", (custom.card ? headTags(custom.card, base, "") : "") + "\n<script>window.GAME = " + inline(custom.game) + ";</script>"));
 
     const resultApi = path.match(/^\/api\/rounds\/([a-z0-9-]+)\/result$/);
-    if (resultApi && request.method === "POST") return json(recordResult(resultApi[1], (await request.json().catch(() => ({}))) as Parameters<typeof recordResult>[1]));
+    if (resultApi && request.method === "POST") return json(recordResult(resultApi[1], await gradedResult(getRound(resultApi[1]), (await request.json().catch(() => ({}))) as Parameters<typeof recordResult>[1])));
+
+    const gradeApi = path.match(/^\/api\/rounds\/([a-z0-9-]+)\/grade$/);
+    if (gradeApi && request.method === "POST") {
+      const found = getRound(gradeApi[1]);
+      const body = (await request.json().catch(() => ({}))) as { answer?: unknown };
+      if (!found || found.game !== "krillion") return json({ ok: false }, 404);
+      return json({ ok: true, grade: await gradeKrillion(String(found.prompt ?? ""), String(body.answer ?? "")) });
+    }
+    if (path === "/api/nace") return json(naceStats());
 
     const fantasyApi = path.match(/^\/api\/fantasy\/([a-z0-9-]+)(?:\/(draft|score))?$/);
     if (fantasyApi) {
@@ -114,8 +134,8 @@ Bun.serve({
     const mePage = path.match(/^\/me\/([a-z0-9-]+)\/?$/);
     if (mePage) {
       const profile = getProfile(mePage[1]);
-      const body = (await Bun.file(site + "profile.html").text()).replace("<!--PROFILE-->", (profile ? headTags(profileCard(profile), base, "") : "") + "\n<script>window.PROFILE = " + inline(profile) + ";</script>");
-      return new Response(body, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...(profile ? { "set-cookie": "nickel_me=" + profile.token + "; Path=/; Max-Age=31536000; SameSite=Lax" } : {}) } });
+      const body = (await Bun.file(site + "profile.html").text()).replace("<!--PROFILE-->", (profile ? headTags(profileCard(profile), base, "") : "") + "\n<script>window.PROFILE = " + inline(profile) + "; window.CLAIM = " + inline(claimStatus(session, mePage[1], url.searchParams.get("k"))) + ";</script>");
+      return page(body);
     }
 
     const board = () => { ensureArt(); const b = leaderboard(); return { ...b, cards: leaderboardImages(), order: [...b.people].reverse().map((p) => p.name) }; };
@@ -134,29 +154,44 @@ Bun.serve({
     if (path === "/api/hub") return json(hub(me));
     if (path === "/og/l.png") return new Response((await cardPng(leaderboardCard())) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
     if (path === "/l") return page((await Bun.file(site + "leaderboard.html").text()).replace("<!--BOARD-->", headTags(leaderboardCard(), base, "") + "\n<script>window.BOARD = " + inline(board()) + ";</script>"));
+    if (path === "/w") return page((await Bun.file(site + "wrapped.html").text()).replace("<!--WRAPPED-->", headTags({ ...leaderboardCard(), kicker: "Wrapped", title: "Season recap", path: "/w" }, base, "").replace("/og/w.png", "/og/l.png") + "\n<script>window.BOARD = " + inline(board()) + ";</script>"));
+
+    if (path === "/og/h.png") return new Response((await cardPng(hubCard(leaderboard()))) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
+    if (path === "/h") return page((await Bun.file(site + "hub.html").text()).replace("<!--HUB-->", headTags(hubCard(leaderboard()), base, "") + "\n<script>window.HUB = " + inline(hub(me)) + ";</script>"));
 
     const potApi = path.match(/^\/api\/pot\/([a-z0-9-]+)$/);
     if (potApi) {
       if (request.method === "POST") {
         const body = (await request.json().catch(() => ({}))) as { member?: string; action?: string };
-        const checkout = body.action === "pay" && payMode() !== "demo" ? await startCheckout(potApi[1], body.member ?? "", base) : null;
-        if (body.action === "pay" && payMode() !== "demo" && !checkout) return json({ ok: false, error: "Stripe did not open a checkout. Try again." }, 502);
-        if (body.action === "pay" && checkout) {
-          joinPot(potApi[1], body.member ?? "", "in");
-          return json({ ok: true, pot: getPot(potApi[1]), checkoutUrl: checkout });
-        }
-        joinPot(potApi[1], body.member ?? "", body.action === "pay" ? "paid" : "in");
+        const paid = body.action === "pay" ? payBuyIn(potApi[1], body.member ?? "") : null;
+        if (paid && !paid.ok) return json({ ok: false, error: paid.error, shortCents: paid.shortCents, pot: potView(potApi[1]) }, paid.pot ? 402 : 404);
+        if (!paid) joinPot(potApi[1], body.member ?? "", "in");
       }
-      const pot = getPot(potApi[1]);
+      const pot = potView(potApi[1]);
       return pot ? json({ ok: true, pot }) : json({ ok: false }, 404);
     }
 
     const potPage = path.match(/^\/p\/([a-z0-9-]+)\/?$/);
     if (potPage) {
-      if (url.searchParams.get("paid")) await confirmCheckout(potPage[1], url.searchParams.get("paid")!);
-      const pot = getPot(potPage[1]);
+      const pot = potView(potPage[1]);
       const tags = pot ? headTags(potCard(pot), base, "") : "";
       return page((await Bun.file(site + "pot.html").text()).replace("<!--POT-->", tags + "\n<script>window.POT = " + inline(pot) + "; window.CHECKOUT = " + inline(payMode()) + ";</script>"));
+    }
+
+    if (path === "/api/wallet") {
+      const mode = payMode();
+      if (request.method !== "POST") return json({ ok: true, mode, wallet: walletView(walletViewer(session?.name, url.searchParams.get("u"))) });
+      const body = (await request.json().catch(() => ({}))) as { member?: string; action?: string; amountCents?: number };
+      const who = walletViewer(session?.name, body.member ?? "");
+      const cents = Number(body.amountCents);
+      const out = body.action === "cashout" ? withdraw(who, cents) : body.action !== "topup" ? { ok: false, error: "Not found" } : mode === "demo" ? topUp(who, cents) : await startTopUp(who, cents, base);
+      return json({ ...out, mode, wallet: walletView(who) }, out.ok ? 200 : 400);
+    }
+    if (path === "/og/wallet.png") return new Response((await cardPng(walletCard(""))) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
+    if (path === "/wallet") {
+      if (url.searchParams.get("paid")) await confirmTopUp(url.searchParams.get("paid")!);
+      const view = walletView(walletViewer(session?.name, url.searchParams.get("u")));
+      return page((await Bun.file(site + "wallet.html").text()).replace("<!--WALLET-->", headTags({ ...walletCard(""), path: "/wallet" }, base, "") + "\n<script>window.WALLET = " + inline(view) + "; window.CHECKOUT = " + inline(payMode()) + ";</script>"));
     }
 
     const fantasy = path.match(/^\/f\/([a-z0-9-]+)\/?$/);

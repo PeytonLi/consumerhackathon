@@ -129,6 +129,7 @@
 <div class="glass toast" id="toast" role="status"></div>
 <div class="scrim" id="scrim"></div>
 <section class="glass sheet" id="sheet" aria-hidden="true"></section>
+<script src="/juice.js"></script>
 <script>
 const R = window.ROUND ?? { game: "missing", title: "Nickel" };
 const params = new URLSearchParams(location.search);
@@ -155,19 +156,16 @@ const ICON = {
 const icon = (n) => '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">' + ICON[n] + "</svg>";
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
 const fmt = (s) => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
-const post = (line) => !line || params.has("practice") ? Promise.resolve(null) : fetch("/api/rounds/" + R.id + "/result", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(line), keepalive: true }).then((r) => r.json()).then((d) => d.points ?? null).catch(() => null);
-const partsLine = (parts) => '<p class="t-caption">' + parts.map((x, i) => (i ? (x.points < 0 ? " − " : " + ") : "") + Math.abs(x.points) + " " + esc(x.label)).join("") + "</p>";
-const showPoints = (p) => {
-  if (!p || !$("points")) return;
-  $("points").innerHTML = '<span class="tag pop">' + icon("coin") + "+" + p.total + "</span>" + partsLine(p.parts);
-};
+const post = (line) => !line || params.has("practice") ? Promise.resolve(null) : fetch("/api/rounds/" + R.id + "/result", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(line), keepalive: true }).then(async (r) => { const d = await r.json(); if (r.status === 403) toast(d.error); return d.points ?? null; }).catch(() => null);
+const boardBefore = Juice.board();
+const celebrate = (won, p) => Juice.result({ host: $("points"), points: p, won, icon: icon("coin"), haptic: (n) => haptic(n), me: me(), before: boardBefore, after: Juice.board, href: "/l" + (params.get("theme") ? "?theme=" + params.get("theme") : "") });
 const tell = (line) => {
   const sent = post(line);
   if (parent !== window) parent.postMessage({ type: "nickel:done", round: R.id, line }, "*");
   return sent;
 };
 const meKey = "nickel.me." + via;
-const me = () => (!params.get("via") && window.ME && window.ME.name) || sessionStorage.getItem(meKey);
+const me = () => (window.ME && window.ME.name) || sessionStorage.getItem(meKey);
 const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", "#5e5ce6"];
 const hue = (name) => { const i = (R.members ?? []).indexOf(name); return HUES[(i < 0 ? [...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) : i) % HUES.length]; };
 const avatar = (name, cls = "", seal = "") => '<span class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + esc(name[0]) + (seal ? '<span class="seal">' + icon(seal) + "</span>" : "") + "</span>";
@@ -408,7 +406,7 @@ function wordle() {
         if (err?.name !== "AbortError") toast("Couldn't share");
       }
     };
-    tell({ name: me(), tries, time: fmt(secs), seconds: secs }).then(showPoints);
+    tell({ name: me(), tries, time: fmt(secs), seconds: secs }).then((p) => celebrate(won, p));
   }
 }
 
@@ -435,11 +433,16 @@ function krillion() {
     const elapsed = countdown(R.seconds, () => submit());
     const submit = () => {
       const typed = input.value.trim();
-      const hit = grade[typed.toLowerCase()] ?? 0;
       const secs = elapsed();
       input.blur();
       stopClock(icon("check") + fmt(secs));
       haptic();
+      $("send").disabled = true;
+      input.disabled = true;
+      const judged = !typed ? Promise.resolve(null) : fetch("/api/rounds/" + R.id + "/grade", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ answer: typed }), signal: AbortSignal.timeout(2500) }).then((r) => r.json()).then((d) => d.grade ?? null).catch(() => null);
+      judged.then((g) => reveal(typed, secs, g ? g.rarity : grade[typed.toLowerCase()] ?? 0));
+    };
+    const reveal = (typed, secs, hit) => {
       show(
         (practice ? '<span class="tag">' + icon("again") + "Practice</span>" : "") +
         '<div class="result"><p class="t-display" id="m">0m</p><p class="t-head">' + tiers[hit][0] + '</p><p class="t-label">“' + esc(typed || "—") + '”</p><div class="points" id="points"></div></div>' + depth(hit),
@@ -451,7 +454,7 @@ function krillion() {
       let n = 0;
       const step = setInterval(() => { n = Math.min(target, n + Math.ceil(target / 26)); $("m").textContent = n + "m"; if (n >= target) clearInterval(step); }, 40);
       $("again").onclick = () => practice ? krillion() : tell(null);
-      post({ name: me(), tries: hit ? "1/1" : "X/1", time: fmt(secs), seconds: secs, rarity: hit }).then(showPoints);
+      post({ name: me(), tries: hit ? "1/1" : "X/1", time: fmt(secs), seconds: secs, rarity: hit, answer: typed }).then((p) => celebrate(hit > 0, p));
     };
     $("send").onclick = submit;
     input.onkeydown = (e) => { if (e.key === "Enter" && input.value.trim()) submit(); };
@@ -512,7 +515,7 @@ function rps() {
       const amount = (won ? "+" : "−") + Math.abs(parts.reduce((n, x) => n + x.points, 0));
       $("amt").textContent = amount;
       setClock(icon("coin") + amount);
-      if (parts.length > 1) $("points").innerHTML = partsLine(parts);
+      celebrate(won, won ? p : { total: -Math.abs(parts.reduce((n, x) => n + x.points, 0)), parts });
     });
   }
 }

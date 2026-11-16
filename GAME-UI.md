@@ -25,7 +25,7 @@ Results replace the stage and dock in place, or rise as a bottom sheet for head-
 5. **No instruction paragraphs.** Teach with the object itself: empty tiles, a pulsing first tile, a "?" card waiting for your hand, a lock on the opponent's card, the depth ladder shown before you start. If a rule can't be shown, it goes in the ⓘ sheet.
 6. **ⓘ only for hidden rules.** A ⓘ button appears when the scoring is not visible on the board. It opens a sheet with a title, at most three icon-and-line rows, and "Got it". It never opens by itself.
 7. **Every tap answers within 100ms.** It answers with a press scale, a state change, and a haptic tick where iOS allows it. Each haptic has one meaning.
-8. **Win and lose gently.** A spring pop and a double tick for a win, a dim for a loss. No confetti and no red screens.
+8. **Win big, lose funny, both fast.** A win gets one confetti burst and a triple tick; a loss gets a crooked tag and one dry line. No red screens. The whole result finishes in 1.5 seconds and any tap skips it. See [`DOPAMINE.md`](DOPAMINE.md).
 9. **One type family.** SF Pro for words, SF Pro Rounded for numbers (`ui-rounded`, tabular). Weights are 400, 500, 600, and 700 only, and nothing is smaller than 12pt.
 10. **Always land somewhere.** Closed and expired rounds still return HTTP 200 and offer the next step (Today's game, Practice, or text Nickel), because Keiki Vault shows its own error page for any status of 400 or above.
 

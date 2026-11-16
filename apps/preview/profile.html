@@ -35,6 +35,8 @@
 <input type="file" id="file" accept="image/*" capture="user" hidden>
 <script>
 let P = window.PROFILE;
+let claim = window.CLAIM;
+const code = new URLSearchParams(location.search).get("k");
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
 let photo = "";
@@ -44,6 +46,11 @@ const CAMERA = '<svg viewBox="0 0 24 24"><path d="M4 8.5h3l1.5-2.5h7L17 8.5h3a1 
 function form() {
   if (!P) { $("stage").innerHTML = '<p class="t-title">This card link is not valid.</p><p class="t-caption">Text "Nickel, set me up" in the group for a new one.</p>'; return; }
   $("stage").className = "stage";
+  if (claim === "locked") {
+    $("stage").innerHTML = '<span class="shot" style="width:128px;height:128px">' + (P.face ? '<img src="' + P.face + '" alt="">' : esc((P.name || "N")[0])) + '</span><p class="t-title" style="text-align:center">' + (P.name ? esc(P.name) + "'s card is set up on another phone." : "This link was already used.") + '</p><p class="t-caption" style="text-align:center;max-width:300px">Is this you? Text "Nickel, set me up" in the group and open the fresh link on this phone.</p>';
+    $("dock").innerHTML = '<a class="glass primary" href="/l" style="text-decoration:none;display:grid;place-items:center">See the leaderboard</a>';
+    return;
+  }
   $("stage").innerHTML =
     '<button class="shot" id="shot" type="button" aria-label="Add your photo">' + (P.face ? '<img src="' + P.face + '" alt="">' : "<span>" + CAMERA + "Add a photo</span>") + "</button>" +
     '<div class="fields"><label for="name">First name</label><input id="name" maxlength="14" autocomplete="given-name" placeholder="Sritej" value="' + esc(P.name || "") + '"></div>' +
@@ -75,6 +82,12 @@ async function save() {
   $("save").disabled = true;
   const body = { name };
   if (photo) body.photo = photo;
+  if (claim === "open") {
+    const claimed = await (await fetch("/api/claim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: P.token, code }) })).json().catch(() => ({ ok: false, error: "Nickel is offline." }));
+    if (!claimed.ok) { claim = "locked"; toast(claimed.error || "Could not save."); return form(); }
+    claim = "owner";
+    history.replaceState(null, "", location.pathname);
+  }
   const res = await (await fetch("/api/me/" + P.token, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json().catch(() => ({ ok: false, error: "Nickel is offline." }));
   if (!res.ok) { $("save").disabled = false; return toast(res.error || "Could not save."); }
   P = res.profile;

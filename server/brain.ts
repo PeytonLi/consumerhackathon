@@ -2,10 +2,12 @@ import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
-import { hubTurn, notePicks } from "./hub.js";
+import { hubCard, hubLine, hubTurn, notePicks, wantsHub } from "./hub.js";
 import { scoreResult, type Points, type ResultPayload } from "./points.js";
 import { customScore, customTurn, punishmentPool } from "./custom.js";
 import { ALL_PUNISHMENTS } from "./punishments.js";
+import { attachAuth, claimPath } from "./auth.js";
+import { payBuyIn, walletCard, walletTurn } from "./wallet.js";
 
 export interface Round {
   id: string;
@@ -68,6 +70,7 @@ store.quips ??= 0;
 store.art ??= {};
 store.nudged ??= {};
 store.profiles ??= {};
+attachAuth(() => store, save);
 
 function save() {
   mkdirSync(dataDir, { recursive: true });
@@ -235,35 +238,6 @@ export function payMode(): "demo" | "test" | "live" {
   return !key || store.payMode === "demo" ? "demo" : key.startsWith("sk_live") || key.startsWith("rk_live") ? "live" : "test";
 }
 
-export async function startCheckout(potId: string, member: string, base: string): Promise<string | null> {
-  const pot = store.pots[potId];
-  const who = person(member);
-  if (!pot || !who) return null;
-  const form = new URLSearchParams({
-    mode: "payment",
-    "line_items[0][quantity]": "1",
-    "line_items[0][price_data][currency]": "usd",
-    "line_items[0][price_data][unit_amount]": String(pot.amountCents),
-    "line_items[0][price_data][product_data][name]": "Nickel buy-in, " + pot.league,
-    "metadata[pot]": pot.id,
-    "metadata[member]": who,
-    success_url: base + "/p/" + pot.id + "?paid={CHECKOUT_SESSION_ID}",
-    cancel_url: base + "/p/" + pot.id,
-  });
-  const res = await fetch("https://api.stripe.com/v1/checkout/sessions", { method: "POST", headers: { authorization: "Bearer " + process.env.STRIPE_SECRET_KEY, "content-type": "application/x-www-form-urlencoded" }, body: form });
-  const out = (await res.json()) as { url?: string; error?: { message?: string } };
-  if (!out.url) console.error("Stripe checkout failed", res.status, out.error?.message);
-  return out.url ?? null;
-}
-
-export async function confirmCheckout(potId: string, sessionId: string): Promise<boolean> {
-  if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId) || !process.env.STRIPE_SECRET_KEY) return false;
-  const res = await fetch("https://api.stripe.com/v1/checkout/sessions/" + sessionId, { headers: { authorization: "Bearer " + process.env.STRIPE_SECRET_KEY } });
-  const out = (await res.json()) as { payment_status?: string; metadata?: { pot?: string; member?: string } };
-  if (out.payment_status !== "paid" || out.metadata?.pot !== potId || !out.metadata.member) return false;
-  return joinPot(potId, out.metadata.member, "paid").ok;
-}
-
 export function potCard(pot: Pot) {
   const s = potSummary(pot);
   return {
@@ -277,7 +251,7 @@ export function potCard(pot: Pot) {
   };
 }
 
-function potTurn(text: string, lower: string, sender: string): { line: string; pot: Pot | null; pay?: { amountCents: number; memo: string } } | null {
+function potTurn(text: string, lower: string, sender: string): { line: string; pot: Pot | null; pay?: { amountCents: number; memo: string }; shortCents?: number } | null {
   const open = store.latestPot ? store.pots[store.latestPot] : null;
   const amount = lower.match(/\$\s?(\d{1,3}(?:\.\d{2})?)|(\d{1,3}(?:\.\d{2})?)\s?(?:dollars?|bucks)/);
   if (amount && /buy.?in|pot|stakes?|ante|put|throw|each/.test(lower)) {
@@ -287,14 +261,16 @@ function potTurn(text: string, lower: string, sender: string): { line: string; p
     store.pots[pot.id] = pot;
     store.latestPot = pot.id;
     save();
-    return { line: (sender || "Someone") + " proposed a " + dollars(cents) + " buy-in. Say \"Nickel, I'm in\" to agree. Nobody pays until you tap the card.", pot };
+    return { line: (sender || "Someone") + " proposed a " + dollars(cents) + " buy-in. Say \"Nickel, I'm in\" to agree. The buy-in comes out of your wallet.", pot };
   }
   if (!open) return /buy.?in|\bpot\b|pay ?out|payout/.test(lower) ? { line: "No buy-in yet. Say: Nickel, $5 buy-in.", pot: null } : null;
   if (/\b(i'?m in|im in|count me in|i agree|agreed|i'?m down|im down|deal me in|lock me in)\b/.test(lower)) {
     if (!sender) return { line: "Tell me your name first: Nickel, I'm Sritej. Then say you are in.", pot: open };
-    joinPot(open.id, sender, "in");
+    const was = open.members[sender];
+    const paid = payBuyIn(open.id, sender);
     const s = potSummary(open);
-    return { line: sender + " is in. " + s.names.length + " in, " + dollars(s.committedCents) + " pot. Tap the card to pay your " + dollars(open.amountCents) + ".", pot: open, pay: { amountCents: open.amountCents, memo: "Nickel buy-in, " + open.league } };
+    if (!paid.ok) return { line: sender + ", your wallet is " + dollars(paid.shortCents ?? open.amountCents) + " short of the " + dollars(open.amountCents) + " buy-in. You have " + dollars(paid.balanceCents ?? 0) + ". Add money, then say you are in again.", pot: open, shortCents: paid.shortCents ?? open.amountCents };
+    return { line: was === "paid" ? sender + " already paid. " + s.names.length + " in, " + dollars(s.committedCents) + " pot." : sender + " is in and paid " + dollars(open.amountCents) + " from the wallet. " + s.names.length + " in, " + dollars(s.committedCents) + " pot. " + dollars(paid.balanceCents ?? 0) + " left in the wallet.", pot: open };
   }
   if (/buy.?in|\bpot\b|who'?s in|who paid|pay ?out|payout/.test(lower)) {
     const s = potSummary(open);
@@ -632,7 +608,7 @@ function setPunishment(text: string): string {
   return store.punishment!;
 }
 
-export function recordResult(roundId: string, payload: ResultPayload): { ok: boolean; line?: string; points?: Points } {
+export function recordResult(roundId: string, payload: ResultPayload & { verified?: boolean }): { ok: boolean; line?: string; points?: Points } {
   const round = getRound(roundId);
   const name = person(payload.name);
   if (!round || !name) return { ok: false };
@@ -657,7 +633,7 @@ export function recordResult(roundId: string, payload: ResultPayload): { ok: boo
     if (!solved) loser = name;
   }
   notePicks(name, payload);
-  store.results.push({ roundId, name, line, at: Date.now(), loser: loser || undefined, ...scored.record });
+  store.results.push({ roundId, name, line, at: Date.now(), loser: loser || undefined, ...scored.record, ...(payload.verified === true ? {} : { unverified: true }) });
   save();
   return { ok: true, line, points: scored.points };
 }
@@ -667,10 +643,12 @@ export function nickelStandings(): string {
   return rows.length ? "Nickels: " + rows.slice(0, 6).map(([who, n]) => who + " " + (n > 0 ? "+" : "") + n).join(", ") + "." : "No Nickels have moved yet. First to finish a game takes the lead.";
 }
 
-export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string; hasPhoto?: boolean }): TurnReply {
+export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string; hasPhoto?: boolean; trusted?: boolean }): TurnReply {
   const text = input.text.trim();
   const lower = text.toLowerCase();
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
+  const walletReply = walletTurn(input);
+  if (walletReply) return walletReply;
   const hubReply = hubTurn(input);
   if (hubReply) return hubReply;
   const customReply = customTurn(input);
@@ -692,6 +670,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     card: { kicker: (card.kicker + " \u00b7 " + card.league).toUpperCase(), title: card.title, sub: card.sub, path: card.path },
   });
   const latest = store.latestFantasy ? store.fantasy[store.latestFantasy] : null;
+  const claimCard = (p: Profile) => (input.trusted ? { ...profileCard(p), path: claimPath(p.token) } : profileCard(p));
 
   if (!/challenge|fantasy|buy.?in|who won|standings|leaderboard|punish|\bplay\b|i'?m in\b|\$\d/.test(lower)) {
     if (/\b(you suck|u suck|sucks?|trash|garbage|stupid|dumb|idiot|shut up|stfu|fuck (you|u|off)|hate (you|u)|useless|the worst|clown|bozo|loser)\b/.test(lower)) {
@@ -707,7 +686,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   const wantsArt = /\b(image|picture|pic|photo|draw|show|generate|make)\b.*\b(me|i|myself|my)\b/.test(lower) && /\b(los\w*|last|cry\w*|win\w*|won|first|crown\w*|champ\w*|generate|draw)\b/.test(lower);
   if (input.hasPhoto || wantsArt) {
     const mine = profileFor(phone, sender);
-    if (!mine.photo) return reply("I need your face first. Text me a photo of yourself, or add one on your card.", profileCard(mine));
+    if (!mine.photo) return reply("I need your face first. Text me a photo of yourself, or add one on your card.", claimCard(mine));
     const role = input.hasPhoto || /\b(win\w*|won|first|crown\w*|champ\w*)\b/.test(lower) ? "winner" : "loser";
     const who = mine.name || "you";
     return { addressed: true, art: { token: mine.token, role }, images: [base + "/card/me/" + mine.token + "/" + role + ".png?v=" + Date.now().toString(36)], line: input.hasPhoto ? (mine.name ? "Got it, " + mine.name + ". That face is on the leaderboard now. Here is you with the crown." : "Got the photo. Now tell me your name: Nickel, I'm Sritej.") : role === "loser" ? "Here is " + who + " in last place." : "Here is " + who + " with the crown." };
@@ -725,7 +704,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
 
   if (/\b(profile|set ?me ?up|sign ?me ?up|sign ?up|add me|player card|my (photo|picture|pic|card|account))\b/.test(lower) && !/buy.?in/.test(lower)) {
     const mine = profileFor(phone, sender);
-    return reply((sender ? sender + ", your" : "Your") + " player card: name and photo. One time, then every link opens as you.", profileCard(mine));
+    return reply((sender ? sender + ", your" : "Your") + " player card: name and photo. One time, then every link opens as you.", claimCard(mine));
   }
 
   if (/\b(demo|fake|test|real|live|stripe)\b.*\bpay(ment)?s?\b|\bpay(ment)?s?\b.*\b(demo|fake|test|real|live|stripe)\b/.test(lower) && !/\$\s?\d/.test(lower)) {
@@ -740,6 +719,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   const money = fantasyTalk ? null : potTurn(text, lower, sender);
   if (money) {
     if (!money.pot) return { addressed: true, line: money.line };
+    if (money.shortCents) return reply(money.line, walletCard(sender, money.shortCents));
     const card = potCard(money.pot);
     return { ...reply(money.line, { ...card, path: card.path + (sender ? "?u=" + sender.toLowerCase() : "") }), pay: money.pay };
   }
@@ -768,6 +748,11 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
       const top = fantasyStandings(latest)[0];
       return reply(top.points > 0 ? top.member + " leads Fantasy " + latest.topic + " with " + top.points + "." : "Fantasy " + latest.topic + ": nobody has scored yet.", fantasyCard(latest));
     }
+  }
+
+  if (wantsHub(lower)) {
+    const card = hubCard(leaderboard());
+    return reply(hubLine(sender), { ...card, path: card.path + (sender ? "?u=" + sender.toLowerCase() : "") });
   }
 
   if (/punish|loser has to|last place (has|does|gets)|reroll/.test(lower)) {
@@ -812,8 +797,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     const round = game === "wordle" && !/new/.test(lower) ? getRound("wordle-212")! : createRound(game, sender, "");
     return reply(round.title + " is live. " + (round.seconds ? round.seconds + " seconds on the clock." : "Best of 3."), roundCard(round));
   }
-  if (introduced) return reply("Got it, " + introduced + ". Add your photo here, one time. After that every link opens as you.", profileCard(profileFor(phone, introduced)));
-  if (phone && !sender) return reply("Welcome to Nickel. Set up your player card: name and photo. One time, then every link opens as you.", profileCard(profileFor(phone, "")));
+  if (introduced) return reply("Got it, " + introduced + ". Add your photo here, one time. After that every link opens as you.", claimCard(profileFor(phone, introduced)));
+  if (phone && !sender) return reply("Welcome to Nickel. Set up your player card: name and photo. One time, then every link opens as you.", claimCard(profileFor(phone, "")));
   const n = store.quips;
   const line = quip(COMEBACKS) + " Try: challenge Maya, who won, punishment, or a fantasy league for anything.";
   save();

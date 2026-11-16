@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>Nickel wallet</title>
+<!--WALLET-->
+<link rel="stylesheet" href="/nickel.css">
+<style>
+  :root { --game: light-dark(#34c759, #30d158); }
+  .stage { justify-content: flex-start; align-items: stretch; overflow-y: auto; gap: var(--s3); padding: var(--s4) 0; }
+  .stage.center { justify-content: center; align-items: center; }
+  .hero { padding: var(--s5) var(--s4); text-align: center; display: flex; flex-direction: column; gap: 6px; align-items: center; flex: none; }
+  .hero .t-display { color: var(--ink); }
+  .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s2); flex: none; }
+  .quick button { height: 56px; border-radius: var(--r-card); background: var(--surface); font: 600 19px/1 var(--round); font-variant-numeric: tabular-nums; color: var(--ink); }
+  .quick button.on { box-shadow: inset 0 0 0 2px var(--you); }
+  .quick button:disabled { color: var(--ink-3); background: transparent; box-shadow: inset 0 0 0 1px var(--hair); }
+  .head { margin: var(--s2) var(--s1) 0; flex: none; }
+  .rowi { flex: none; }
+  .rowi .what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .rowi .what b { font-size: 15px; line-height: 1.25; }
+  .rowi .num.in { color: var(--game); }
+  .name-in { width: 100%; max-width: 320px; height: 56px; border: 0; outline: none; border-radius: var(--r-pill); padding: 0 20px; background: var(--surface); font: 500 17px/1 var(--font); text-align: center; -webkit-user-select: text; user-select: text; }
+  .sheet .quick button { background: var(--surface-2); }
+  a.primary { text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div id="me"></div>
+    <div class="name"><b>Wallet</b><span id="who"></span></div>
+    <div></div>
+  </header>
+  <main class="stage" id="stage"></main>
+  <footer class="dock" id="dock"></footer>
+</div>
+<div class="scrim" id="scrim"></div>
+<section class="glass sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title"></section>
+<div class="glass toast" id="toast" role="status"></div>
+<script>
+let W = window.WALLET;
+const CHECKOUT = window.CHECKOUT;
+const params = new URLSearchParams(location.search);
+if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
+const $ = (id) => document.getElementById(id);
+const stage = $("stage"), dock = $("dock"), sheet = $("sheet"), scrim = $("scrim");
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
+const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", "#5e5ce6"];
+const hue = (name) => HUES[[...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % HUES.length];
+const avatar = (name) => '<span class="avatar" style="--hue:' + hue(name) + '">' + esc(name[0]) + "</span>";
+const money = (c) => "$" + (c % 100 ? Math.floor(c / 100) + "." + String(c % 100).padStart(2, "0") : c / 100);
+const back = /^\/p\/[a-z0-9-]+$/.test(params.get("back") || "") ? params.get("back") : "";
+const L = W.limits;
+let pick = L.quick.includes(Number(params.get("add"))) ? Number(params.get("add")) : L.quick.find((q) => q >= Number(params.get("add") || 500)) || 500;
+let out = 0;
+
+function toast(text) { const t = $("toast"); t.textContent = text; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 2200); }
+async function call(body) {
+  const res = await fetch("/api/wallet" + (body ? "" : "?u=" + encodeURIComponent(W.name)), body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ member: W.name, ...body }) } : undefined);
+  const data = await res.json();
+  if (data.wallet && data.wallet.name) W = data.wallet;
+  if (!data.ok && data.error) toast(data.error);
+  return data;
+}
+const when = (at) => new Date(at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const room = () => Math.min(L.maxCents, L.capCents - W.balanceCents);
+
+function askName() {
+  stage.className = "stage center";
+  stage.innerHTML = '<p class="t-title">Whose wallet?</p><input class="name-in" id="own" placeholder="Your first name" maxlength="14" autocomplete="given-name">';
+  dock.innerHTML = '<button class="glass primary" id="confirm" type="button">Continue</button>';
+  $("confirm").onclick = () => {
+    const name = $("own").value.trim().replace(/[^A-Za-z]/g, "");
+    if (!name) return toast("Type your name");
+    params.set("u", name.toLowerCase());
+    location.search = params.toString();
+  };
+}
+
+function closeSheet() { sheet.classList.remove("on"); scrim.classList.remove("on"); }
+function cashSheet() {
+  const options = [...new Set([100, 500, 1000, W.balanceCents])].filter((c) => c >= L.minCents && c <= W.balanceCents);
+  if (!options.includes(out)) out = W.balanceCents;
+  sheet.innerHTML = '<h2 class="t-title" id="sheet-title">Cash out</h2><div class="quick">' + options.map((c) => '<button type="button" data-c="' + c + '" class="' + (c === out ? "on" : "") + '">' + (c === W.balanceCents ? "All" : money(c)) + "</button>").join("") + "</div>" +
+    '<div class="dock"><button class="glass primary" id="cash-go" type="button">Cash out ' + money(out) + '</button><p class="t-caption">Arrives in 1 to 2 days</p></div>';
+  sheet.querySelectorAll(".quick button").forEach((b) => b.onclick = () => { out = Number(b.dataset.c); cashSheet(); });
+  $("cash-go").onclick = async () => {
+    $("cash-go").disabled = true;
+    const done = await call({ action: "cashout", amountCents: out });
+    closeSheet();
+    if (done.ok) toast("Cash out is on its way");
+    draw();
+  };
+  sheet.classList.add("on");
+  scrim.classList.add("on");
+}
+scrim.onclick = closeSheet;
+
+function draw() {
+  if (!W.name) return askName();
+  $("me").innerHTML = avatar(W.name);
+  $("who").textContent = W.name;
+  if (pick > room()) pick = [...L.quick].reverse().find((q) => q <= room()) || 0;
+  stage.className = "stage";
+  stage.innerHTML =
+    '<div class="card hero"><p class="t-label">Balance</p><p class="t-display num">' + money(W.balanceCents) + '</p><p class="t-caption">Add ' + money(L.minCents) + " to " + money(L.maxCents) + " at a time. A wallet holds up to " + money(L.capCents) + ".</p></div>" +
+    '<div class="quick">' + L.quick.map((q) => '<button type="button" data-c="' + q + '" class="' + (q === pick ? "on" : "") + '"' + (q > room() ? " disabled" : "") + ">" + money(q) + "</button>").join("") + "</div>" +
+    '<p class="t-label head">Activity</p>' +
+    (W.ledger.length
+      ? '<div class="rows">' + W.ledger.map((e) => '<div class="rowi"><span class="what"><b>' + esc(e.reason) + '</b><span class="t-caption">' + esc(when(e.at)) + (e.status === "pending" ? " \u00b7 On its way" : "") + '</span></span><span class="num' + (e.amountCents > 0 ? " in" : "") + '">' + (e.amountCents > 0 ? "+" : e.amountCents < 0 ? "\u2212" : "") + money(Math.abs(e.type === "forfeit_out" ? e.stakeCents || 0 : e.amountCents)) + "</span></div>").join("") + "</div>"
+      : '<p class="t-caption" style="text-align:center">Nothing yet. Add money to get started.</p>');
+  stage.querySelectorAll(".quick button").forEach((b) => b.onclick = () => { pick = Number(b.dataset.c); draw(); });
+  const note = CHECKOUT === "live" ? "Secure checkout by Stripe" : CHECKOUT === "test" ? "Stripe test mode. Use card 4242 4242 4242 4242." : "Demo mode. No card is charged.";
+  dock.innerHTML = (pick ? '<button class="glass primary" id="add" type="button">Add ' + money(pick) + "</button>" : '<button class="glass primary" type="button" disabled>Wallet is full</button>') +
+    (back ? '<a class="glass secondary" href="' + esc(back) + '" style="text-decoration:none;color:inherit">Back to the buy-in</a>' : W.balanceCents >= L.minCents ? '<button class="glass secondary" id="cash" type="button">Cash out</button>' : "") +
+    '<p class="t-caption">' + note + "</p>";
+  if ($("cash")) $("cash").onclick = cashSheet;
+  if ($("add")) $("add").onclick = async () => {
+    $("add").disabled = true;
+    const added = pick;
+    const done = await call({ action: "topup", amountCents: added });
+    if (done.checkoutUrl) return location.href = done.checkoutUrl;
+    if (done.ok) toast("Added " + money(added));
+    draw();
+  };
+}
+draw();
+if (params.get("paid")) history.replaceState(null, "", location.pathname + (W.name ? "?u=" + W.name.toLowerCase() : ""));
+</script>
+</body>
+</html>

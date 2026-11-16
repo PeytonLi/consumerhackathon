@@ -1,4 +1,5 @@
 import { getRound, internals, leaderboard, potSummary, type Pot, type TurnReply } from "./brain.js";
+import { creditWin, ledgerOf } from "./wallet.js";
 
 export interface Fact {
   text: string;
@@ -15,7 +16,7 @@ export interface Payout {
   potId: string;
 }
 
-type SettledPot = Pot & { settled?: boolean; winner?: string; settledAt?: number };
+type SettledPot = Pot & { settled?: boolean; winner?: string; settledAt?: number; forfeitCents?: number };
 
 interface HubState {
   memory: { people: Record<string, Fact[]>; group: Fact[] };
@@ -169,7 +170,7 @@ export function settlePot(potId: string): { ok: boolean; error?: string; payout?
   const pot = s.pots[potId];
   if (!pot) return { ok: false, error: "Not found" };
   if (pot.settled) return { ok: false, error: "Already settled" };
-  const amountCents = potSummary(pot).paidCents;
+  const amountCents = potSummary(pot).paidCents + (pot.forfeitCents ?? 0);
   if (!amountCents) return { ok: false, error: "Nobody has paid in yet" };
   if (!s.results.length) return { ok: false, error: "No games played yet" };
   const winner = leaderboard().people[0].name;
@@ -180,9 +181,9 @@ export function settlePot(potId: string): { ok: boolean; error?: string; payout?
   if (s.latestPot === potId) s.latestPot = null;
   s.payouts.push(payout);
   s.payouts.splice(0, s.payouts.length - PAYOUTS_KEPT);
-  s.balances[winner] = (s.balances[winner] ?? 0) + amountCents;
+  const balanceCents = creditWin(winner, amountCents, payout.reason, potId);
   internals.save();
-  return { ok: true, payout, balanceCents: s.balances[winner] };
+  return { ok: true, payout, balanceCents };
 }
 
 export function hubTurn(input: { text: string; sender?: string; senderPhone?: string }): TurnReply | null {
@@ -220,7 +221,7 @@ export function hubTurn(input: { text: string; sender?: string; senderPhone?: st
   }
 
   if (/\bsettle\b.*\b(pot|buy.?in|up)\b|\bpay ?out the pot\b/.test(lower)) {
-    const last = Object.values(s.pots).filter((p) => p.settled).sort((a, b) => (b.settledAt ?? 0) - (a.settledAt ?? 0))[0];
+    const last = Object.values(s.pots).filter((p) => p.settled && p.winner).sort((a, b) => (b.settledAt ?? 0) - (a.settledAt ?? 0))[0];
     if (!s.latestPot) return say(last ? "That pot is already settled. " + last.winner + " took it." : "No buy-in to settle. Say: Nickel, $5 buy-in.");
     const out = settlePot(s.latestPot);
     if (!out.ok) return say(out.error === "Nobody has paid in yet" ? "Nobody has paid into the pot yet, so there is nothing to settle." : out.error === "No games played yet" ? "Nobody has played yet, so there is no leader to pay. Finish a game first." : "That pot is already settled.");
@@ -263,5 +264,26 @@ export function hub(me: { token: string; name: string; face: string | null } | n
     pots: Object.values(s.pots).sort((a, b) => b.createdAt - a.createdAt).map((p) => ({ id: p.id, amountCents: p.amountCents, members: p.members, settled: !!p.settled, winner: p.winner ?? null })),
     payouts: [...s.payouts].reverse().map((p) => ({ id: p.id, name: p.name, amountCents: p.amountCents, reason: p.reason, at: p.at })),
     recent: [...s.results.map((r) => ({ line: r.line, at: r.at })), ...s.payouts.map((p) => ({ line: p.name + " took the " + dollars(p.amountCents) + " pot.", at: p.at }))].sort((a, b) => b.at - a.at).slice(0, 12),
+    walletLedger: me ? ledgerOf(me.name).reverse() : [],
+  };
+}
+
+type Board = { league: string; stakes: string | null; punishment: string | null; people: { name: string; nickels: number }[] };
+
+export const wantsHub = (lower: string) =>
+  /\b(hub|home|dashboard|everything)\b/.test(lower) && !/challenge|fantasy|buy.?in|who won|standings|leaderboard|punish|\bplay\b|i'?m in\b|\$\d|remember|forget|memory/.test(lower);
+
+export const hubLine = (sender: string) => (sender ? sender + ", here" : "Here") + " is everything in one place: the board, each person, pots, payouts and what I remember.";
+
+export function hubCard(board: Board) {
+  const top = board.people[0];
+  return {
+    kicker: "Hub",
+    title: "Everything, one place",
+    sub: (top && top.nickels > 0 ? top.name + " leads. " : "") + "The board, each person, pots and memory.",
+    league: board.league,
+    members: board.people.map((p) => p.name),
+    hue: "#5856d6",
+    path: "/h",
   };
 }
