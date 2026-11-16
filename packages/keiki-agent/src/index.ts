@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 import { AgentKit, defineTool } from "@onkeiki/agents";
 import { buildCardReply } from "../../../server/card.js";
+import { moneyTools } from "./money-tools.js";
 
 const baseUrl = () =>
   (typeof process !== "undefined" ? process.env?.NICKEL_BASE_URL : undefined) ?? "http://localhost:5173";
@@ -8,7 +9,7 @@ const baseUrl = () =>
 export const sendNickelCardTool = defineTool({
   name: "send_nickel_card",
   description:
-    "Get the Nickel card link for this chat. Call it whenever someone addresses Nickel by @nickel or by name. Pass their message as request. Returns a short line and a url. iMessage turns the url into a large tappable card that opens the game, the board, the standings, or the season recap.",
+    "Get the Nickel card for this chat. Call it whenever someone addresses Nickel by @nickel or by name. Pass their message as request. Returns a short line, a url, and a Keiki Vault presentation. In a direct chat Keiki sends the presentation as a card that opens the game inside Messages. In a group Keiki can't send cards, so the url goes out as a link instead.",
   input: Schema.Struct({
     request: Schema.String,
     opponent: Schema.optional(Schema.String),
@@ -28,7 +29,16 @@ export const sendNickelCardTool = defineTool({
       url: reply.url,
       cardTitle: reply.title,
       isGroup: ctx.channel?.isDirect === false,
-      delivery: "Send the line as one message, then the url alone as its own message so it renders as a card.",
+      delivery: "If presentationDelivery.state is accepted, the Vault card is already in the chat: send only the line. Otherwise send the line, then the url alone as its own message so it renders as a link card.",
+      ...(reply.url.startsWith("https://") && {
+        presentation: {
+          type: "app" as const,
+          id: ("nickel-" + new Date().toISOString().slice(0, 10) + new URL(reply.url).pathname.replace(/[^a-z0-9]+/gi, "-") + new URL(reply.url).search.replace(/[^a-z0-9]+/gi, "-")).slice(0, 128),
+          url: reply.url,
+          caption: reply.title.slice(0, 60),
+          subcaption: "Tap to play",
+        },
+      }),
     });
   },
 });
@@ -83,8 +93,19 @@ export const approveStakeTool = defineTool({
 export const NICKEL_SYSTEM_PROMPT = [
   "You are Nickel, the commissioner of a friend group's league. You live in their iMessage group chat.",
   "In a group, answer only when someone addresses you with @nickel or by the name Nickel.",
-  "When addressed, call send_nickel_card once with their message. Then send the returned line as one short message, and the returned url alone as a second message with nothing else in it, so iMessage renders it as a card.",
-  "Never use emojis. Never use more than 20 words outside the url. Never invent scores or standings; the card has them.",
+  "Keep replies to one or two short lines. Never use emojis. Never use more than 20 words outside a url.",
+  "For anything that is not about money, call send_nickel_card once with their message.",
+  "When a tool returns a presentation and presentationDelivery.state is accepted, the card is already in the chat: send only the returned line, never the url.",
+  "Otherwise send the returned line, then the returned url alone as its own message so it renders as a link card.",
+  "Never invent scores, standings, balances or amounts. Only say numbers a tool returned.",
+  "Talk about anyone's money only in a direct chat. In a group never say a balance and never send a payment or checkout link.",
+  "Adding money: add_money. Balance: balance. Cashing out: cash_out. Daily chest: open_chest. Heist: heist.",
+  "When a tool returns privateOnly, send only its line.",
+  "When a tool returns ok false, send its error as one line.",
+  "When the commissioner wants to take money from a player, call propose_adjustment. Nickel checks who the commissioner is, not you.",
+  "On a [NICKEL_ADJUSTMENT] notice, call approve_adjustment once with exactly the notice's fields, and say it needs their Face ID.",
+  "On a [NICKEL_BALANCE] notice, text them the balance it gives in one line.",
+  "To remove a player, call remove_player. It needs the commissioner's Face ID, so in a group tell them to ask you in a direct chat.",
   "If asked to change what the league plays for, call switch_reward_mode.",
 ].join("\n");
 
@@ -98,7 +119,7 @@ export function createNickelKeikiAgent(apiKey = "keiki_dev_key") {
       maxSteps: 4,
       historyLimit: 30,
       systemPrompt: ({ now }) => NICKEL_SYSTEM_PROMPT + "\nCurrent time: " + now.toISOString(),
-      tools: [sendNickelCardTool, switchRewardModeTool, approveStakeTool],
+      tools: [sendNickelCardTool, switchRewardModeTool, approveStakeTool, ...moneyTools],
     },
   });
 }

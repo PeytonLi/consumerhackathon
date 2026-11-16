@@ -4,6 +4,7 @@ import { economyRoute } from "./economy.js";
 import { authGate, claimStatus, turnTrusted } from "./auth.js";
 import { assistTurn, gradeKrillion, gradedResult, naceStats, punishmentAllowed } from "./nace.js";
 import { walletRoute } from "./money.js";
+import { agentMoney } from "./agent-money.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -56,6 +57,8 @@ Bun.serve({
 
     const economy = await economyRoute(request, session ? internals.store.profiles[session.token]?.phone : null);
     if (economy) return economy;
+
+    if (path.startsWith("/api/agent/")) return agentMoney(request, base);
 
     if (path === "/api/turn" && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as { text?: string; sender?: string; senderPhone?: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string };
