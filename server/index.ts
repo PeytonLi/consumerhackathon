@@ -1,4 +1,6 @@
 import { payMode, startCheckout, confirmCheckout, researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
+import { hubCard } from "./hub.js";
+import { hubStub } from "./hub-stub.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -129,6 +131,11 @@ Bun.serve({
     if (path === "/api/leaderboard") return json(board());
     if (path === "/og/l.png") return new Response((await cardPng(leaderboardCard())) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
     if (path === "/l") return page((await Bun.file(site + "leaderboard.html").text()).replace("<!--BOARD-->", headTags(leaderboardCard(), base, "") + "\n<script>window.BOARD = " + inline(board()) + ";</script>"));
+
+    const hub = () => hubStub(board(), me);
+    if (path === "/api/hub") return json(hub());
+    if (path === "/og/h.png") return new Response((await cardPng(hubCard(leaderboard()))) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
+    if (path === "/h") return page((await Bun.file(site + "hub.html").text()).replace("<!--HUB-->", headTags(hubCard(leaderboard()), base, "") + "\n<script>window.HUB = " + inline(hub()) + ";</script>"));
 
     const potApi = path.match(/^\/api\/pot\/([a-z0-9-]+)$/);
     if (potApi) {

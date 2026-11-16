@@ -2,6 +2,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { hubCard, hubLine, wantsHub } from "./hub.js";
 
 export interface Round {
   id: string;
@@ -774,6 +775,11 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
       const top = fantasyStandings(latest)[0];
       return reply(top.points > 0 ? top.member + " leads Fantasy " + latest.topic + " with " + top.points + "." : "Fantasy " + latest.topic + ": nobody has scored yet.", fantasyCard(latest));
     }
+  }
+
+  if (wantsHub(lower)) {
+    const card = hubCard(leaderboard());
+    return reply(hubLine(sender), { ...card, path: card.path + (sender ? "?u=" + sender.toLowerCase() : "") });
   }
 
   if (/punish|loser has to|last place (has|does|gets)|reroll/.test(lower)) {
