@@ -48,6 +48,20 @@
   .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); opacity: .45; transition: opacity var(--t-lock), transform var(--t-lock); }
   .dots i.on { opacity: 1; background: var(--ink); transform: scale(1.25); }
   .dock { padding-left: var(--gutter); padding-right: var(--gutter); }
+  .reel { padding-bottom: 28px; }
+  .slide.shot { overflow: visible; transition: none; scroll-snap-stop: always; transform: scale(calc(1 - var(--a, 0) * .08)); opacity: calc(1 - var(--a, 0) * .3); }
+  .shot .lift { position: relative; overflow: hidden; border-radius: var(--r-big); box-shadow: 0 10px 24px rgb(0 0 0 / .14); }
+  .shot .lift img { transform: translateX(calc(var(--d, 0) * -18px)) scale(1.07); }
+  .shot.revealed .lift { animation: pop 520ms var(--spring) both; }
+  .move { position: absolute; right: 7%; top: 15%; display: inline-flex; align-items: center; gap: 3px; height: 26px; padding: 0 9px 0 7px; border-radius: var(--r-pill); color: #fff; font: 700 13px/1 var(--round); background: #34c759; animation: pop 420ms var(--spring) 300ms both; }
+  .move.down { background: #ff3b30; }
+  .move svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  .veil { position: absolute; inset: 0; z-index: 1; border-radius: var(--r-big); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: radial-gradient(90% 60% at 50% 30%, color-mix(in srgb, #ffd60a 34%, var(--surface)), var(--surface)); }
+  .veil svg { width: 96px; animation: nudge 900ms var(--ease) infinite; }
+  .veil.off { pointer-events: none; animation: unveil 520ms var(--ease) forwards; }
+  @keyframes unveil { to { opacity: 0; transform: scale(1.14); } }
+  .acts { display: grid; grid-template-columns: 1fr auto; gap: var(--s2); }
+  .acts .secondary { width: auto; height: 56px; padding: 0 22px; text-decoration: none; }
 </style>
 </head>
 <body>
@@ -60,6 +74,7 @@
   <main class="stage" id="stage"></main>
   <footer class="dock" id="dock"></footer>
 </div>
+<script src="/juice.js"></script>
 <script>
 let B = window.BOARD;
 const params = new URLSearchParams(location.search);
@@ -93,22 +108,68 @@ function mug(p, lastPlace) {
 }
 
 
-function draw() {
-  $("league").textContent = B.league;
-  $("stage").innerHTML = '<div class="reel" id="reel">' + B.cards.map((src, i) => '<article class="slide shot"><img src="' + src + '" alt="' + esc(B.order[i]) + '" loading="' + (i < 2 ? "eager" : "lazy") + '"></article>').join("") + '</div><div class="dots" id="dots">' + B.cards.map((_, i) => '<i class="' + (i === 0 ? "on" : "") + '"></i>').join("") + "</div>";
-  $("dock").innerHTML = '<p class="t-caption">' + (B.stakes ? "Playing for money: " + esc(B.stakes) + ". Swipe up to the winner." : B.punishment ? "Last place " + esc(B.punishment.split(":")[0]) + ". Swipe up to the winner." : 'Loser first. Swipe up to the winner.') + "</p>";
-  const reel = $("reel");
-  reel.onscroll = () => {
-    const mid = reel.scrollLeft + reel.clientWidth / 2;
-    let best = 0, dist = Infinity;
-    [...reel.children].forEach((el, i) => { const d = Math.abs(el.offsetLeft + el.offsetWidth / 2 - mid); if (d < dist) { dist = d; best = i; } });
-    [...$("dots").children].forEach((d, i) => d.classList.toggle("on", i === best));
-  };
+const SHARE = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5v-11M8 7.5l4-4 4 4"/><path d="M7 10.5H6.5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H17"/></svg>';
+const seenKey = "nickel.board.seen";
+const seen = (() => { try { return JSON.parse(localStorage.getItem(seenKey)); } catch { return null; } })();
+const remember = () => { try { localStorage.setItem(seenKey, JSON.stringify({ ranks: Object.fromEntries(B.people.map((p) => [p.name, p.rank])), at: Date.now() })); } catch {} };
+const blobs = {};
+const cardBlob = (src) => (blobs[src] ??= fetch(src).then((r) => r.blob()));
+let active = 0, revealed = false, revealTimer = 0;
+
+function reveal() {
+  revealed = true;
+  const slide = $("reel").lastElementChild, veil = slide.querySelector(".veil");
+  if (!veil) return;
+  veil.classList.add("off");
+  slide.classList.add("revealed");
+  const box = slide.getBoundingClientRect();
+  Juice.burst({ x: box.left + box.width / 2, y: box.top + box.height * 0.45, count: 110 });
+  Juice.buzz([14, 50, 14, 50, 30]);
+  setTimeout(() => veil.remove(), 600);
 }
+
+function draw() {
+  const moved = Juice.moves(seen?.ranks, B.people), n = B.cards.length;
+  $("league").textContent = B.league;
+  $("stage").innerHTML = '<div class="reel" id="reel">' + B.cards.map((src, i) => {
+    const mv = moved[B.order[i]];
+    return '<article class="slide shot"><div class="lift"><img src="' + src + '" alt="' + esc(B.order[i]) + '" loading="' + (i < 2 ? "eager" : "lazy") + '"></div>' +
+      (mv ? '<span class="move ' + (mv > 0 ? "up" : "down") + '" aria-label="' + (mv > 0 ? "Up " : "Down ") + Math.abs(mv) + ' since your last visit">' + Juice.arrow(mv > 0 ? "up" : "down") + Math.abs(mv) + "</span>" : "") +
+      (i === n - 1 && n > 1 && !revealed ? '<div class="veil">' + CROWN + '<p class="t-display">1st</p><p class="t-label">Swipe to find out</p></div>' : "") + "</article>";
+  }).join("") + '</div><div class="dots" id="dots">' + B.cards.map((_, i) => '<i class="' + (i === active ? "on" : "") + '"></i>').join("") + "</div>";
+  $("dock").innerHTML = '<div class="acts"><button class="glass primary" id="share" type="button">' + SHARE + 'Share</button><a class="glass secondary" href="/w' + (params.get("theme") ? "?theme=" + params.get("theme") : "") + '">Recap</a></div>' +
+    '<p class="t-caption">' + (B.stakes ? "Playing for money: " + esc(B.stakes) + ". Swipe up to the winner." : B.punishment ? "Last place " + esc(B.punishment.split(":")[0]) + ". Swipe up to the winner." : 'Loser first. Swipe up to the winner.') + "</p>";
+  $("share").onclick = async () => {
+    const name = B.order[active], p = B.people.find((x) => x.name === name);
+    const out = await Juice.share({ image: cardBlob(B.cards[active]), name: "nickel-" + name.toLowerCase() + ".png", title: B.league + " leaderboard", text: name + " is " + Juice.ordinal(p.rank) + " of " + B.people.length + " in " + B.league, url: location.origin + "/l" });
+    if (out === "shared" || out === "copied") { $("share").innerHTML = SHARE + (out === "shared" ? "Shared" : "Link copied"); Juice.buzz([10]); }
+  };
+  const reel = $("reel");
+  let frame = 0;
+  const track = () => {
+    frame = 0;
+    const mid = reel.scrollLeft + reel.clientWidth / 2, calm = Juice.reduced();
+    let best = 0, dist = Infinity;
+    [...reel.children].forEach((el, i) => {
+      const d = (el.offsetLeft + el.offsetWidth / 2 - mid) / el.offsetWidth;
+      if (!calm) { el.style.setProperty("--d", Math.max(-1, Math.min(1, d)).toFixed(3)); el.style.setProperty("--a", Math.min(1, Math.abs(d)).toFixed(3)); }
+      if (Math.abs(d) < dist) { dist = Math.abs(d); best = i; }
+    });
+    if (best !== active) { active = best; Juice.buzz([8]); cardBlob(B.cards[active]); }
+    [...$("dots").children].forEach((d, i) => d.classList.toggle("on", i === best));
+    clearTimeout(revealTimer);
+    if (best === n - 1 && n > 1 && !revealed && dist < 0.06) revealTimer = setTimeout(reveal, 220);
+  };
+  reel.onscroll = () => { frame ||= requestAnimationFrame(track); };
+  track();
+}
+if (!seen) remember();
+addEventListener("pagehide", remember);
+document.addEventListener("visibilitychange", () => { if (document.hidden) remember(); });
 draw();
 setInterval(async () => {
   const next = await (await fetch("/api/leaderboard")).json();
-  if (JSON.stringify(next) !== JSON.stringify(B)) { const x = $("reel").scrollLeft; B = next; draw(); $("reel").scrollLeft = x; }
+  if (JSON.stringify(next) !== JSON.stringify(B)) { const x = $("reel").scrollLeft; B = next; draw(); $("reel").scrollLeft = x; $("reel").onscroll(); }
 }, 5000);
 </script>
 </body>
