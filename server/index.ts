@@ -2,6 +2,7 @@ import { payMode, startCheckout, confirmCheckout, researchPunishment, setPhoto, 
 import { hub, hubCard } from "./hub.js";
 import { authGate, claimStatus, turnTrusted } from "./auth.js";
 import { assistTurn, gradeKrillion, gradedResult, naceStats, punishmentAllowed } from "./nace.js";
+import { agentMoney } from "./agent-money.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -49,6 +50,7 @@ Bun.serve({
     const page = (body: string) => html(body.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n<script>window.ME = ' + inline(me) + ";</script>"));
 
     if (request.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type" } });
+    if (path.startsWith("/api/agent/")) return agentMoney(request, base);
 
     if (path === "/api/turn" && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as { text?: string; sender?: string; senderPhone?: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string };

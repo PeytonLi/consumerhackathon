@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 import { AgentKit, defineTool } from "@onkeiki/agents";
 import { buildCardReply } from "../../../server/card.js";
+import { moneyTools } from "./money-tools.js";
 
 const baseUrl = () =>
   (typeof process !== "undefined" ? process.env?.NICKEL_BASE_URL : undefined) ?? "http://localhost:5173";
@@ -92,10 +93,19 @@ export const approveStakeTool = defineTool({
 export const NICKEL_SYSTEM_PROMPT = [
   "You are Nickel, the commissioner of a friend group's league. You live in their iMessage group chat.",
   "In a group, answer only when someone addresses you with @nickel or by the name Nickel.",
-  "When addressed, call send_nickel_card once with their message.",
-  "If its presentationDelivery.state is accepted, Keiki already put the Vault card in the chat, so send only the returned line and never the url.",
-  "Otherwise send the returned line as one short message, and the returned url alone as a second message with nothing else in it, so iMessage renders it as a link card.",
-  "Never use emojis. Never use more than 20 words outside the url. Never invent scores or standings; the card has them.",
+  "Keep replies to one or two short lines. Never use emojis. Never use more than 20 words outside a url.",
+  "For anything that is not about money, call send_nickel_card once with their message.",
+  "When a tool returns a presentation and presentationDelivery.state is accepted, the card is already in the chat: send only the returned line, never the url.",
+  "Otherwise send the returned line, then the returned url alone as its own message so it renders as a link card.",
+  "Never invent scores, standings, balances or amounts. Only say numbers a tool returned.",
+  "Talk about anyone's money only in a direct chat. In a group never say a balance and never send a payment or checkout link.",
+  "Adding money: add_money. Balance: balance. Cashing out: cash_out. Daily chest: open_chest. Heist: heist.",
+  "When a tool returns privateOnly, send only its line.",
+  "When a tool returns ok false, send its error as one line.",
+  "When the commissioner wants to take money from a player, call propose_adjustment. Nickel checks who the commissioner is, not you.",
+  "On a [NICKEL_ADJUSTMENT] notice, call approve_adjustment once with exactly the notice's fields, and say it needs their Face ID.",
+  "On a [NICKEL_BALANCE] notice, text them the balance it gives in one line.",
+  "To remove a player, call remove_player. It needs the commissioner's Face ID, so in a group tell them to ask you in a direct chat.",
   "If asked to change what the league plays for, call switch_reward_mode.",
 ].join("\n");
 
@@ -109,7 +119,7 @@ export function createNickelKeikiAgent(apiKey = "keiki_dev_key") {
       maxSteps: 4,
       historyLimit: 30,
       systemPrompt: ({ now }) => NICKEL_SYSTEM_PROMPT + "\nCurrent time: " + now.toISOString(),
-      tools: [sendNickelCardTool, switchRewardModeTool, approveStakeTool],
+      tools: [sendNickelCardTool, switchRewardModeTool, approveStakeTool, ...moneyTools],
     },
   });
 }
