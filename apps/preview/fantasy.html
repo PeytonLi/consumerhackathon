@@ -8,6 +8,13 @@
 <!--LEAGUE-->
 <link rel="stylesheet" href="/nickel.css">
 <link rel="stylesheet" href="/polish.css">
+<style>
+  .live-info, .live-event { padding: 16px; border-radius: 20px; background: var(--surface); }
+  .live-info p, .live-event p, .pick-context p { margin: 8px 0; color: var(--ink-2); font: 400 14px/1.4 var(--font); }
+  .live-info a, .live-event a, .pick-context a { color: var(--you); text-decoration: underline; }
+  .pick-context { margin: -8px 12px 8px; padding: 0 16px 12px; }
+  .live-event time { color: var(--ink-2); font-size: 12px; }
+</style>
 </head>
 <body class="social-club fantasy-page">
 <div class="app" id="app">
@@ -132,6 +139,16 @@ async function draft(name) {
   toast(name + " is on your roster.");
   stage.querySelector('[data-pick="' + CSS.escape(name) + '"]')?.focus();
 }
+function sourceLink(url, label = "Source") {
+  return /^https:\/\//i.test(url || "") ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + label + '</a>' : "";
+}
+
+function liveInfo() {
+  if (!L.live) return "";
+  const live = L.live;
+  return '<section class="live-info" aria-label="Live scoring"><b>' + (live.status === "researching" ? "Researching current picks" : live.status === "ready" ? Date.now() > live.endsAt ? "Live window ended" : "Live for one week" : live.status === "refused" ? "Topic unavailable" : "Manual league") + '</b><p>' + esc(live.scoringRule) + '</p><p>' + esc(live.status === "ready" ? live.summary || "" : live.lastMessage || "The board updates when research lands. You can draft while it loads.") + ' ' + sourceLink(live.source, "Current context") + '</p><p>Points are for fun. Data may be delayed. Not financial advice or betting on securities.</p></section>';
+}
+
 function draw() {
   if (!L) {
     stage.className = "stage center";
@@ -146,20 +163,28 @@ function draw() {
   const scores = standings(), rank = scores.findIndex((s) => s.m === me()) + 1;
   stage.className = "stage";
   const hero = '<section class="fantasy-hero"><div class="hero-top"><span class="eyebrow">The group chat draft</span><span class="live-label">Live league</span></div><h1>Fantasy<br><span>' + esc(L.topic) + '</span></h1><div class="hero-people"><span class="avatar-stack">' + L.members.slice(0, 4).map((m) => avatar(m)).join("") + '</span><span>' + L.members.length + ' players. Endless opinions.</span></div><div class="hero-stats"><div><b>' + mine.length + '<small> / ' + L.rosterSize + '</small></b><span>Your picks</span></div><div><b>' + mine.reduce((n, p) => n + p.points, 0) + '</b><span>Your points</span></div><div><b>' + (rank ? '#' + rank : '—') + '</b><span>Your place</span></div></div></section>';
-  const seg = '<div class="seg" role="tablist" aria-label="League view">' + [["draft", "Draft board"], ["standings", "Standings"]].map(([v, title]) => '<button type="button" role="tab" id="tab-' + v + '" aria-selected="' + (view === v) + '" aria-controls="league-panel" tabindex="' + (view === v ? 0 : -1) + '" data-v="' + v + '" class="' + (view === v ? 'on' : '') + '">' + title + '</button>').join("") + '</div>';
+  const tabs = [["draft", "Draft board"], ["standings", "Standings"], ["timeline", "Timeline"]];
+  const seg = '<div class="seg" role="tablist" aria-label="League view">' + tabs.map(([v, title]) => '<button type="button" role="tab" id="tab-' + v + '" aria-selected="' + (view === v) + '" aria-controls="league-panel" tabindex="' + (view === v ? 0 : -1) + '" data-v="' + v + '" class="' + (view === v ? 'on' : '') + '">' + title + '</button>').join("") + '</div>';
   let rows;
   if (view === "draft") {
     rows = [...L.pool].sort((a, b) => b.points - a.points).map((p, i) => '<div class="rowi pick-row' + (p.owner === me() ? ' mine' : '') + '"><span class="pick-index">' + String(i + 1).padStart(2, "0") + '</span><button class="pick-detail" type="button" data-pick="' + esc(p.name) + '" aria-label="Score ' + esc(p.name) + '"><b>' + esc(p.name) + '</b><span>' + (p.owner === me() ? 'Your roster' : p.owner ? esc(p.owner) + '’s pick' : 'Free agent') + '</span></button><span class="pick-points num">' + p.points + '<small>pts</small></span>' + (p.owner ? avatar(p.owner) : full ? '<span class="available-mark" aria-label="Available">—</span>' : '<button class="take" type="button" data-take="' + esc(p.name) + '" aria-label="Draft ' + esc(p.name) + '">Draft</button>') + '</div>').join("");
     if (!rows) rows = '<div class="empty-state"><span class="empty-mark">01</span><h2>The first pick is yours.</h2><p>Write in a name below to get your league going.</p></div>';
     dock.innerHTML = (full ? '<div class="roster-ready"><b>Your roster is locked in.</b><span>Tap any pick to keep the score moving.</span></div>' : '<form class="write" id="write"><label class="sr-only" for="own">Write in a pick</label><input id="own" placeholder="Got a sleeper pick?" maxlength="40" autocomplete="off"><button class="primary" type="submit">Draft</button></form>') + '<p class="inline-status" id="draft-status" role="status">' + (full ? mine.length + ' picks. Make them count.' : 'Pick from the board or write in your own.') + '</p>';
+  } else if (view === "timeline") {
+    rows = [...L.log].reverse().map((event) => '<article class="live-event"><b>' + esc(event.pick) + ' ' + (event.delta > 0 ? '+' : '') + event.delta + '</b><p>' + esc(event.reason || 'Manual points from ' + event.by) + '</p>' + sourceLink(event.source) + ' <time datetime="' + new Date(event.at).toISOString() + '">' + esc(new Date(event.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) + '</time></article>').join('') || '<p class="t-caption">No point updates yet. Every sourced award appears here.</p>';
+    dock.innerHTML = '<p class="t-caption">' + esc(L.live?.lastMessage || 'Text Nickel, score ' + L.topic + ' to check current results.') + '</p>';
   } else {
     rows = scores.map((s, i) => '<div class="rowi tall' + (s.m === me() ? ' me' : '') + '"><span class="rk">' + (i + 1) + '</span>' + avatar(s.m) + '<span class="who"><b>' + esc(s.m) + (s.m === me() ? '<em>You</em>' : '') + '</b><span>' + (s.picks.map((p) => esc(p.name)).join(', ') || 'The next great pick awaits') + '</span></span><span class="pick-points num">' + s.points + '<small>pts</small></span></div>').join("");
     dock.innerHTML = '<p class="t-caption">' + (L.scoring ? "Scoring: " + esc(L.scoring) : "Tap a pick on the draft board to score it") + (L.seasonDays ? " · " + L.seasonDays + "-day season" : "") + '</p><a class="secondary" href="/leagues/' + L.id + '">League rules</a><a class="t-caption" href="/leagues/new">New league</a>';
   }
-  stage.innerHTML = hero + seg + '<section id="league-panel" role="tabpanel" aria-labelledby="tab-' + view + '"><div class="section-label"><h2>' + (view === 'draft' ? 'The lineup' : 'The leaderboard') + '</h2><span>' + (view === 'draft' ? L.pool.length + ' picks' : L.members.length + ' players') + '</span></div><div class="rows">' + rows + '</div></section><p class="connection-status" role="status">' + (connectionError ? 'Reconnecting · showing the last saved league' : '') + '</p>';
+  stage.innerHTML = hero + liveInfo() + seg + '<section id="league-panel" role="tabpanel" aria-labelledby="tab-' + view + '"><div class="section-label"><h2>' + (view === 'draft' ? 'The lineup' : view === 'timeline' ? 'Why points moved' : 'The leaderboard') + '</h2><span>' + (view === 'draft' ? L.pool.length + ' picks' : view === 'timeline' ? L.log.length + ' updates' : L.members.length + ' players') + '</span></div><div class="rows">' + rows + '</div></section><p class="connection-status" role="status">' + (connectionError ? 'Reconnecting · showing the last saved league' : '') + '</p>';
+  if (view === "draft") stage.querySelectorAll("[data-pick]").forEach((b) => {
+    const pick = L.pool.find((p) => p.name === b.dataset.pick);
+    if (pick?.reason) b.closest(".rowi").insertAdjacentHTML("afterend", '<div class="pick-context"><p>' + esc(pick.reason) + '</p>' + sourceLink(pick.source) + '</div>');
+  });
   stage.querySelectorAll("[data-v]").forEach((b) => {
     b.onclick = () => { if (busy) return; view = b.dataset.v; draw(); $("tab-" + view).focus(); };
-    b.onkeydown = (e) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) { e.preventDefault(); view = e.key === "Home" ? "draft" : e.key === "End" ? "standings" : view === "draft" ? "standings" : "draft"; draw(); $("tab-" + view).focus(); } };
+    b.onkeydown = (e) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) { e.preventDefault(); const index = tabs.findIndex(([v]) => v === view); view = tabs[e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (index + (e.key === "ArrowLeft" ? -1 : 1) + tabs.length) % tabs.length][0]; draw(); $("tab-" + view).focus(); } };
   });
   stage.querySelectorAll("[data-take]").forEach((b) => b.onclick = () => draft(b.dataset.take));
   stage.querySelectorAll("[data-pick]").forEach((b) => b.onclick = () => { if (!busy) scoreSheet(L.pool.find((p) => p.name === b.dataset.pick), b); });

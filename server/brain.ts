@@ -11,6 +11,7 @@ import { ledgerOf, payBuyIn, walletCard, walletTurn } from "./wallet.js";
 import { demoMode, roster, rosterNames } from "./roster.js";
 import { ARCADE, arcadeGame, arcadeSubmission, arcadeView, createArcade, isArcadeGame, type ArcadeGame, type ArcadeReply } from "./arcade.js";
 import { renderChatCard, renderPersonCard } from "./card-art.js";
+import { attachLive, liveTopicRefusal, liveTurn, openLiveLeague, type LiveData, type LivePick, type LiveAward } from "./live.js";
 
 export interface Round {
   id: string;
@@ -27,9 +28,10 @@ export interface FantasyLeague {
   league: string;
   members: string[];
   rosterSize: number;
-  pool: { name: string; points: number; owner: string | null }[];
-  log: { pick: string; delta: number; by: string; at: number }[];
+  pool: ({ name: string; points: number; owner: string | null } & LivePick)[];
+  log: ({ pick: string; delta: number; by: string; at: number } & LiveAward)[];
   createdBy: string;
+  live?: LiveData;
 }
 
 export interface TurnReply {
@@ -80,6 +82,7 @@ attachAuth(() => store, () => {
   }
   save();
 });
+attachLive(() => store.fantasy, save);
 
 function save() {
   mkdirSync(dataDir, { recursive: true });
@@ -128,6 +131,7 @@ export function draftPick(id: string, member: string, pickName: string): { ok: b
   const name = cap(pickName).slice(0, 40);
   if (!league || !who || !name) return { ok: false, error: "Not found" };
   if (leagueIsClosed(league)) return { ok: false, error: "This league's season has ended" };
+  if (league.live?.status === "refused") return { ok: false, error: league.live.lastMessage };
   if (!league.members.includes(who)) league.members.push(who);
   if (league.pool.filter((p) => p.owner === who).length >= league.rosterSize) return { ok: false, error: "Your roster is full" };
   let pick = league.pool.find((p) => p.name.toLowerCase() === name.toLowerCase());
@@ -146,6 +150,7 @@ export function scorePick(id: string, pickName: string, delta: number, by: strin
   const pick = typeof pickName === "string" ? league?.pool.find((p) => p.name.toLowerCase() === pickName.trim().toLowerCase()) : undefined;
   if (!league || !pick || !Number.isFinite(delta) || Math.abs(delta) > 100) return { ok: false, error: "Not found" };
   if (leagueIsClosed(league)) return { ok: false, error: "This league's season has ended" };
+  if (league.live?.status === "refused") return { ok: false, error: league.live.lastMessage };
   pick.points += Math.round(delta);
   league.log.push({ pick: pick.name, delta: Math.round(delta), by: person(by) || "Someone", at: Date.now() });
   save();
@@ -168,6 +173,7 @@ export function createFantasy(topic: string, picks: string[], sender: string): F
   store.fantasy[league.id] = league;
   store.latestFantasy = league.id;
   save();
+  void openLiveLeague(league);
   return league;
 }
 
@@ -692,6 +698,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
   const contact = (input.senderPhone ?? "").replace(/[^+0-9]/g, "");
   if (contact) profileFor(contact, store.names[contact] ?? "");
+  const current = liveTurn(text, input.baseUrl);
+  if (current) return current;
   const walletReply = walletTurn(input);
   if (walletReply) return walletReply;
   const hubReply = hubTurn(input);
@@ -774,10 +782,12 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     const [head, list] = text.split(/:\s*/, 2);
     const topic = input.fantasyTopic ?? head.match(/\b(?:for|about|of|on)\s+(.+)$/i)?.[1] ?? head.replace(/.*fantasy\s*(league)?/i, "");
     const cleanTopic = topic.replace(/\b(league|draft|please)\b/gi, "").replace(/[.!?]+$/, "").trim() || "anything";
+    const refused = liveTopicRefusal(cleanTopic);
+    if (refused) return { addressed: true, line: refused };
     const picks = input.fantasyPicks?.length ? input.fantasyPicks : list ? list.split(/,|\n|\band\b/).map((s) => s.trim()).filter(Boolean) : [];
     const league = createFantasy(cleanTopic, picks, sender);
     const board = league.pool.length ? league.pool.length + " on the board, draft " + league.rosterSize + " each." : "Write in your own picks, " + league.rosterSize + " each.";
-    return reply("Fantasy " + league.topic + " is open. " + board, fantasyCard(league));
+    return reply("Fantasy " + league.topic + " is open. " + board + (process.env.OPENAI_API_KEY ? " Current picks and sources are loading on the page." : ""), fantasyCard(league));
   }
 
   if (latest) {

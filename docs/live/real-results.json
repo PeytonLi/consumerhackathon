@@ -1,0 +1,817 @@
+{
+  "at": "2026-11-16T00:38:04.586Z",
+  "report": [
+    {
+      "topic": "Nvidia",
+      "replyMs": 12,
+      "creationMs": 17513,
+      "reply": {
+        "addressed": true,
+        "line": "Fantasy Nvidia is open. Write in your own picks, 3 each. Current picks and sources are loading on the page.",
+        "url": "http://localhost:5173/f/fantasy-yh3j8",
+        "card": {
+          "kicker": "FANTASY LEAGUE · CUPERTINO DAY ONES",
+          "title": "Fantasy Nvidia",
+          "sub": "Draft 3 picks each. Write in anything.",
+          "path": "/f/fantasy-yh3j8"
+        }
+      },
+      "scored": "I could not check right now. No automatic points were added; manual scoring still works.",
+      "league": {
+        "id": "fantasy-yh3j8",
+        "topic": "Nvidia",
+        "league": "Cupertino Day Ones",
+        "members": [
+          "Peyton",
+          "Maya",
+          "Sritej",
+          "Alex",
+          "Dev"
+        ],
+        "rosterSize": 3,
+        "pool": [],
+        "log": [],
+        "createdBy": "Maya",
+        "live": {
+          "status": "fallback",
+          "startedAt": 1794789456521,
+          "endsAt": 1795394256521,
+          "scoringRule": "Manual points while current research loads.",
+          "counted": [],
+          "quotes": {},
+          "lastMessage": "Current research is unavailable. Use write-ins and manual points."
+        }
+      }
+    },
+    {
+      "topic": "NFL this week",
+      "replyMs": 1,
+      "creationMs": 6191,
+      "reply": {
+        "addressed": true,
+        "line": "Fantasy NFL this week is open. 10 on the board, draft 3 each. Current picks and sources are loading on the page.",
+        "url": "http://localhost:5173/f/fantasy-ghfwu",
+        "card": {
+          "kicker": "FANTASY LEAGUE · CUPERTINO DAY ONES",
+          "title": "Fantasy NFL this week",
+          "sub": "Draft 3 picks each. 10 on the board.",
+          "path": "/f/fantasy-ghfwu"
+        }
+      },
+      "scored": "Fantasy NFL this week: no new verified scoring events. No points changed.",
+      "league": {
+        "id": "fantasy-ghfwu",
+        "topic": "NFL this week",
+        "league": "Cupertino Day Ones",
+        "members": [
+          "Peyton",
+          "Maya",
+          "Sritej",
+          "Alex",
+          "Dev"
+        ],
+        "rosterSize": 3,
+        "pool": [
+          {
+            "name": "Vikings",
+            "reason": "They are featured in the Mexico City Sunday night game against the 49ers, giving them a marquee observable result this week.",
+            "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "49ers",
+            "reason": "San Francisco is in the Mexico City Sunday night game, one of the week’s highest-profile matchups.",
+            "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Bengals",
+            "reason": "Cincinnati closes Week 11 in Monday Night Football at Washington, creating a clear one-week outcome.",
+            "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Commanders",
+            "reason": "Washington hosts the Monday night game, so its Week 11 result is nationally visible and directly observable.",
+            "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Colts",
+            "reason": "Indianapolis opens the week on Thursday night at Houston, a standalone matchup with a definite winner.",
+            "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Texans",
+            "reason": "Houston gets the Thursday night home game and a quick-turn result this week.",
+            "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Bills",
+            "reason": "Buffalo plays Miami on Sunday in a division game with major standings impact.",
+            "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Dolphins",
+            "reason": "Miami’s trip to Buffalo gives the team a concrete Week 11 outcome against a top AFC East rival.",
+            "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Broncos",
+            "reason": "Denver hosts Las Vegas on Sunday afternoon, making this a clean weekly event pick.",
+            "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Raiders",
+            "reason": "Las Vegas visits Denver in a division game that will produce an immediate, verifiable result.",
+            "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Ravens",
+            "reason": "Baltimore plays at Carolina in Week 11, giving the team a straightforward points-style outcome.",
+            "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Panthers",
+            "reason": "Carolina hosts Baltimore, so the game outcome is fixed and public within the week.",
+            "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Steelers",
+            "reason": "Pittsburgh remains a high-visibility team in Week 11, and its schedule shift was officially announced by the league.",
+            "source": "https://media.nfl.com/news-and-releases/week-11-schedule-change--jaguars-giants-to-4-25-p-m--et--steeler",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Eagles",
+            "reason": "Philadelphia is involved in the same league-announced Week 11 schedule update, keeping the pick tied to current official news.",
+            "source": "https://media.nfl.com/news-and-releases/week-11-schedule-change--jaguars-giants-to-4-25-p-m--et--steeler",
+            "points": 0,
+            "owner": null
+          },
+          {
+            "name": "Chiefs",
+            "reason": "Kansas City’s current standings place it among the league’s best records, making it a current top-tier team to draft around.",
+            "source": "https://www.nfl.com/standings/",
+            "points": 0,
+            "owner": null
+          }
+        ],
+        "log": [],
+        "createdBy": "Maya",
+        "live": {
+          "status": "ready",
+          "startedAt": 1794789474028,
+          "endsAt": 1795394274028,
+          "scoringRule": "5 points for A listed Week 11 home team wins its game.; -3 for A listed Week 11 road team loses its game.. Only outcomes after opening, for one week. At most one of each per pick per UTC day.",
+          "counted": [],
+          "quotes": {},
+          "researchedAt": 1794789480218,
+          "summary": "Week 11 features a Mexico City Sunday night game and a Monday night Bengals-Commanders matchup. The week also includes a Thursday Colts-Texans opener and multiple playoff-relevant AFC and NFC games.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-11",
+          "finance": false,
+          "mode": "events",
+          "positiveEvent": "A listed Week 11 home team wins its game.",
+          "negativeEvent": "A listed Week 11 road team loses its game.",
+          "lastAttemptAt": 1794789480218,
+          "lastCheckedAt": 1794789480219,
+          "lastMessage": "Fantasy NFL this week: no new verified scoring events. No points changed."
+        }
+      }
+    }
+  ],
+  "retry": {
+    "topic": "Nvidia",
+    "replyMs": 3.723395999999994,
+    "creationMs": 8259.165528,
+    "reply": {
+      "addressed": true,
+      "line": "Fantasy Nvidia is open. Write in your own picks, 3 each. Current picks and sources are loading on the page.",
+      "url": "http://localhost:5173/f/fantasy-dj5gy",
+      "card": {
+        "kicker": "FANTASY LEAGUE · CUPERTINO DAY ONES",
+        "title": "Fantasy Nvidia",
+        "sub": "Draft 3 picks each. Write in anything.",
+        "path": "/f/fantasy-dj5gy"
+      }
+    },
+    "scored": "Fantasy Nvidia: no new verified scoring events. No points changed.",
+    "league": {
+      "id": "fantasy-dj5gy",
+      "topic": "Nvidia",
+      "league": "Cupertino Day Ones",
+      "members": [
+        "Peyton",
+        "Maya",
+        "Sritej",
+        "Alex",
+        "Dev"
+      ],
+      "rosterSize": 3,
+      "pool": [
+        {
+          "name": "NVDA",
+          "reason": "The core Nvidia equity is directly tied to the current earnings event and CEO transition news.",
+          "source": "https://investor.nvidia.com/home/default.aspx?ncid=GTC-NVWU7UV9",
+          "ticker": "NVDA",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "AMD",
+          "reason": "Current Nvidia earnings and AI-infrastructure commentary can move the main U.S. chip peer as a comparison trade.",
+          "source": "https://investor.nvidia.com/financial-info/financial-reports/",
+          "ticker": "AMD",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "INTC",
+          "reason": "Nvidia’s latest AI-platform and supply-chain updates keep attention on the broader U.S. semiconductor group.",
+          "source": "https://nvidianews.nvidia.com/news/nvidia-announces-ceo-transition",
+          "ticker": "INTC",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "AVGO",
+          "reason": "Nvidia’s current AI factory and networking messaging makes another large U.S. semiconductor name a draftable peer.",
+          "source": "https://nvidianews.nvidia.com/news/nvidia-announces-ceo-transition",
+          "ticker": "AVGO",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "QCOM",
+          "reason": "Nvidia’s leadership and capital-return headlines can spill into valuation talk across U.S. chip stocks.",
+          "source": "https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Announces-a-150-Billion-Share-Repurchase-Authorization-Increase/default.aspx?trk=article-ssr-frontend-pulse_little-text-block",
+          "ticker": "QCOM",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "MU",
+          "reason": "Nvidia’s current AI demand narrative keeps memory and data-center suppliers in the weekly news flow.",
+          "source": "https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Announces-Financial-Results-for-Second-Quarter-Fiscal-2027/",
+          "ticker": "MU",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "ANET",
+          "reason": "Nvidia’s AI-networking and data-center buildout updates can influence the market’s read-through to networking names.",
+          "source": "https://nvidianews.nvidia.com/news/nvidia-announces-ceo-transition",
+          "ticker": "ANET",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "SMCI",
+          "reason": "Nvidia’s upcoming results and AI-factory commentary keep server hardware names in play for the week.",
+          "source": "https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Sets-Conference-Call-for-Third-Quarter-Financial-Results/",
+          "ticker": "SMCI",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "ARM",
+          "reason": "Nvidia’s current AI-platform cycle keeps architecture and ecosystem names draftable around the earnings event.",
+          "source": "https://investor.nvidia.com/files/content_files/TRANSCRIPT_-NVIDIA-Corp-NVDA-US-Q2-2027-Earnings-Call-26-August-2026-5_00-PM-ET.pdf",
+          "ticker": "ARM",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "TSM",
+          "reason": "Nvidia’s latest results and supply-demand commentary make the leading foundry name a direct weekly peer.",
+          "source": "https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Announces-Financial-Results-for-Second-Quarter-Fiscal-2027/",
+          "ticker": "TSM",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "MSFT",
+          "reason": "Nvidia’s AI infrastructure news can affect the big U.S. cloud buyer most associated with current AI spending.",
+          "source": "https://nvidianews.nvidia.com/news/nvidia-announces-ceo-transition",
+          "ticker": "MSFT",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "META",
+          "reason": "Nvidia’s current AI-capex headlines remain highly relevant to a major U.S. platform spender on AI hardware.",
+          "source": "https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Announces-a-150-Billion-Share-Repurchase-Authorization-Increase/default.aspx?trk=article-ssr-frontend-pulse_little-text-block",
+          "ticker": "META",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "GOOGL",
+          "reason": "Nvidia’s earnings and AI-factory updates stay relevant to another large U.S. hyperscale AI spender.",
+          "source": "https://investor.nvidia.com/home/default.aspx?ncid=GTC-NVWU7UV9",
+          "ticker": "GOOGL",
+          "points": 0,
+          "owner": null
+        }
+      ],
+      "log": [],
+      "createdBy": "Maya",
+      "live": {
+        "status": "ready",
+        "startedAt": 1794789516119,
+        "endsAt": 1795394316119,
+        "scoringRule": "1 point per 1% price change from the first verified quote after opening, rounded to 0.1 points. Down moves lose points. One week; no money involved.",
+        "counted": [],
+        "quotes": {
+          "AMD": {
+            "price": 534.06,
+            "at": 1794603601000,
+            "awarded": 0
+          },
+          "AVGO": {
+            "price": 347.01,
+            "at": 1794603601000,
+            "awarded": 0
+          },
+          "NVDA": {
+            "price": 162.85,
+            "at": 1794603601000,
+            "awarded": 0
+          },
+          "INTC": {
+            "price": 59.66,
+            "at": 1794603601000,
+            "awarded": 0
+          },
+          "SMCI": {
+            "price": 26.865,
+            "at": 1794603600000,
+            "awarded": 0
+          },
+          "ANET": {
+            "price": 197.29,
+            "at": 1794603603000,
+            "awarded": 0
+          },
+          "MU": {
+            "price": 778.31,
+            "at": 1794603601000,
+            "awarded": 0
+          },
+          "QCOM": {
+            "price": 172.47,
+            "at": 1794603600000,
+            "awarded": 0
+          },
+          "META": {
+            "price": 641.69,
+            "at": 1794603601000,
+            "awarded": 0
+          },
+          "ARM": {
+            "price": 190.53,
+            "at": 1794603600000,
+            "awarded": 0
+          },
+          "TSM": {
+            "price": 398.73,
+            "at": 1794603602000,
+            "awarded": 0
+          },
+          "MSFT": {
+            "price": 523.88,
+            "at": 1794603601000,
+            "awarded": 0
+          },
+          "GOOGL": {
+            "price": 295.77,
+            "at": 1794603601000,
+            "awarded": 0
+          }
+        },
+        "researchedAt": 1794789523851,
+        "summary": "Nvidia has a major earnings report scheduled for November 17, 2026. The company also announced a CEO transition and a large share repurchase authorization this month.",
+        "source": "https://investor.nvidia.com/home/default.aspx?ncid=GTC-NVWU7UV9",
+        "finance": true,
+        "mode": "quotes",
+        "positiveEvent": "NVIDIA reports third-quarter fiscal 2027 financial results on November 17, 2026.",
+        "negativeEvent": "NVIDIA closes below its previous trading day’s close after the November 17, 2026 earnings release.",
+        "lastAttemptAt": 1794789524137,
+        "lastCheckedAt": 1794789524137,
+        "lastMessage": "Fantasy Nvidia: no new verified scoring events. No points changed."
+      }
+    }
+  },
+  "refinedSports": {
+    "topic": "NFL this week",
+    "replyMs": 4.778238999999999,
+    "creationMs": 10872.231286999999,
+    "reply": {
+      "addressed": true,
+      "line": "Fantasy NFL this week is open. 10 on the board, draft 3 each. Current picks and sources are loading on the page.",
+      "url": "http://localhost:5173/f/fantasy-u7mns",
+      "card": {
+        "kicker": "FANTASY LEAGUE · CUPERTINO DAY ONES",
+        "title": "Fantasy NFL this week",
+        "sub": "Draft 3 picks each. 10 on the board.",
+        "path": "/f/fantasy-u7mns"
+      }
+    },
+    "scored": "Fantasy NFL this week: no new verified scoring events. No points changed.",
+    "league": {
+      "id": "fantasy-u7mns",
+      "topic": "NFL this week",
+      "league": "Cupertino Day Ones",
+      "members": [
+        "Peyton",
+        "Maya",
+        "Sritej",
+        "Alex",
+        "Dev"
+      ],
+      "rosterSize": 3,
+      "pool": [
+        {
+          "name": "Packers",
+          "reason": "Green Bay opens Week 12 at the Rams on Wednesday, November 25, giving them an official win-or-loss result in the first game of the week.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Rams",
+          "reason": "Los Angeles hosts the Packers in the first Week 12 matchup, so its outcome is fixed by an official result this week.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Bears",
+          "reason": "Chicago plays at Detroit on Thanksgiving Day, with a verifiable Week 12 result on November 26.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Lions",
+          "reason": "Detroit’s Thanksgiving home game against Chicago gives it a clear official win-or-loss outcome this week.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Eagles",
+          "reason": "Philadelphia visits Dallas on Thanksgiving, making its Week 12 outcome an official result in the NFL schedule.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Cowboys",
+          "reason": "Dallas hosts Philadelphia on November 26, so the team has a concrete Week 12 result to track.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Chiefs",
+          "reason": "Kansas City plays Buffalo in the Thanksgiving night game, which ends with an official Week 12 result.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Bills",
+          "reason": "Buffalo’s home matchup with Kansas City is one of the week’s most observable official outcomes.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Broncos",
+          "reason": "Denver’s Black Friday trip to Pittsburgh produces a definite official result on November 27.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Steelers",
+          "reason": "Pittsburgh hosts Denver in the NFL’s Black Friday game, so the team’s Week 12 result is fully official.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Patriots",
+          "reason": "New England closes the week at the Chargers on Sunday night, giving it an official Week 12 outcome.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Chargers",
+          "reason": "Los Angeles ends Week 12 in prime time against New England, so its result is easy to verify officially.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "49ers",
+          "reason": "San Francisco hosts Seattle on Sunday, November 29, which guarantees an official Week 12 result.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Seahawks",
+          "reason": "Seattle’s road game at San Francisco gives it a concrete official outcome before Week 12 ends.",
+          "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+          "points": 0,
+          "owner": null
+        }
+      ],
+      "log": [],
+      "createdBy": "Maya",
+      "live": {
+        "status": "ready",
+        "startedAt": 1794789758703,
+        "endsAt": 1795394558703,
+        "scoringRule": "5 points for official Week 12 win; -3 for official Week 12 loss. Only outcomes after opening, for one week. At most one of each per pick per UTC day.",
+        "counted": [],
+        "quotes": {},
+        "researchedAt": 1794789766515,
+        "summary": "NFL Week 12 is loaded with a Thanksgiving slate and a Black Friday game. The official schedule runs from Wednesday, November 25 through Sunday, November 29, 2026.",
+        "source": "https://www.nfl.com/schedules/2026/by-week/week-12",
+        "finance": false,
+        "mode": "events",
+        "positiveEvent": "official Week 12 win",
+        "negativeEvent": "official Week 12 loss",
+        "lastAttemptAt": 1794789766516,
+        "lastCheckedAt": 1794789766517,
+        "lastMessage": "Fantasy NFL this week: no new verified scoring events. No points changed."
+      }
+    }
+  },
+  "rejectedDatedSports": {
+    "topic": "NFL this week",
+    "replyMs": 6.310265000000001,
+    "creationMs": 6919.237244,
+    "reply": {
+      "addressed": true,
+      "line": "Fantasy NFL this week is open. 10 on the board, draft 3 each. Current picks and sources are loading on the page.",
+      "url": "http://localhost:5173/f/fantasy-1azc7",
+      "card": {
+        "kicker": "FANTASY LEAGUE · CUPERTINO DAY ONES",
+        "title": "Fantasy NFL this week",
+        "sub": "Draft 3 picks each. 10 on the board.",
+        "path": "/f/fantasy-1azc7"
+      }
+    },
+    "scored": "I could not check right now. No automatic points were added; manual scoring still works.",
+    "league": {
+      "id": "fantasy-1azc7",
+      "topic": "NFL this week",
+      "league": "Cupertino Day Ones",
+      "members": [
+        "Peyton",
+        "Maya",
+        "Sritej",
+        "Alex",
+        "Dev"
+      ],
+      "rosterSize": 3,
+      "pool": [
+        {
+          "name": "Mahomes",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Allen",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Jackson",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Barkley",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Chase",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Jefferson",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Hurts",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Burrow",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Henry",
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "St. Brown",
+          "points": 0,
+          "owner": null
+        }
+      ],
+      "log": [],
+      "createdBy": "Maya",
+      "live": {
+        "status": "fallback",
+        "startedAt": 1794789987525,
+        "endsAt": 1795394787525,
+        "scoringRule": "Manual points while current research loads.",
+        "counted": [],
+        "quotes": {},
+        "lastMessage": "Current research is unavailable. Use write-ins and manual points."
+      }
+    }
+  },
+  "currentSports": {
+    "topic": "NBA games in the next seven days",
+    "replyMs": 9.677194999999998,
+    "creationMs": 11045.323718,
+    "reply": {
+      "addressed": true,
+      "line": "Fantasy NBA games in the next seven days is open. 10 on the board, draft 3 each. Current picks and sources are loading on the page.",
+      "url": "http://localhost:5173/f/fantasy-200n3",
+      "card": {
+        "kicker": "FANTASY LEAGUE · CUPERTINO DAY ONES",
+        "title": "Fantasy NBA games in the next seven days",
+        "sub": "Draft 3 picks each. 10 on the board.",
+        "path": "/f/fantasy-200n3"
+      }
+    },
+    "scored": "Fantasy NBA games in the next seven days: no new verified scoring events. No points changed.",
+    "league": {
+      "id": "fantasy-200n3",
+      "topic": "NBA games in the next seven days",
+      "league": "Cupertino Day Ones",
+      "members": [
+        "Peyton",
+        "Maya",
+        "Sritej",
+        "Alex",
+        "Dev"
+      ],
+      "rosterSize": 3,
+      "pool": [
+        {
+          "name": "Bulls",
+          "reason": "Play at Cleveland on Nov 16 in a verified schedule entry, giving them a concrete result inside the window.",
+          "source": "https://www.nba.com/bulls/game/0022600246-bulls-vs-cavaliers-cleveland-oh-11-16-2026",
+          "nextEventAt": 1794873600000,
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Cavaliers",
+          "reason": "Host Chicago on Nov 16, so their outcome is settled inside the scoring window.",
+          "source": "https://www.nba.com/cavaliers/schedule?lang=en",
+          "nextEventAt": 1794873600000,
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Rockets",
+          "reason": "Face Denver on Nov 20 in a scheduled NBA Cup game, making the result observable within the week.",
+          "source": "https://www.nba.com/nuggets/game/0022600050-rockets-vs-nuggets-denver-co-11-20-2026/event-details",
+          "nextEventAt": 1795230000000,
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Nuggets",
+          "reason": "Host Houston on Nov 20, with a clear win-or-loss outcome in the window.",
+          "source": "https://www.nba.com/nuggets/game/0022600050-rockets-vs-nuggets-denver-co-11-20-2026/event-details",
+          "nextEventAt": 1795230000000,
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Thunder",
+          "reason": "Play Miami on Nov 22, a scheduled matchup with a definite outcome in the window.",
+          "source": "https://www.nba.com/games?date=2026-11-22",
+          "nextEventAt": 1795377600000,
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Heat",
+          "reason": "Host Oklahoma City on Nov 22, giving them an in-window result to track.",
+          "source": "https://www.nba.com/games?date=2026-11-22",
+          "nextEventAt": 1795377600000,
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Mavericks",
+          "reason": "Host the Clippers on Nov 21, so their game outcome resolves before the window closes.",
+          "source": "https://www.nba.com/games?date=2026-11-22",
+          "nextEventAt": 1795302000000,
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Clippers",
+          "reason": "Visit Dallas on Nov 21 in a scheduled game with a clear final result.",
+          "source": "https://www.nba.com/games?date=2026-11-22",
+          "nextEventAt": 1795302000000,
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Lakers",
+          "reason": "Host Utah on Nov 17 and again on Nov 18 and Nov 23, ensuring a result inside the scoring span.",
+          "source": "https://www.nba.com/games?date=2026-11-22",
+          "nextEventAt": 1794974400000,
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Jazz",
+          "reason": "Play at the Lakers on Nov 17 in a verified scheduled game ending within the window.",
+          "source": "https://www.nba.com/games?date=2026-11-22",
+          "nextEventAt": 1794974400000,
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Knicks",
+          "reason": "Visit Toronto on Nov 17, with the matchup resolved during the exact seven-day span.",
+          "source": "https://www.nba.com/games?date=2026-11-22",
+          "nextEventAt": 1794961800000,
+          "points": 0,
+          "owner": null
+        },
+        {
+          "name": "Timberwolves",
+          "reason": "Host Portland on Nov 16 and Denver on Nov 21, giving them multiple in-window outcomes.",
+          "source": "https://www.nba.com/games?date=2026-11-22",
+          "nextEventAt": 1794870000000,
+          "points": 0,
+          "owner": null
+        }
+      ],
+      "log": [],
+      "createdBy": "Maya",
+      "live": {
+        "status": "ready",
+        "startedAt": 1794790053141,
+        "endsAt": 1795394853141,
+        "scoringRule": "5 points for official game win; -3 for official game loss. Only outcomes after opening, for one week. At most one of each per pick per UTC day.",
+        "counted": [],
+        "quotes": {},
+        "researchedAt": 1794790062069,
+        "summary": "NBA games are scheduled throughout the exact seven-day window from November 16 to November 23, 2026. The slate includes several high-profile matchups, including Celtics-Warriors and Rockets-Nuggets.",
+        "source": "https://www.nba.com/schedule?cal=November&region=21",
+        "finance": false,
+        "mode": "events",
+        "positiveEvent": "official game win",
+        "negativeEvent": "official game loss",
+        "lastAttemptAt": 1794790062069,
+        "lastCheckedAt": 1794790062070,
+        "lastMessage": "Fantasy NBA games in the next seven days: no new verified scoring events. No points changed."
+      }
+    }
+  }
+}
