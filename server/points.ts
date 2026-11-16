@@ -1,4 +1,6 @@
-export type Game = "wordle" | "krillion" | "rps" | "custom";
+import { isArcadeGame, type ArcadeGame, type ArcadeOutcome, type ArcadePayload } from "./arcade.js";
+
+export type Game = "wordle" | "krillion" | "rps" | "custom" | ArcadeGame;
 
 export interface PointsPart {
   label: string;
@@ -25,6 +27,8 @@ export interface ResultPayload {
   time?: string;
   seconds?: number;
   rarity?: number;
+  arcade?: ArcadePayload;
+  arcadeOutcome?: ArcadeOutcome;
 }
 
 export interface PastResult {
@@ -35,6 +39,7 @@ export interface PastResult {
   players?: string[];
   solved?: boolean;
   base?: number;
+  arcadeOutcome?: ArcadeOutcome;
 }
 
 export interface Scored {
@@ -42,7 +47,7 @@ export interface Scored {
   moved: number;
   line: string;
   points: Points;
-  record: { points: Points; players: string[]; solved: boolean; base: number };
+  record: { points: Points; players: string[]; solved: boolean; base: number; arcadeOutcome?: ArcadeOutcome };
 }
 
 export const POINTS_CAP = 20;
@@ -83,6 +88,16 @@ export function scoreRps(input: { stake: number; winnerScore?: number; loserScor
   ].filter((p) => p.points > 0);
 }
 
+const arcadeParts = (score: number, max: number, label: string): PointsPart[] => score <= 0 || !Number.isFinite(score)
+  ? [{ label: "showing up", points: 1 }]
+  : [{ label: "run", points: 3 }, { label, points: Math.max(1, Math.round(Math.min(score, max) / max * 10)) }];
+
+export const scoreReaction = (score: number) => arcadeParts(score, 1000, "reflexes");
+export const scoreFreeThrow = (score: number) => arcadeParts(score, 500, "accuracy");
+export const scoreMemory = (score: number) => arcadeParts(score, 25, "recall");
+export const scoreMath = (score: number) => arcadeParts(score, 20, "correct");
+export const scoreHigherLower = (score: number) => arcadeParts(score, 20, "run length");
+
 export function applyExtras(base: PointsPart[], extras: Extras = {}, cap = POINTS_CAP): Points {
   const parts = [...base];
   if (extras.first) parts.push({ label: "first in", points: FIRST_BONUS });
@@ -117,7 +132,7 @@ export function parseSeconds(payload: ResultPayload): number | undefined {
 }
 
 export function scoreResult(
-  round: { id: string; game: Game; title: string; stake?: unknown; seconds?: unknown },
+  round: { id: string; game: Game; title: string; stake?: unknown; seconds?: unknown; opponent?: unknown },
   payload: ResultPayload,
   who: { name: string; rival: string },
   state: { results: PastResult[]; nickels: Record<string, number> },
@@ -127,6 +142,22 @@ export function scoreResult(
   const limit = typeof round.seconds === "number" ? round.seconds : undefined;
   const owned = (name: string) => state.nickels[name] ?? 0;
   const { name, rival } = who;
+
+  if (isArcadeGame(round.game)) {
+    const outcome = payload.arcadeOutcome ?? { score: 0, label: "No score", won: false };
+    const base = ({ reaction: scoreReaction, freethrow: scoreFreeThrow, memory: scoreMemory, math: scoreMath, higherlower: scoreHigherLower })[round.game](outcome.score);
+    const earlier = state.results.filter((r) => r.roundId === round.id && r.name !== name);
+    const points = applyExtras(base, {
+      streakDays: streakDays(state.results, name, now),
+      first: outcome.score > 0 && !earlier.some((r) => r.base !== undefined && r.base > 1),
+      upset: outcome.won && earlier.some((r) => r.base !== undefined && sum(base) > r.base && owned(name) < owned(r.name)),
+    });
+    const other = earlier.find((r) => r.name === rival && r.arcadeOutcome);
+    const duel = round.opponent ? other?.arcadeOutcome
+      ? outcome.score === other.arcadeOutcome.score ? " " + name + " and " + rival + " tied." : " " + (outcome.score > other.arcadeOutcome.score ? name + " beat " + rival : rival + " beat " + name) + " on score."
+      : " Waiting for " + rival + "." : "";
+    return { total: points.total, moved: 0, line: name + " scored " + outcome.label + " at " + round.title + ": " + explain(points) + "." + duel, points, record: { points, players: [name], solved: outcome.won, base: sum(base), arcadeOutcome: outcome } };
+  }
 
   if (round.game === "rps") {
     const winner = payload.won ? name : rival;

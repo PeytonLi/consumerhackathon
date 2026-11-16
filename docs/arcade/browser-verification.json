@@ -1,0 +1,476 @@
+{
+  "viewport": "390x844",
+  "browser": "157.0.8103.78",
+  "runs": [
+    {
+      "theme": "light",
+      "game": "reaction",
+      "path": "/r/reaction-x2hq0",
+      "frames": {
+        "count": 713,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000728,
+        "max": 16.80000000000109
+      },
+      "inputs": {
+        "count": 4,
+        "p50": 15.400000000023283,
+        "p95": 15.699999999953434,
+        "max": 15.699999999953434
+      },
+      "overflow": false,
+      "score": "703",
+      "body": "S\nReaction\nCupertino Day Ones\n0:00\n\nOFFICIAL RESULT\n\nNicely done\n\n703\n\nout of 1000 reflex\n\n+12\n3 run\n+7 reflexes\n+2 first in\nStill 1st\n\nSaved to your league\n\nThis round\n\n1\nSritej\n703/1000 reflex\nShare\nPractice\nLeaderboard",
+      "errors": [],
+      "responses": [
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "start",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "finish",
+          "status": 200,
+          "ok": true,
+          "score": 703
+        },
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true,
+          "score": 703
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "game": "freethrow",
+      "path": "/r/freethrow-aixnw",
+      "frames": {
+        "count": 509,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000728,
+        "max": 16.800000000000182
+      },
+      "inputs": {
+        "count": 6,
+        "p50": 15,
+        "p95": 15.099999999976717,
+        "max": 15.099999999976717
+      },
+      "overflow": false,
+      "score": "453",
+      "body": "S\nFree Throw\nCupertino Day Ones\n0:00\n\nOFFICIAL RESULT\n\nNicely done\n\n453\n\nout of 500 accuracy\n\n+14\n3 run\n+9 accuracy\n+2 first in\nStill 1st\n\nSaved to your league\n\nThis round\n\n1\nSritej\n453/500 accuracy\nShare\nPractice\nLeaderboard",
+      "errors": [],
+      "responses": [
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "start",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "finish",
+          "status": 200,
+          "ok": true,
+          "score": 453
+        },
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true,
+          "score": 453
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "game": "memory",
+      "path": "/r/memory-yptcm",
+      "frames": {
+        "count": 808,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000728,
+        "max": 16.80000000000109
+      },
+      "inputs": {
+        "count": 14,
+        "p50": 14.79999999993015,
+        "p95": 16,
+        "max": 16
+      },
+      "overflow": false,
+      "score": "12",
+      "body": "S\nMemory\nCupertino Day Ones\n0:00\n\nOFFICIAL RESULT\n\nNicely done\n\n12\n\nsteps\n\n+10\n3 run\n+5 recall\n+2 first in\nStill 1st\n\nSaved to your league\n\nThis round\n\n1\nSritej\n12 steps\nShare\nPractice\nLeaderboard",
+      "errors": [],
+      "responses": [
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "start",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "finish",
+          "status": 200,
+          "ok": true,
+          "score": 12
+        },
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true,
+          "score": 12
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "game": "math",
+      "path": "/r/math-3lkkl",
+      "frames": {
+        "count": 348,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000728,
+        "max": 16.800000000000182
+      },
+      "inputs": {
+        "count": 21,
+        "p50": 15.199999999953434,
+        "p95": 15.900000000023283,
+        "max": 16.199999999953434
+      },
+      "overflow": false,
+      "score": "20",
+      "body": "S\nMath Sprint\nCupertino Day Ones\n0:00\n\nOFFICIAL RESULT\n\nNicely done\n\n20\n\nout of 20 correct\n\n+15\n3 run\n+10 correct\n+2 first in\nStill 1st\n\nSaved to your league\n\nThis round\n\n1\nSritej\n20/20 correct\nShare\nPractice\nLeaderboard",
+      "errors": [],
+      "responses": [
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "start",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "finish",
+          "status": 200,
+          "ok": true,
+          "score": 20
+        },
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true,
+          "score": 20
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "game": "higherlower",
+      "path": "/r/higherlower-0kfm2",
+      "frames": {
+        "count": 194,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.800000000000068
+      },
+      "inputs": {
+        "count": 8,
+        "p50": 14.300000000046566,
+        "p95": 15.800000000046566,
+        "max": 15.800000000046566
+      },
+      "overflow": false,
+      "score": "6",
+      "body": "S\nHigher or Lower\nCupertino Day Ones\n0:00\n\nOFFICIAL RESULT\n\nNicely done\n\n6\n\nin a row\n\n+8\n3 run\n+3 run length\n+2 first in\nStill 1st\n\nSaved to your league\n\nThis round\n\n1\nSritej\n6 in a row\nShare\nPractice\nLeaderboard",
+      "errors": [],
+      "responses": [
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "start",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "finish",
+          "status": 200,
+          "ok": true,
+          "score": 6
+        },
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true,
+          "score": 6
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "game": "reaction",
+      "path": "/r/reaction-4fug6",
+      "frames": {
+        "count": 706,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000728,
+        "max": 16.80000000000109
+      },
+      "inputs": {
+        "count": 4,
+        "p50": 15.5,
+        "p95": 15.900000000023283,
+        "max": 15.900000000023283
+      },
+      "overflow": false,
+      "score": "697",
+      "body": "S\nReaction\nCupertino Day Ones\n0:00\n\nOFFICIAL RESULT\n\nNicely done\n\n697\n\nout of 1000 reflex\n\n+12\n3 run\n+7 reflexes\n+2 first in\nStill 1st\n\nSaved to your league\n\nThis round\n\n1\nSritej\n697/1000 reflex\nShare\nPractice\nLeaderboard",
+      "errors": [],
+      "responses": [
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "start",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "finish",
+          "status": 200,
+          "ok": true,
+          "score": 697
+        },
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true,
+          "score": 697
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "game": "freethrow",
+      "path": "/r/freethrow-e8xol",
+      "frames": {
+        "count": 509,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000728,
+        "max": 16.800000000000182
+      },
+      "inputs": {
+        "count": 6,
+        "p50": 14.599999999976717,
+        "p95": 15.199999999953434,
+        "max": 15.199999999953434
+      },
+      "overflow": false,
+      "score": "454",
+      "body": "S\nFree Throw\nCupertino Day Ones\n0:00\n\nOFFICIAL RESULT\n\nNicely done\n\n454\n\nout of 500 accuracy\n\n+14\n3 run\n+9 accuracy\n+2 first in\nStill 1st\n\nSaved to your league\n\nThis round\n\n1\nSritej\n454/500 accuracy\nShare\nPractice\nLeaderboard",
+      "errors": [],
+      "responses": [
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "start",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "finish",
+          "status": 200,
+          "ok": true,
+          "score": 454
+        },
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true,
+          "score": 454
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "game": "memory",
+      "path": "/r/memory-mp5mo",
+      "frames": {
+        "count": 820,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000728,
+        "max": 16.80000000000109
+      },
+      "inputs": {
+        "count": 14,
+        "p50": 15.400000000023283,
+        "p95": 16,
+        "max": 16
+      },
+      "overflow": false,
+      "score": "12",
+      "body": "S\nMemory\nCupertino Day Ones\n0:00\n\nOFFICIAL RESULT\n\nNicely done\n\n12\n\nsteps\n\n+10\n3 run\n+5 recall\n+2 first in\nStill 1st\n\nSaved to your league\n\nThis round\n\n1\nSritej\n12 steps\nShare\nPractice\nLeaderboard",
+      "errors": [],
+      "responses": [
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "start",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "finish",
+          "status": 200,
+          "ok": true,
+          "score": 12
+        },
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true,
+          "score": 12
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "game": "math",
+      "path": "/r/math-j5lm8",
+      "frames": {
+        "count": 345,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.800000000000182
+      },
+      "inputs": {
+        "count": 21,
+        "p50": 15,
+        "p95": 16,
+        "max": 16.199999999953434
+      },
+      "overflow": false,
+      "score": "20",
+      "body": "S\nMath Sprint\nCupertino Day Ones\n0:00\n\nOFFICIAL RESULT\n\nNicely done\n\n20\n\nout of 20 correct\n\n+15\n3 run\n+10 correct\n+2 first in\nStill 1st\n\nSaved to your league\n\nThis round\n\n1\nSritej\n20/20 correct\nShare\nPractice\nLeaderboard",
+      "errors": [],
+      "responses": [
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "start",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "finish",
+          "status": 200,
+          "ok": true,
+          "score": 20
+        },
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true,
+          "score": 20
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "game": "higherlower",
+      "path": "/r/higherlower-6f22w",
+      "frames": {
+        "count": 195,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.800000000000182
+      },
+      "inputs": {
+        "count": 8,
+        "p50": 14.599999999976717,
+        "p95": 15.900000000023283,
+        "max": 15.900000000023283
+      },
+      "overflow": false,
+      "score": "6",
+      "body": "S\nHigher or Lower\nCupertino Day Ones\n0:00\n\nOFFICIAL RESULT\n\nNicely done\n\n6\n\nin a row\n\n+8\n3 run\n+3 run length\n+2 first in\nStill 1st\n\nSaved to your league\n\nThis round\n\n1\nSritej\n6 in a row\nShare\nPractice\nLeaderboard",
+      "errors": [],
+      "responses": [
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "start",
+          "status": 200,
+          "ok": true
+        },
+        {
+          "action": "finish",
+          "status": 200,
+          "ok": true,
+          "score": 6
+        },
+        {
+          "action": "status",
+          "status": 200,
+          "ok": true,
+          "score": 6
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "check": "practice completed without mutations",
+      "postRequests": 0
+    },
+    {
+      "check": "refresh during play forfeits, does not reset",
+      "score": 0
+    },
+    {
+      "check": "failed save visibly retained, retry saves identical trace",
+      "score": "0"
+    },
+    {
+      "check": "finished round survives server restart from scratch data directory",
+      "game": "math",
+      "score": 20,
+      "points": 15
+    }
+  ]
+}

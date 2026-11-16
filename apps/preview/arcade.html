@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>Nickel Arcade</title>
+<!--ROUND-->
+<link rel="stylesheet" href="/nickel.css">
+<link rel="stylesheet" href="/arcade.css">
+<script src="/juice.js" defer></script>
+<script src="/arcade.js" defer></script>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="bar">
+    <div id="me"></div>
+    <div class="name"><b id="title">Nickel Arcade</b><span id="league">One thumb. One shot.</span></div>
+    <div><span class="glass pill" id="clock" role="timer" aria-label="Time remaining"></span></div>
+  </header>
+  <main class="stage" id="stage" aria-label="Game board"></main>
+  <footer class="dock" id="dock"></footer>
+</div>
+<div class="glass toast" id="toast" role="status"></div>
+</body>
+</html>

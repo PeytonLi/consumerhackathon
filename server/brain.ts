@@ -9,10 +9,11 @@ import { ALL_PUNISHMENTS } from "./punishments.js";
 import { attachAuth, claimPath, nameClaimed, type AuthStore } from "./auth.js";
 import { ledgerOf, payBuyIn, walletCard, walletTurn } from "./wallet.js";
 import { demoMode, roster, rosterNames } from "./roster.js";
+import { ARCADE, arcadeGame, arcadeSubmission, arcadeView, createArcade, isArcadeGame, type ArcadeGame, type ArcadeReply } from "./arcade.js";
 
 export interface Round {
   id: string;
-  game: "wordle" | "krillion" | "rps" | "custom";
+  game: "wordle" | "krillion" | "rps" | "custom" | ArcadeGame;
   title: string;
   league: string;
   members: string[];
@@ -173,7 +174,9 @@ function createRound(game: Round["game"], sender: string, opponent: string): Rou
   const members = withMember(opponent).concat(sender && !withMember(opponent).includes(sender) ? [sender] : []);
   const base = { league: LEAGUE_NAME, members, closes: "9:00 PM", challenger: sender || undefined };
   let round: Round;
-  if (game === "rps") {
+  if (isArcadeGame(game)) {
+    round = { id: newId(game), game, ...createArcade(game), opponent: opponent || undefined, ...base };
+  } else if (game === "rps") {
     const hands = ["rock", "paper", "scissors"];
     round = { id: newId("rps"), game, title: "Rock Paper Scissors", opponent: opponent || (demoMode() ? "Dev" : "Nickel"), bestOf: 3, stake: 5, devMoves: Array.from({ length: 5 }, () => hands[Math.floor(Math.random() * 3)]), ...base };
   } else if (game === "krillion") {
@@ -195,7 +198,7 @@ export function roundCard(round: Round) {
     sub: opponent ? title + (round.stake ? " for " + round.stake + " Nickels" : "") : round.seconds ? round.seconds + " seconds. Closes " + (round.closes ?? "tonight") + "." : "Tap to play",
     league: round.league,
     members: round.members,
-    hue: round.game === "wordle" ? "#ff9500" : round.game === "krillion" ? "#0f9fbf" : "#5856d6",
+    hue: isArcadeGame(round.game) ? ARCADE[round.game].hue : round.game === "wordle" ? "#ff9500" : round.game === "krillion" ? "#0f9fbf" : "#5856d6",
     path: "/r/" + round.id,
   };
 }
@@ -662,10 +665,15 @@ function setPunishment(text: string): string {
   return store.punishment!;
 }
 
-export function recordResult(roundId: string, payload: ResultPayload & { verified?: boolean }): { ok: boolean; line?: string; points?: Points } {
+export function recordResult(roundId: string, payload: ResultPayload & { verified?: boolean }): ArcadeReply {
   const round = getRound(roundId);
   const name = person(payload.name);
   if (!round || !name) return { ok: false };
+  if (isArcadeGame(round.game)) {
+    const checked = arcadeSubmission(round, name, payload, store.results, save);
+    if ("reply" in checked) return checked.reply;
+    payload = { ...payload, arcadeOutcome: checked.outcome, seconds: checked.seconds, tries: checked.outcome.won ? "1/1" : "X/1" };
+  }
   const done: { line: string; points?: Points } | undefined = store.results.find((r) => r.roundId === roundId && (r.name === name || (round.game === "rps" && (r as typeof r & { players?: string[] }).players?.includes(name))));
   if (done) return { ok: true, line: done.line, points: done.points };
   if (round.closed || (round.game === "wordle" && !/^(?:[1-6]|X)\/6$/i.test(String(payload.tries ?? "X/6"))) || (payload.seconds !== undefined && (!Number.isFinite(payload.seconds) || payload.seconds < 0)) || (payload.rarity !== undefined && (!Number.isInteger(payload.rarity) || payload.rarity < 0 || payload.rarity > 5))) return { ok: false };
@@ -694,7 +702,7 @@ export function recordResult(roundId: string, payload: ResultPayload & { verifie
   notePicks(name, payload);
   store.results.push({ roundId, name, line, at: Date.now(), loser: loser || undefined, ...scored.record, ...(payload.verified === true ? {} : { unverified: true }) });
   save();
-  return { ok: true, line, points: scored.points };
+  return { ok: true, line, points: scored.points, ...(isArcadeGame(round.game) ? arcadeView(round, name, store.results) : {}) };
 }
 
 export function nickelStandings(): string {
@@ -848,16 +856,18 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   }
 
   const asked = (input.game ?? "").toLowerCase();
-  const game: Round["game"] = asked === "wordle" || asked === "krillion" || asked === "rps" ? asked : /word/.test(lower) ? "wordle" : /krill/.test(lower) ? "krillion" : /rock|paper|scissors|rps/.test(lower) ? "rps" : /challenge|\bvs\b|versus|against|1v1/.test(lower) ? "rps" : "wordle";
+  if (/^@?nickel[,\s]+(?:games|arcade)[.!?\s]*$/i.test(text)) return { addressed: true, line: "Wordle Blitz, One in a Krillion, Rock Paper Scissors, Reaction, Free Throw, Memory, Math Sprint, Higher or Lower. Say: Nickel, play reaction." };
+  const arcade = arcadeGame(asked) ?? arcadeGame(lower);
+  const game: Round["game"] = arcade ?? (asked === "wordle" || asked === "krillion" || asked === "rps" ? asked : /word/.test(lower) ? "wordle" : /krill/.test(lower) ? "krillion" : /rock|paper|scissors|rps/.test(lower) ? "rps" : /challenge|\bvs\b|versus|against|1v1/.test(lower) ? "rps" : "wordle");
   const skip = new Set(["between", "me", "and", "to", "a", "an", "the", "with", "my", "us", "him", "her", "them", "pls", "please", "plz", "thanks", "gc", "chat", "here", "now", "today", "tonight", "rn", "nickel", "for", "in", "at", "wordle", "krillion", "rps", "rock", "game"]);
   const afterVerb = text.match(/(?:challenge|vs\.?|versus|against|between|and)\s+(.+)$/i)?.[1] ?? "";
   const opponent = person(input.opponent) || person(afterVerb.split(/\s+/).map((w) => w.replace(/[^A-Za-z]/g, "")).find((w) => w && !skip.has(w.toLowerCase())));
   if (opponent && opponent !== sender && /challenge|\bvs\b|versus|against|1v1|between/.test(lower + (input.opponent ? " challenge" : ""))) {
     const round = createRound(game, sender, opponent);
-    const terms = round.game === "rps" ? "Best of 3, 5 Nickels on it." : round.seconds + " seconds, 5 Nickels on it.";
+    const terms = isArcadeGame(round.game) ? round.seconds + " seconds each. High score wins; Nickels for every run." : round.game === "rps" ? "Best of 3, 5 Nickels on it." : round.seconds + " seconds, 5 Nickels on it.";
     return reply((sender ? sender + " just called out " + opponent + ". " : opponent + ", you just got called out. ") + round.title + ". " + terms, roundCard(round));
   }
-  if (/play|today|game|word|krill|rock|rps|deal|start/.test(lower)) {
+  if (arcade || /play|today|game|word|krill|rock|rps|deal|start/.test(lower)) {
     const round = game === "wordle" && !/new/.test(lower) ? getRound("wordle-212")! : createRound(game, sender, "");
     return reply(round.title + " is live. " + (round.seconds ? round.seconds + " seconds on the clock." : "Best of 3."), roundCard(round));
   }
