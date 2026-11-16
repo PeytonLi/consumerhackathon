@@ -117,7 +117,7 @@ describe("GET /api/hub payload", () => {
   it("matches the contract shape", () => {
     hub.remember("Maya calls every game rigged", "Dev");
     const out = hub.hub({ token: "me-abc", name: "Maya", face: null, account: "x" } as Parameters<typeof hub.hub>[0]);
-    expect(Object.keys(out)).toEqual(["me", "league", "people", "group", "pots", "payouts", "recent"]);
+    expect(Object.keys(out)).toEqual(["me", "league", "people", "group", "pots", "payouts", "recent", "walletLedger"]);
     expect(out.me).toEqual({ token: "me-abc", name: "Maya", face: null });
     expect(hub.hub(null).me).toBeNull();
     expect(out.league).toEqual({ name: "Cupertino Day Ones", stakes: null, punishment: null });

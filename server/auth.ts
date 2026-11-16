@@ -15,7 +15,7 @@ const SESSION_MS = 180 * 24 * 60 * 60 * 1000;
 const CLAIM_MS = 24 * 60 * 60 * 1000;
 const WINDOW_MS = 60 * 1000;
 const LIMITS = { session: 60, ip: 120, claim: 10 };
-const SIZES = { result: 4000, pot: 2000, fantasy: 2000, claim: 2000, profile: 400000, turn: 64000 };
+const SIZES = { result: 4000, pot: 2000, wallet: 2000, fantasy: 2000, claim: 2000, profile: 400000, turn: 64000 };
 
 const local: AuthStore = { profiles: {} };
 let source: () => AuthStore = () => local;
@@ -129,7 +129,7 @@ export async function authGate(request: Request, socket = ""): Promise<{ request
   if (request.method !== "POST") return { request, session };
   const path = new URL(request.url).pathname;
   const profileEdit = path.match(/^\/api\/me\/([a-z0-9-]+)$/);
-  const route = path === "/api/claim" ? "claim" : path === "/api/turn" ? "turn" : /^\/api\/rounds\/[a-z0-9-]+\/result$/.test(path) ? "result" : /^\/api\/pot\/[a-z0-9-]+$/.test(path) ? "pot" : /^\/api\/fantasy\/[a-z0-9-]+\/(draft|score)$/.test(path) ? "fantasy" : profileEdit ? "profile" : "";
+  const route = path === "/api/claim" ? "claim" : path === "/api/turn" ? "turn" : /^\/api\/rounds\/[a-z0-9-]+\/result$/.test(path) ? "result" : /^\/api\/pot\/[a-z0-9-]+$/.test(path) ? "pot" : path === "/api/wallet" ? "wallet" : /^\/api\/fantasy\/[a-z0-9-]+\/(draft|score)$/.test(path) ? "fantasy" : profileEdit ? "profile" : "";
   if (!route) return { request, session };
 
   if (Number(request.headers.get("content-length") ?? 0) > SIZES[route]) return deny(413, "That is too much data.");

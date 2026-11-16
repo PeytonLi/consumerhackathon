@@ -40,7 +40,6 @@
 <div class="glass toast" id="toast" role="status"></div>
 <script>
 let P = window.POT;
-const CHECKOUT = window.CHECKOUT;
 const params = new URLSearchParams(location.search);
 if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
 const $ = (id) => document.getElementById(id);
@@ -80,9 +79,9 @@ function askName() {
 }
 
 function draw() {
-  if (!P) {
+  if (!P || P.cancelled) {
     stage.className = "stage center";
-    stage.innerHTML = '<p class="t-title">This buy-in ended</p><p class="t-label">Text Nickel to start a new one</p>';
+    stage.innerHTML = P ? '<p class="t-title">This buy-in was cancelled</p><p class="t-label">Everyone who paid got it back in their wallet</p>' : '<p class="t-title">This buy-in ended</p><p class="t-label">Text Nickel to start a new one</p>';
     dock.hidden = true;
     return;
   }
@@ -94,9 +93,10 @@ function draw() {
   const mine = P.members[me()];
   stage.className = "stage";
   stage.innerHTML =
-    '<div class="card hero"><p class="t-label">Pot</p><p class="t-display">' + money(names.length * P.amountCents) + '</p><p class="t-label">' + money(P.amountCents) + " each, proposed by " + esc(P.proposer) + '</p>' +
+    '<div class="card hero"><p class="t-label">Pot</p><p class="t-display">' + money(names.length * P.amountCents + (P.forfeitCents || 0)) + '</p><p class="t-label">' + money(P.amountCents) + " each, proposed by " + esc(P.proposer) + '</p>' +
     '<div class="bar2"><i style="width:' + (names.length ? Math.round(paid.length / names.length * 100) : 0) + '%"></i></div><p class="t-caption">' + paid.length + " of " + names.length + " paid</p></div>" +
-    '<div class="rows">' + names.map((n) => '<div class="rowi' + (n === me() ? " me" : "") + '">' + avatar(n) + "<b>" + esc(n) + '</b><span class="state' + (P.members[n] === "paid" ? " paid" : "") + '">' + (P.members[n] === "paid" ? "Paid" : "Agreed") + "</span></div>").join("") + "</div>";
+    '<div class="rows">' + names.map((n) => '<div class="rowi' + (n === me() ? " me" : "") + '">' + avatar(n) + "<b>" + esc(n) + '</b><span class="state' + (P.members[n] === "paid" ? " paid" : "") + '">' + (P.members[n] === "paid" ? "Paid" : "Agreed") + "</span></div>").join("") + "</div>" +
+    (P.forfeits || []).slice(-3).reverse().map((f) => '<p class="t-caption" style="text-align:center">' + esc(f.line) + "</p>").join("");
   dock.hidden = false;
   if (mine === "paid") {
     dock.innerHTML = '<button class="glass primary" type="button" disabled>You paid ' + money(P.amountCents) + '</button><p class="t-caption">Winner takes the pot at the end of the season</p>';
@@ -104,14 +104,20 @@ function draw() {
     dock.innerHTML = '<button class="glass primary" id="agree" type="button">Agree to ' + money(P.amountCents) + '</button><p class="t-caption">Nothing is charged until you pay</p>';
     $("agree").onclick = async () => { await call({ member: me(), action: "agree" }); draw(); };
   } else {
-    dock.innerHTML = '<button class="glass primary" id="pay" type="button">Pay ' + money(P.amountCents) + '</button><p class="t-caption">' + (CHECKOUT === "live" ? "Secure checkout by Stripe" : CHECKOUT === "test" ? "Stripe test mode. Use card 4242 4242 4242 4242." : "Demo payment. No card is charged.") + "</p>";
+    const topUp = (short) => { dock.innerHTML = '<a class="glass primary" id="add" href="/wallet?u=' + encodeURIComponent(me().toLowerCase()) + "&add=" + short + "&back=" + encodeURIComponent(location.pathname) + '" style="text-decoration:none">Add money to your wallet</a><p class="t-caption">Your wallet is ' + money(short) + " short of the " + money(P.amountCents) + " buy-in</p>"; };
+    dock.innerHTML = '<button class="glass primary" id="pay" type="button">Pay ' + money(P.amountCents) + ' from wallet</button><p class="t-caption" id="bal">Comes out of your Nickel wallet</p>';
     $("pay").onclick = async () => {
       $("pay").disabled = true;
       const out = await call({ member: me(), action: "pay" });
-      if (out.checkoutUrl) return location.href = out.checkoutUrl;
-      toast("Paid");
+      if (out.shortCents) return topUp(out.shortCents);
+      if (out.ok) toast("Paid");
       draw();
     };
+    fetch("/api/wallet?u=" + encodeURIComponent(me())).then((r) => r.json()).then((w) => {
+      if (!$("pay") || !w.wallet || !w.wallet.name) return;
+      if (w.wallet.balanceCents < P.amountCents) topUp(P.amountCents - w.wallet.balanceCents);
+      else $("bal").textContent = "Wallet balance " + money(w.wallet.balanceCents);
+    }).catch(() => {});
   }
 }
 draw();
