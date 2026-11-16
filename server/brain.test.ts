@@ -64,8 +64,8 @@ describe("group chat turns", () => {
     expect(brain.recordResult(id, { name: "Sritej", opponent: "Peyton", score: "2–1", won: true }).line).toBe("Sritej beat Peyton 2-1 at Rock Paper Scissors. 5 Nickels moved.");
     brain.recordResult(id, { name: "Sritej", opponent: "Peyton", score: "2–1", won: true });
     expect(turn("nickel who won").line).toBe("Sritej beat Peyton 2-1 at Rock Paper Scissors. 5 Nickels moved. Nickels: Sritej +5, Peyton -5.");
-    expect(brain.recordResult("wordle-212", { name: "Maya", tries: "3/6", time: "0:22" }).line).toBe("Maya solved Wordle Blitz in 3 (0:22). Plus 5 Nickels.");
-    expect(turn("nickel leaderboard").line).toBe("Nickels: Sritej +5, Maya +5, Peyton -5.");
+    expect(brain.recordResult("wordle-212", { name: "Maya", tries: "3/6", time: "0:22" }).line).toBe("Maya solved Wordle Blitz in 3 tries and 22 seconds: 5 + 3 tries + 2 speed + 2 first in = 12 Nickels.");
+    expect(turn("nickel leaderboard").line).toBe("Nickels: Maya +12, Sritej +5, Peyton -5.");
   });
 
   it("runs a buy-in: propose, agree, pay, status", () => {
@@ -97,7 +97,7 @@ describe("group chat turns", () => {
     const [m0, a0] = [before("Maya"), before("Alex")];
     const made = turn("Nickel, challenge Maya", "Alex");
     const id = made.card!.path.slice(3);
-    expect(brain.recordResult(id, { name: "Alex", won: false, score: "0-2" }).line).toBe("Maya beat Alex 0-2 at Rock Paper Scissors. 5 Nickels moved.");
+    expect(brain.recordResult(id, { name: "Alex", won: false, score: "0-2" }).line).toBe("Maya beat Alex 2-0 at Rock Paper Scissors: 5 + 1 sweep = 6 Nickels. Alex drops 6.");
     const board = brain.leaderboard();
     const maya = board.people.find((p) => p.name === "Maya")!;
     const alex = board.people.find((p) => p.name === "Alex")!;
