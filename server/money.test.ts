@@ -79,11 +79,11 @@ describe("wallet routes", () => {
     expect((await route("/api/wallet/topup", me, { body: { amountCents: 50 } })).status).toBe(400);
     expect((await route("/api/wallet/topup", me, { body: { amountCents: 2500, playerId: "someone-else" } })).body).toEqual({ checkoutUrl: "https://sandbox.whop.com/checkout/ch_1/" });
     const checkout = calls[0].input as { metadata: { playerId: string }; redirectUrl: string };
-    expect(checkout.redirectUrl).toBe(BASE + "/wallet.html");
+    expect(checkout.redirectUrl).toBe(BASE + "/wallet?paid=1");
     await credit("1", checkout.metadata.playerId, 2500);
     const wallet = (await route("/api/wallet", me)).body;
     expect(wallet).toMatchObject({ balanceCents: 2500, dailyLimitCents: 1500, consent: true });
-    expect(wallet.activity).toEqual([expect.objectContaining({ amountCents: 2500, reason: "top_up", note: "Top up" })]);
+    expect(wallet.activity).toEqual([expect.objectContaining({ amountCents: 2500, reason: "topup", note: "Top up" })]);
 
     vi.stubEnv("NICKEL_TURN_SECRET", "s3cret");
     const keiki = await route("/api/wallet?phone=%2B14085550111", null, { headers: { "x-nickel-secret": "s3cret" } });
@@ -109,13 +109,32 @@ describe("wallet routes", () => {
     expect((await route("/api/pot/" + potId, null, { body: { member: "Alex", action: "pay" } })).status).toBe(401);
     expect((await pay()).body).toMatchObject({ ok: false, reason: "consent" });
     await route("/api/wallet/limit", me, { body: { dailyLimitCents: 2000, consent: true } });
-    expect((await pay()).body).toMatchObject({ ok: false, reason: "balance", wallet: "/wallet.html" });
-    await route("/api/wallet/topup", me, { body: { amountCents: 800 } });
-    await credit("3", (calls[0].input as { metadata: { playerId: string } }).metadata.playerId, 800);
+    await route("/api/wallet/topup", me, { body: { amountCents: 300 } });
+    await credit("3", (calls[0].input as { metadata: { playerId: string } }).metadata.playerId, 300);
+    const short = await pay();
+    expect(short.status).toBe(402);
+    expect(short.body).toMatchObject({ ok: false, reason: "balance", shortCents: 200 });
+    expect(brain.getPot(potId)!.members).toEqual({ Alex: "in" });
+    await credit("4", (calls[0].input as { metadata: { playerId: string } }).metadata.playerId, 500);
     const paid = await pay();
     expect(paid.body.ok).toBe(true);
     expect(paid.body.pot.members.Alex).toBe("paid");
+    expect(paid.body.pot.paidAt.Alex).toEqual(expect.any(Number));
     expect((await pay()).body.ok).toBe(true);
-    expect((await route("/api/wallet", me)).body).toMatchObject({ balanceCents: 300, spentTodayCents: 500 });
+    const wallet = (await route("/api/wallet", me)).body;
+    expect(wallet).toMatchObject({ balanceCents: 300, spentTodayCents: 500 });
+    expect(wallet.activity[0]).toMatchObject({ amountCents: -500, reason: "buyin", note: "Cupertino Day Ones" });
+    expect(wallet.activity.filter((a: { reason: string }) => a.reason === "buyin")).toHaveLength(1);
+    expect((await route("/api/pot/pot-nope", me, { body: { action: "pay" } })).status).toBe(404);
+  });
+
+  it("refuses to take a buy-in for a settled pot", async () => {
+    const me = signedIn("+14085550114", "Bo");
+    const potId = brain.handleTurn({ text: "nickel $3 buy-in", sender: "Bo", baseUrl: BASE }).card!.path.split("?")[0].slice(3);
+    Object.assign(brain.getPot(potId)!, { settled: true });
+    const out = await route("/api/pot/" + potId, me, { body: { action: "pay" } });
+    expect(out.status).toBe(409);
+    expect(out.body).toMatchObject({ ok: false, error: "That pot is closed." });
+    expect((await route("/api/wallet", me)).body.activity).toEqual([]);
   });
 });

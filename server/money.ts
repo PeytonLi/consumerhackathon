@@ -141,10 +141,12 @@ async function payPot(api: MoneyBackend, me: string, who: { key: string; name: s
   if (!pot) return fail(404, "Not found");
   const name = who.name;
   if (!name) return fail(400, "Set your name on your player card first.");
-  if ((pot as Pot & { settled?: boolean }).settled) return fail(409, "That pot is closed.", { pot });
+  const saved = pot as Pot & { settled?: boolean; forfeits?: unknown[] };
+  if (saved.settled) return fail(409, "That pot is closed.", { pot });
+  if (pot.members[name] === "paid") return json({ ok: true, pot });
   const groupId = await api.mutation<string>("payments:ensureGroup", { chatId: potChat(pot.league), name: pot.league, commissionerId: me });
   await api.mutation("payments:joinGroup", { groupId, playerId: me });
-  const out = await api.mutation<{ ok: boolean; reason?: string; balanceCents?: number }>("payments:takeStake", { playerId: me, groupId, amountCents: pot.amountCents, roundId: "pot:" + pot.id, key: "pot:" + pot.id + ":" + me, buyIn: true, note: pot.league });
+  const out = await api.mutation<{ ok: boolean; reason?: string; balanceCents?: number }>("payments:takeStake", { playerId: me, groupId, amountCents: pot.amountCents, roundId: "pot:" + pot.id, key: "pot:" + pot.id + ":" + me + (saved.forfeits?.length ? ":" + saved.forfeits.length : ""), buyIn: true, note: pot.league });
   if (!out.ok) return fail(402, WHY[out.reason ?? ""] ?? "That did not go through.", { reason: out.reason, pot, shortCents: out.reason === "balance" ? pot.amountCents - (out.balanceCents ?? 0) : undefined });
   const joined = joinPot(pot.id, name, "paid");
   if (joined.ok) {

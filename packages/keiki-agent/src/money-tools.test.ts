@@ -78,7 +78,7 @@ describe("add_money", () => {
   it("sends a plain wallet link in a group", async () => {
     reply = linkServer;
     const out = await run(addMoneyTool, {}, group);
-    expect(out).toEqual({ ok: true, line: "Add money here.", url: "https://nickel.test/w" });
+    expect(out).toEqual({ ok: true, line: "Add money here.", url: "https://nickel.test/wallet" });
   });
 
   it("never puts a checkout url in a group, even if the server returns one", async () => {

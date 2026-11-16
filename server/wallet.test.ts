@@ -2,254 +2,295 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { makeFunctionReference } from "convex/server";
+import { defineTestApp } from "convex-test";
+import schema from "../convex/schema.js";
+import * as moneyModule from "../convex/money.js";
+import * as payments from "../convex/payments.js";
+import type { Id } from "../convex/_generated/dataModel.js";
 
 let brain: typeof import("./brain.js");
 let hub: typeof import("./hub.js");
 let wallet: typeof import("./wallet.js");
+let money: typeof import("./money.js");
+
+const testApp = defineTestApp({ schema }).defineModules({ money: moneyModule, payments });
+const { api } = testApp;
+let t: ReturnType<typeof testApp.createTest>;
+const seen: string[] = [];
+const potMoves: string[] = [];
+let trap: ((name: string) => void) | null = null;
+
 beforeAll(async () => {
-  delete process.env.STRIPE_SECRET_KEY;
   process.env.NICKEL_DATA_DIR = mkdtempSync(tmpdir() + "/nickel-wallet-");
   brain = await import("./brain.js");
   hub = await import("./hub.js");
   wallet = await import("./wallet.js");
+  money = await import("./money.js");
+  t = testApp.createTest();
+  money.useMoneyBackend({
+    query: (name, args) => t.query(makeFunctionReference<"query", any, any>(name), args),
+    action: (name, args) => t.action(makeFunctionReference<"action", any, any>(name), args),
+    mutation: async (name, args) => {
+      seen.push(name);
+      trap?.(name);
+      if (name === "payments:potMove") potMoves.push(String(args.key));
+      return t.mutation(makeFunctionReference<"mutation", any, any>(name), args);
+    },
+  });
 });
 afterEach(() => {
   vi.useRealTimers();
-  vi.unstubAllGlobals();
-  delete process.env.STRIPE_SECRET_KEY;
+  trap = null;
 });
 
-const turn = (text: string, sender = "Sritej") => brain.handleTurn({ text, sender, baseUrl: "https://nickel.test/" });
+const BASE = "https://nickel.test";
+const turn = (text: string, sender = "Sritej") => brain.handleTurn({ text, sender, baseUrl: BASE + "/" });
 const potId = (reply: { card?: { path: string } }) => reply.card!.path.slice(3).split("?")[0];
-const balanced = () => {
-  const balances = (brain.internals.store as unknown as { balances: Record<string, number> }).balances;
-  for (const [name, cents] of Object.entries(balances)) {
-    expect(Number.isInteger(cents)).toBe(true);
-    expect(cents).toBeGreaterThanOrEqual(0);
-    expect(wallet.ledgerSum(name)).toBe(cents);
-  }
-};
-const fund = (name: string, cents: number) => { for (let left = cents; left > 0; left -= 1000) expect(wallet.topUp(name, Math.min(left, 1000)).ok).toBe(true); };
 const at = (iso: string) => Date.parse(iso);
 const clock = (iso: string) => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(at(iso)); };
 const played = (name: string, iso: string) => brain.internals.store.results.push({ roundId: "wordle-212", name, line: name + " solved it.", at: at(iso) });
-const openPot = (proposer: string, members: string[]) => {
+
+const phones: Record<string, string> = {};
+const player = (name: string) => {
+  phones[name] ??= "+1555010" + String(Object.keys(phones).length).padStart(4, "0");
+  return { token: brain.profileFor(phones[name], name).token, name, phone: phones[name] };
+};
+const idOf = async (name: string) => (await t.mutation(api.payments.ensurePlayer, { phone: player(name).phone, name })) as Id<"players">;
+let events = 0;
+const fund = async (name: string, cents: number) => {
+  const playerId = await idOf(name);
+  await t.mutation(api.payments.setLimit, { playerId, dailyLimitCents: 50000, consent: true });
+  const id = "msg_" + ++events;
+  await t.mutation(testApp.internal.payments.handleWhopEvent, { eventId: id, payload: JSON.stringify({ id, type: "payment.succeeded", data: { id: "pay_" + events, currency: "usd", total: { amount: (cents / 100).toFixed(2), currency: "usd" }, metadata: { playerId, amountCents: cents, kind: "top_up" } } }) });
+};
+const walletOf = async (name: string) => t.query(api.payments.wallet, { playerId: await idOf(name) });
+const balanceOf = async (name: string) => (await walletOf(name)).balanceCents;
+const pay = async (id: string, name: string) => {
+  const request = new Request(BASE + "/api/pot/" + id, { method: "POST", headers: { host: "nickel.test", "content-type": "application/json" }, body: JSON.stringify({ action: "pay" }) });
+  const res = (await money.walletRoute(request, player(name), BASE))!;
+  return { status: res.status, body: (await res.json()) as Record<string, any> };
+};
+const openPot = async (proposer: string, members: string[]) => {
   const id = potId(turn("Nickel, $5 buy-in", proposer));
   for (const name of members) {
-    fund(name, 500);
-    expect(wallet.payBuyIn(id, name).ok).toBe(true);
+    await fund(name, 500);
+    expect((await pay(id, name)).body.ok).toBe(true);
   }
   return id;
 };
+const movesFor = (id: string) => wallet.pendingPotMoves().filter((m) => m.potId === id);
 
-describe("top-ups", () => {
-  it("adds $1 to $10 at a time in whole cents and stops at the $50 cap", () => {
-    expect(wallet.topUp("Maya", 99)).toEqual({ ok: false, error: "Top-ups run from $1 to $10 at a time." });
-    expect(wallet.topUp("Maya", 1001).ok).toBe(false);
-    expect(wallet.topUp("Maya", 250.5).ok).toBe(false);
-    expect(wallet.topUp("", 500).ok).toBe(false);
-    expect(wallet.topUp("Maya", 250)).toEqual({ ok: true, balanceCents: 250 });
-    expect(hub.balanceOf("Maya")).toBe(250);
-    fund("Maya", 4000);
-    expect(wallet.topUp("Maya", 1000)).toEqual({ ok: false, error: "A wallet holds up to $50. You have $42.50, so you can add up to $7.50." });
-    expect(wallet.topUp("Maya", 750).ok).toBe(true);
-    expect(wallet.topUp("Maya", 100)).toEqual({ ok: false, error: "A wallet holds up to $50. You have $50, so it is full." });
-    expect(wallet.ledgerOf("Maya").every((e) => e.type === "topup" && e.reason && e.at > 0)).toBe(true);
-    balanced();
-  });
-
-  it("answers add, top up and load with the wallet card", () => {
+describe("wallet card in chat", () => {
+  it("answers add, top up and load with a wallet card and never shows a balance", () => {
     const add = turn("Nickel, add $5", "Dev");
-    expect(add.line).toBe("Dev, tap the card to add $5 to your wallet. You have $0 now. Demo mode, no card is charged.");
-    expect(add.url).toBe("https://nickel.test/wallet?u=dev&add=500");
-    expect(add.card).toMatchObject({ kicker: "WALLET \u00b7 CUPERTINO DAY ONES", title: "$0 in your wallet", path: "/wallet?u=dev&add=500" });
-    expect(turn("nickel top up 5", "Dev").card!.path).toBe("/wallet?u=dev&add=500");
-    expect(turn("Nickel, load $2", "Dev").card!.path).toBe("/wallet?u=dev&add=200");
-    expect(turn("Nickel, add $20", "Dev").line).toBe("Top-ups run from $1 to $10 at a time.");
-    expect(turn("Nickel, add $5", "Maya").line).toBe("A wallet holds up to $50. You have $50, so it is full.");
-    expect(turn("Nickel, my wallet", "Dev").line).toBe("Dev, you have $0 in your wallet. Add $1 to $10 at a time.");
-    expect(turn("Nickel, add $5", "").line).toBe("Tell me your name first: Nickel, I'm Sritej.");
-    expect(hub.balanceOf("Dev")).toBe(0);
-    expect(turn("Nickel, my balance", "Maya").line).toBe("Maya, your balance is $50. It stays on the Nickel ledger.");
+    expect(add.line).toBe("Dev, tap the card to add $5 to your wallet.");
+    expect(add.url).toBe("https://nickel.test/wallet?add=500");
+    expect(add.card).toEqual({ kicker: "WALLET \u00b7 CUPERTINO DAY ONES", title: "Add $5", sub: "Your Nickel balance. Buy-ins and stakes come out of it.", path: "/wallet?add=500" });
+    expect(turn("nickel top up 5", "Dev").card!.path).toBe("/wallet?add=500");
+    expect(turn("Nickel, load $2", "Dev").card!.path).toBe("/wallet?add=200");
+    expect(turn("Nickel, deposit 2.50", "Dev").card!.path).toBe("/wallet?add=250");
+    const big = turn("Nickel, add $600", "Dev");
+    expect(big.line).toBe("Top-ups run from $1 to $500 at a time.");
+    expect(big.card!.path).toBe("/wallet");
+    const mine = turn("Nickel, my wallet", "Dev");
+    expect(mine.line).toBe("Dev, your balance is in your wallet. Add $1 or more at a time.");
+    expect(mine.card).toMatchObject({ title: "Your wallet", path: "/wallet" });
+    expect(seen).toEqual([]);
   });
 
-  it("credits a paid Stripe session once and nothing else", async () => {
-    process.env.STRIPE_SECRET_KEY = "sk_test_x";
-    const sessions: Record<string, object> = {
-      cs_test_paid: { id: "cs_test_paid", payment_status: "paid", amount_total: 500, currency: "usd", metadata: { kind: "wallet", member: "Alex" } },
-      cs_test_open: { id: "cs_test_open", payment_status: "unpaid", amount_total: 500, currency: "usd", metadata: { kind: "wallet", member: "Alex" } },
-      cs_test_pot: { id: "cs_test_pot", payment_status: "paid", amount_total: 500, currency: "usd", metadata: { pot: "pot-abc12", member: "Alex" } },
-      cs_test_big: { id: "cs_test_big", payment_status: "paid", amount_total: 5000, currency: "usd", metadata: { kind: "wallet", member: "Alex" } },
-    };
-    const calls: string[] = [];
-    vi.stubGlobal("fetch", async (url: string) => { calls.push(url); return Response.json(sessions[url.split("/").pop()!] ?? { error: {} }); });
-    expect(await wallet.confirmTopUp("cs_test_open")).toBe(false);
-    expect(await wallet.confirmTopUp("cs_test_pot")).toBe(false);
-    expect(await wallet.confirmTopUp("cs_test_big")).toBe(false);
-    expect(await wallet.confirmTopUp("cs_test_missing")).toBe(false);
-    expect(await wallet.confirmTopUp("not a session")).toBe(false);
-    expect(hub.balanceOf("Alex")).toBe(0);
-    expect(await Promise.all([wallet.confirmTopUp("cs_test_paid"), wallet.confirmTopUp("cs_test_paid"), wallet.confirmTopUp("cs_test_paid")])).toEqual([true, false, false]);
-    expect(await wallet.confirmTopUp("cs_test_paid")).toBe(false);
-    expect(hub.balanceOf("Alex")).toBe(500);
-    expect(wallet.ledgerOf("Alex")).toMatchObject([{ type: "topup", amountCents: 500, sessionId: "cs_test_paid" }]);
-    expect(calls.every((u) => u.startsWith("https://api.stripe.com/v1/checkout/sessions/cs_test_"))).toBe(true);
-    balanced();
+  it("sends cash outs to the wallet page without moving money", () => {
+    for (const text of ["Nickel, cash out $20", "Nickel, withdraw 4", "Nickel, cash out everything"]) {
+      const out = turn(text, "Peyton");
+      expect(out.line).toBe("Peyton, cash out from your wallet. Whop checks your ID the first time.");
+      expect(out.url).toBe("https://nickel.test/wallet?cashout=1");
+      expect(out.card).toMatchObject({ title: "Cash out", path: "/wallet?cashout=1" });
+    }
+    expect(wallet.walletCard(0, true).path).toBe("/wallet?cashout=1");
+    expect(seen).toEqual([]);
   });
 });
 
 describe("buy-ins from the wallet", () => {
-  it("does not mark a short wallet paid, then pays once it is funded", () => {
+  it("does not mark a short wallet paid, then pays once it is funded", async () => {
     const id = potId(turn("Nickel, $5 buy-in", "Peyton"));
-    wallet.topUp("Dev", 200);
-    const short = turn("Nickel, I'm in", "Dev");
-    expect(short.line).toBe("Dev, your wallet is $3 short of the $5 buy-in. You have $2. Add money, then say you are in again.");
-    expect(short.card!.path).toBe("/wallet?u=dev&add=300");
-    expect(short.pay).toBeUndefined();
+    const agree = turn("Nickel, I'm in", "Dev");
+    expect(agree.line).toBe("Dev is in. Tap the card to pay $5 from your Nickel balance. 2 in, $10 pot.");
+    expect(agree.card!.path).toBe("/p/" + id + "?u=dev");
     expect(brain.getPot(id)!.members).toEqual({ Peyton: "in", Dev: "in" });
-    expect(wallet.payBuyIn(id, "Dev")).toMatchObject({ ok: false, shortCents: 300, balanceCents: 200 });
-    expect(hub.balanceOf("Dev")).toBe(200);
-    wallet.topUp("Dev", 500);
-    const paid = turn("Nickel, I'm in", "Dev");
-    expect(paid.line).toBe("Dev is in and paid $5 from the wallet. 2 in, $10 pot. $2 left in the wallet.");
-    expect(paid.url).toMatch(/\/p\/pot-[a-z0-9]+\?u=dev$/);
-    expect(brain.getPot(id)!.members).toEqual({ Peyton: "in", Dev: "paid" });
+    await fund("Dev", 200);
+    const short = await pay(id, "Dev");
+    expect(short.status).toBe(402);
+    expect(short.body).toMatchObject({ ok: false, reason: "balance", shortCents: 300, error: "Not enough in your Nickel balance. Add money in your wallet." });
+    expect(brain.getPot(id)!.members).toEqual({ Peyton: "in", Dev: "in" });
+    expect(await balanceOf("Dev")).toBe(200);
+    await fund("Dev", 500);
+    const paid = await pay(id, "Dev");
+    expect(paid.status).toBe(200);
+    expect(paid.body.pot.members).toEqual({ Peyton: "in", Dev: "paid" });
+    expect(paid.body.pot.paidAt.Dev).toEqual(expect.any(Number));
+    expect(await balanceOf("Dev")).toBe(200);
+    expect((await pay(id, "Dev")).body.ok).toBe(true);
+    expect(await balanceOf("Dev")).toBe(200);
     expect(turn("Nickel, I'm in", "Dev").line).toBe("Dev already paid. 2 in, $10 pot.");
-    expect(wallet.payBuyIn(id, "Dev")).toMatchObject({ ok: true, balanceCents: 200 });
-    expect(hub.balanceOf("Dev")).toBe(200);
-    expect(wallet.ledgerOf("Dev").filter((e) => e.type === "buyin")).toMatchObject([{ amountCents: -500, potId: id, reason: "$5 buy-in" }]);
-    expect(wallet.payBuyIn("pot-nope", "Dev").ok).toBe(false);
-    balanced();
+    expect((await walletOf("Dev")).activity.filter((a) => a.reason === "buyin")).toMatchObject([{ amountCents: -500, note: "Cupertino Day Ones" }]);
+    expect((await pay("pot-nope", "Dev")).status).toBe(404);
   });
 
-  it("refunds every paid buy-in when the proposer cancels", () => {
+  it("refunds every paid buy-in when the proposer cancels, and nobody who only agreed", async () => {
     const id = brain.internals.store.latestPot!;
-    wallet.topUp("Peyton", 500);
-    expect(wallet.payBuyIn(id, "Peyton").ok).toBe(true);
-    expect(hub.balanceOf("Peyton")).toBe(0);
+    await fund("Peyton", 500);
+    expect((await pay(id, "Peyton")).body.ok).toBe(true);
+    expect(await balanceOf("Peyton")).toBe(0);
+    turn("Nickel, I'm in", "Alex");
     expect(turn("Nickel, cancel the pot", "Dev").line).toBe("Only Peyton can cancel this pot.");
-    expect(hub.balanceOf("Dev")).toBe(200);
+    expect(movesFor(id)).toEqual([]);
     expect(turn("Nickel, cancel the pot", "Peyton").line).toBe("The $5 pot is cancelled. Peyton and Dev each get $5 back in the wallet.");
-    expect(hub.balanceOf("Peyton")).toBe(500);
-    expect(hub.balanceOf("Dev")).toBe(700);
-    expect(wallet.ledgerOf("Dev").at(-1)).toMatchObject({ type: "refund", amountCents: 500, potId: id });
+    expect(movesFor(id).map((m) => [m.key, m.cents, m.kind])).toEqual([["refund:" + id + ":Peyton", 500, "refund"], ["refund:" + id + ":Dev", 500, "refund"]]);
+    await wallet.flushPotMoves();
+    expect(movesFor(id)).toEqual([]);
+    expect(await balanceOf("Peyton")).toBe(500);
+    expect(await balanceOf("Dev")).toBe(700);
+    expect((await walletOf("Dev")).activity[0]).toMatchObject({ reason: "refund", amountCents: 500, note: "Refund, $5 buy-in cancelled" });
     expect(turn("Nickel, cancel the pot", "Peyton").line).toBe("There is no open pot to cancel.");
     expect(wallet.cancelPot(id, "Peyton")).toEqual({ ok: false, error: "That pot is already cancelled." });
-    expect(wallet.payBuyIn(id, "Dev").ok).toBe(false);
+    expect((await pay(id, "Dev")).status).toBe(409);
     expect(hub.settlePot(id)).toEqual({ ok: false, error: "Already settled" });
-    expect(hub.balanceOf("Dev")).toBe(700);
+    await wallet.flushPotMoves();
+    expect(await balanceOf("Dev")).toBe(700);
+    expect(potMoves.filter((k) => k.startsWith("refund:" + id))).toHaveLength(2);
+    expect(wallet.failedPotMoves()).toEqual([]);
     expect(wallet.potView(id)).toMatchObject({ cancelled: true, forfeitCents: 0, forfeits: [] });
-    balanced();
   });
 
-  it("pays a pot win into the same wallet and lists the ledger on the hub", () => {
+  it("pays a pot win into the same wallet, once", async () => {
     const round = potId(turn("Nickel, challenge Dev", "Peyton"));
     brain.recordResult(round, { name: "Peyton", won: true, score: "2-0" } as Parameters<typeof brain.recordResult>[1]);
     const id = potId(turn("Nickel, $5 buy-in", "Peyton"));
-    expect(turn("Nickel, I'm in", "Peyton").line).toBe("Peyton is in and paid $5 from the wallet. 1 in, $5 pot. $0 left in the wallet.");
-    expect(turn("Nickel, I'm in", "Dev").line).toBe("Dev is in and paid $5 from the wallet. 2 in, $10 pot. $2 left in the wallet.");
-    expect(hub.settlePot(id)).toMatchObject({ ok: true, balanceCents: 1000, payout: { name: "Peyton", amountCents: 1000 } });
-    expect(wallet.ledgerOf("Peyton").at(-1)).toMatchObject({ type: "win", amountCents: 1000, reason: "Won the $10 pot", potId: id });
-    const out = hub.hub({ token: "me-abc", name: "Peyton", face: null });
-    expect(Object.keys(out).slice(-2)).toEqual(["walletLedger", "roster"]);
-    expect(out.walletLedger.map((e) => e.type)).toEqual(["win", "buyin", "refund", "buyin", "topup"]);
-    expect(hub.hub(null).walletLedger).toEqual([]);
-    expect(wallet.walletView("Peyton")).toMatchObject({ name: "Peyton", balanceCents: 1000, limits: { minCents: 100, maxCents: 1000, capCents: 5000, quick: [100, 200, 500, 1000] } });
-    balanced();
+    expect(turn("Nickel, I'm in", "Dev").line).toBe("Dev is in. Tap the card to pay $5 from your Nickel balance. 2 in, $10 pot.");
+    for (const name of ["Peyton", "Dev"]) expect((await pay(id, name)).body.ok).toBe(true);
+    expect(await balanceOf("Peyton")).toBe(0);
+    expect(hub.settlePot(id)).toMatchObject({ ok: true, payout: { name: "Peyton", amountCents: 1000, reason: "Won the $10 pot", potId: id } });
+    await wallet.flushPotMoves();
+    expect(await balanceOf("Peyton")).toBe(1000);
+    expect((await walletOf("Peyton")).activity[0]).toMatchObject({ reason: "win", amountCents: 1000, note: "Won the $10 pot" });
+    expect(hub.settlePot(id)).toEqual({ ok: false, error: "Already settled" });
+    await wallet.flushPotMoves();
+    expect(await balanceOf("Peyton")).toBe(1000);
+    expect(potMoves.filter((k) => k === "win:" + id)).toHaveLength(1);
+    expect(hub.hub(null).people.find((p) => p.name === "Peyton")).toMatchObject({ wonCents: 1000 });
+    expect(turn("Nickel, balances").line).toBe("Pot winnings: Peyton $10. Balances stay private in each wallet.");
   });
 });
 
-describe("cash out", () => {
-  it("debits at once as a pending simulated withdrawal and never overdraws", () => {
-    expect(hub.balanceOf("Dev")).toBe(200);
-    expect(wallet.withdraw("Dev", 201)).toEqual({ ok: false, error: "You have $2. You cannot cash out more than that." });
-    expect(wallet.withdraw("Dev", 50).ok).toBe(false);
-    expect(wallet.withdraw("Dev", -100).ok).toBe(false);
-    expect(wallet.withdraw("Dev", 150.5).ok).toBe(false);
-    expect(wallet.withdraw("Nobody", 100).ok).toBe(false);
-    expect(hub.balanceOf("Dev")).toBe(200);
-    expect([wallet.withdraw("Dev", 200).ok, wallet.withdraw("Dev", 200).ok]).toEqual([true, false]);
-    expect(hub.balanceOf("Dev")).toBe(0);
-    expect(wallet.ledgerOf("Dev").at(-1)).toMatchObject({ type: "withdrawal", amountCents: -200, status: "pending", simulated: true, reason: "Cash out $2, arrives in 1 to 2 days" });
-    expect(wallet.ledgerOf("Dev").filter((e) => e.type === "withdrawal")).toHaveLength(1);
-    balanced();
+describe("pot money outbox", () => {
+  it("keeps a move queued while Convex throws, then lands it once", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const id = await openPot("Gil", ["Gil"]);
+    trap = (name) => { if (name === "payments:potMove") throw new Error("Convex is down"); };
+    expect(wallet.cancelPot(id, "Gil").ok).toBe(true);
+    await wallet.flushPotMoves();
+    await wallet.flushPotMoves();
+    expect(movesFor(id).map((m) => m.key)).toEqual(["refund:" + id + ":Gil"]);
+    expect(wallet.failedPotMoves()).toEqual([]);
+    expect(await balanceOf("Gil")).toBe(0);
+    trap = null;
+    await wallet.flushPotMoves();
+    expect(movesFor(id)).toEqual([]);
+    expect(await balanceOf("Gil")).toBe(500);
+    vi.restoreAllMocks();
   });
 
-  it("cashes out from the chat", () => {
-    expect(turn("Nickel, cash out $20", "Peyton").line).toBe("Peyton, you have $10. You cannot cash out more than that.");
-    const some = turn("Nickel, withdraw 4", "Peyton");
-    expect(some.line).toBe("Peyton, cash out of $4 is on its way. It arrives in 1 to 2 days. $6 left in your wallet.");
-    expect(some.card!.path).toBe("/wallet?u=peyton");
-    expect(turn("Nickel, cash out everything", "Peyton").line).toBe("Peyton, cash out of $6 is on its way. It arrives in 1 to 2 days. $0 left in your wallet.");
-    expect(turn("Nickel, cash out everything", "Peyton").line).toBe("Peyton, your wallet is empty. There is nothing to cash out.");
-    expect(hub.balanceOf("Peyton")).toBe(0);
-    balanced();
+  it("records refusals once and does not retry them", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const id = potId(turn("Nickel, $5 buy-in", "Hal"));
+    player("Hal");
+    brain.joinPot(id, "Hal", "paid");
+    expect(wallet.cancelPot(id, "Hal").ok).toBe(true);
+    wallet.creditWin("Nobody", 300, "Won the $3 pot", id);
+    wallet.creditWin("Nobody", 300, "Won the $3 pot", id);
+    expect(movesFor(id).map((m) => m.key)).toEqual(["refund:" + id + ":Hal", "win:" + id]);
+    await wallet.flushPotMoves();
+    await wallet.flushPotMoves();
+    expect(movesFor(id)).toEqual([]);
+    expect(wallet.failedPotMoves().map((m) => [m.key, m.failed])).toEqual([["refund:" + id + ":Hal", "stake"], ["win:" + id, "player"]]);
+    const before = potMoves.length;
+    await wallet.flushPotMoves();
+    expect(potMoves).toHaveLength(before);
+    expect(await balanceOf("Hal")).toBe(0);
+    vi.restoreAllMocks();
   });
 });
 
 describe("midnight forfeits", () => {
-  it("moves an idle buy-in to the one who played, once", () => {
+  it("moves an idle buy-in to the one who played, once, and charges a rejoin again", async () => {
     clock("2026-03-10T20:00:00Z");
-    const id = openPot("Abe", ["Abe", "Ida"]);
+    const id = await openPot("Abe", ["Abe", "Ida"]);
     played("Abe", "2026-03-10T21:00:00Z");
     expect(wallet.sweepForfeits(at("2026-03-11T06:30:00Z"))).toEqual([]);
     const swept = wallet.sweepForfeits(at("2026-03-11T08:30:00Z"));
     expect(swept).toEqual([{ day: "2026-03-10", out: ["Ida"], shares: { Abe: 500 }, keptCents: 0, line: "Ida did not play yesterday. Ida's $5 went to Abe." }]);
-    expect(hub.balanceOf("Abe")).toBe(500);
-    expect(hub.balanceOf("Ida")).toBe(0);
+    expect(movesFor(id)).toEqual([{ key: "forfeit:" + id + ":2026-03-10:Abe", potId: id, name: "Abe", cents: 500, kind: "forfeit", note: "Collected from Ida, who did not play yesterday" }]);
+    await wallet.flushPotMoves();
+    expect(await balanceOf("Abe")).toBe(500);
+    expect(await balanceOf("Ida")).toBe(0);
+    expect((await walletOf("Abe")).activity[0]).toMatchObject({ reason: "win", amountCents: 500, note: "Collected from Ida, who did not play yesterday" });
     expect(brain.getPot(id)!.members).toEqual({ Abe: "paid" });
-    expect(wallet.ledgerOf("Ida").at(-1)).toMatchObject({ type: "forfeit_out", amountCents: 0, stakeCents: 500, potId: id });
-    expect(wallet.ledgerOf("Abe").at(-1)).toMatchObject({ type: "forfeit_in", amountCents: 500, potId: id, reason: "Collected $5 from Ida, who did not play yesterday" });
     expect(wallet.sweepForfeits(at("2026-03-11T08:31:00Z"))).toEqual([]);
     expect(wallet.sweepForfeits(at("2026-03-11T23:00:00Z"))).toEqual([]);
-    expect(hub.balanceOf("Abe")).toBe(500);
+    await wallet.flushPotMoves();
+    expect(await balanceOf("Abe")).toBe(500);
+    expect(potMoves.filter((k) => k.startsWith("forfeit:" + id))).toHaveLength(1);
     expect(wallet.potView(id)!.forfeits).toHaveLength(1);
     expect(wallet.withForfeitNews({ addressed: false })).toEqual({ addressed: false });
     expect(wallet.withForfeitNews({ addressed: true, line: "Hi." }).line).toBe("Ida did not play yesterday. Ida's $5 went to Abe. Hi.");
     expect(wallet.withForfeitNews({ addressed: true, line: "Hi." }).line).toBe("Hi.");
     vi.setSystemTime(at("2026-03-11T20:00:00Z"));
-    expect(turn("Nickel, I'm in", "Ida").line).toBe("Ida, your wallet is $5 short of the $5 buy-in. You have $0. Add money, then say you are in again.");
-    fund("Ida", 500);
-    expect(turn("Nickel, I'm in", "Ida").line).toBe("Ida is in and paid $5 from the wallet. 2 in, $10 pot. $0 left in the wallet.");
-    balanced();
+    expect(turn("Nickel, I'm in", "Ida").line).toBe("Ida is in. Tap the card to pay $5 from your Nickel balance. 2 in, $10 pot.");
+    expect((await pay(id, "Ida")).body).toMatchObject({ ok: false, reason: "balance", shortCents: 500 });
+    await fund("Ida", 500);
+    expect((await pay(id, "Ida")).body.ok).toBe(true);
+    expect(await balanceOf("Ida")).toBe(0);
+    expect(brain.getPot(id)!.members).toEqual({ Abe: "paid", Ida: "paid" });
   });
 
-  it("splits one idle buy-in three ways and keeps the odd cents in the pot", () => {
+  it("splits one idle buy-in three ways and keeps the odd cents in the pot", async () => {
     clock("2026-04-10T20:00:00Z");
-    const id = openPot("Bea", ["Bea", "Cal", "Dot", "Eli"]);
+    const id = await openPot("Bea", ["Bea", "Cal", "Dot", "Eli"]);
     for (const name of ["Bea", "Cal", "Dot"]) played(name, "2026-04-10T22:00:00Z");
     const swept = wallet.sweepForfeits(at("2026-04-11T08:00:00Z"));
     expect(swept).toMatchObject([{ out: ["Eli"], shares: { Bea: 166, Cal: 166, Dot: 166 }, keptCents: 2, line: "Eli did not play yesterday. Eli's $5 went to Bea, Cal and Dot, $1.66 each. $0.02 stays in the pot." }]);
-    expect(["Bea", "Cal", "Dot", "Eli"].map(hub.balanceOf)).toEqual([166, 166, 166, 0]);
+    await wallet.flushPotMoves();
+    expect(await Promise.all(["Bea", "Cal", "Dot", "Eli"].map(balanceOf))).toEqual([166, 166, 166, 0]);
     expect(wallet.potView(id)).toMatchObject({ forfeitCents: 2, members: { Bea: "paid", Cal: "paid", Dot: "paid" } });
     expect(wallet.cancelPot(id, "Bea")).toEqual({ ok: false, error: "This pot holds forfeited money, so it cannot be cancelled. Settle it instead." });
     expect(hub.settlePot(id)).toMatchObject({ ok: true, payout: { amountCents: 1502 } });
-    balanced();
   });
 
-  it("caps what one player collects at their own buy-in", () => {
+  it("caps what one player collects at their own buy-in", async () => {
     clock("2026-05-10T20:00:00Z");
-    const id = openPot("Fay", ["Fay", "Gus", "Hal", "Ivy"]);
+    const id = await openPot("Fay", ["Fay", "Gus", "Hal", "Ivy"]);
     played("Fay", "2026-05-10T22:00:00Z");
     expect(wallet.sweepForfeits(at("2026-05-11T08:00:00Z"))).toMatchObject([{ out: ["Gus", "Hal", "Ivy"], shares: { Fay: 500 }, keptCents: 1000, line: "Gus, Hal and Ivy did not play yesterday. Their $5 buy-ins went to Fay. $10 stays in the pot." }]);
-    expect(hub.balanceOf("Fay")).toBe(500);
+    expect(movesFor(id).map((m) => [m.name, m.cents])).toEqual([["Fay", 500]]);
+    await wallet.flushPotMoves();
+    expect(await balanceOf("Fay")).toBe(500);
     expect(wallet.potView(id)).toMatchObject({ forfeitCents: 1000, members: { Fay: "paid" } });
-    balanced();
   });
 
-  it("forfeits nothing when nobody played", () => {
+  it("forfeits nothing when nobody played", async () => {
     clock("2026-06-10T20:00:00Z");
-    const id = openPot("Jo", ["Jo", "Kit"]);
+    const id = await openPot("Jo", ["Jo", "Kit"]);
     expect(wallet.sweepForfeits(at("2026-06-11T08:00:00Z"))).toEqual([]);
+    expect(movesFor(id)).toEqual([]);
     expect(brain.getPot(id)!.members).toEqual({ Jo: "paid", Kit: "paid" });
-    expect(["Jo", "Kit"].map(hub.balanceOf)).toEqual([0, 0]);
-    expect(wallet.ledgerOf("Jo").map((e) => e.type)).toEqual(["topup", "buyin"]);
-    balanced();
+    expect(await Promise.all(["Jo", "Kit"].map(balanceOf))).toEqual([0, 0]);
+    expect((await walletOf("Jo")).activity.map((a) => a.reason)).toEqual(["buyin", "topup"]);
   });
 
-  it("processes each missed day once after a long sleep", () => {
+  it("processes each missed day once after a long sleep", async () => {
     clock("2026-07-10T20:00:00Z");
-    const id = openPot("Lou", ["Lou", "Max", "Ned"]);
+    const id = await openPot("Lou", ["Lou", "Max", "Ned"]);
     for (const name of ["Lou", "Max"]) played(name, "2026-07-10T22:00:00Z");
     played("Lou", "2026-07-12T22:00:00Z");
     const swept = wallet.sweepForfeits(at("2026-07-14T08:00:00Z"));
@@ -257,11 +298,13 @@ describe("midnight forfeits", () => {
       ["2026-07-10", ["Ned"], { Lou: 250, Max: 250 }, "Ned did not play on 2026-07-10. Ned's $5 went to Lou and Max, $2.50 each."],
       ["2026-07-12", ["Max"], { Lou: 500 }, "Max did not play on 2026-07-12. Max's $5 went to Lou."],
     ]);
-    expect(["Lou", "Max", "Ned"].map(hub.balanceOf)).toEqual([750, 250, 0]);
+    await wallet.flushPotMoves();
+    expect(await Promise.all(["Lou", "Max", "Ned"].map(balanceOf))).toEqual([750, 250, 0]);
     expect(brain.getPot(id)!.members).toEqual({ Lou: "paid" });
     expect(wallet.sweepForfeits(at("2026-07-14T08:00:00Z"))).toEqual([]);
     expect(wallet.sweepForfeits(at("2026-07-14T20:00:00Z"))).toEqual([]);
-    expect(["Lou", "Max", "Ned"].map(hub.balanceOf)).toEqual([750, 250, 0]);
-    balanced();
+    await wallet.flushPotMoves();
+    expect(await Promise.all(["Lou", "Max", "Ned"].map(balanceOf))).toEqual([750, 250, 0]);
+    expect(potMoves.filter((k) => k.startsWith("forfeit:" + id))).toHaveLength(3);
   });
 });
