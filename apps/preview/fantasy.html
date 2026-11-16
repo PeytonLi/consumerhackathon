@@ -10,6 +10,8 @@
 <link rel="stylesheet" href="/nickel.css">
 <style>
   :root { --game: light-dark(#34c759, #30d158); }
+  .bar { grid-template-columns: 56px minmax(0, 1fr) 56px; }
+  .bar .name b, .bar .name span { overflow: hidden; text-overflow: ellipsis; }
   .stage { justify-content: flex-start; align-items: stretch; overflow-y: auto; gap: var(--s3); padding: var(--s2) 0 var(--s3); -webkit-overflow-scrolling: touch; }
   .stage.center { justify-content: center; align-items: center; }
   .seg { display: flex; flex: none; padding: 3px; border-radius: var(--r-pill); background: var(--surface-2); }
@@ -35,6 +37,18 @@
   .bumps { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s2); }
   .bumps button { height: 56px; border-radius: 18px; font: 700 20px/1 var(--round); }
   .empty { text-align: center; padding: var(--s5) 0; }
+  .live-info { padding: 16px; background: var(--surface); border-radius: 18px; }
+  .live-info p { margin: 8px 0 0; font: 400 14px/1.4 var(--font); color: var(--ink-2); }
+  .live-info .t-caption { font-size: 12px; color: var(--ink-2); }
+  .live-info a, .live-pick a, .live-event a { color: var(--you); text-decoration: underline; }
+  .rowi.live-pick { height: auto; min-height: 90px; padding-block: 14px; align-items: center; }
+  .rowi .pick-info { flex: 1; min-width: 0; }
+  .live-pick .pick-info b { display: block; line-height: 1.2; }
+  .live-pick small { display: block; margin-top: 6px; font: 400 12px/1.35 var(--font); color: var(--ink-2); }
+  .live-pick a { display: inline-block; padding-top: 6px; font: 500 12px/1.3 var(--font); }
+  .live-event { padding: 16px; border-radius: 16px; background: var(--surface); }
+  .live-event p { margin: 8px 0; font: 400 14px/1.4 var(--font); color: var(--ink-2); }
+  .live-event time, .live-event a { font: 500 12px/1.4 var(--font); }
 </style>
 </head>
 <body>
@@ -118,6 +132,18 @@ function scoreSheet(pick) {
   });
 }
 
+function sourceLink(url, label = "Source") {
+  return /^https:\/\//i.test(url || "") ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + label + '</a>' : "";
+}
+
+function liveInfo() {
+  if (!L.live) return "";
+  const live = L.live;
+  return '<section class="live-info" aria-label="Live scoring"><b>' + (live.status === "researching" ? "Researching current picks" : live.status === "ready" ? Date.now() > live.endsAt ? "Live window ended" : "Live for one week" : live.status === "refused" ? "Topic unavailable" : "Manual league") +
+    '</b><p>' + esc(live.scoringRule) + '</p>' + (live.status === "ready" ? '<p>' + esc(live.summary || "") + ' ' + sourceLink(live.source, "Current context") + '</p>' : '<p>' + esc(live.lastMessage || "The board will update here when the research lands. You can draft while it loads.") + '</p>') +
+    '<p class="t-caption">Points are for fun. Data may be delayed. Not financial advice or betting on securities.</p></section>';
+}
+
 function draw() {
   if (!L) {
     stage.className = "stage center";
@@ -134,24 +160,29 @@ function draw() {
   $("count").hidden = false;
   $("count").textContent = mine.length + "/" + L.rosterSize;
   stage.className = "stage";
-  const seg = '<div class="seg"><button type="button" data-v="draft" class="' + (view === "draft" ? "on" : "") + '">Draft board</button><button type="button" data-v="standings" class="' + (view === "standings" ? "on" : "") + '">Standings</button></div>';
+  const seg = '<div class="seg"><button type="button" data-v="draft" class="' + (view === "draft" ? "on" : "") + '">Draft board</button><button type="button" data-v="standings" class="' + (view === "standings" ? "on" : "") + '">Standings</button><button type="button" data-v="timeline" class="' + (view === "timeline" ? "on" : "") + '">Timeline</button></div>';
   if (view === "draft") {
     const rows = [...L.pool].sort((a, b) => b.points - a.points).map((p) =>
-      '<div class="rowi' + (p.owner === me() ? " mine" : "") + '" data-pick="' + esc(p.name) + '"><b>' + esc(p.name) + '</b><span class="num">' + p.points + "</span>" +
+      '<div class="rowi' + (p.reason ? " live-pick" : "") + (p.owner === me() ? " mine" : "") + '" data-pick="' + esc(p.name) + '"><div class="pick-info"><b>' + esc(p.name) + '</b>' + (p.reason ? '<small>' + esc(p.reason) + '</small>' + sourceLink(p.source) : '') + '</div><span class="num">' + p.points + "</span>" +
       (p.owner ? avatar(p.owner) : full ? "" : '<button class="take" type="button" data-take="' + esc(p.name) + '">Draft</button>') + "</div>").join("");
     stage.innerHTML = seg + '<div class="rows">' + (rows || '<p class="t-label empty">Nothing on the board yet. Write in your first pick.</p>') + "</div>";
     dock.innerHTML = full
       ? '<p class="t-caption">Roster full. Score from the chat: "Nickel, ' + esc(mine[0].name) + ' +10"</p>'
       : '<form class="write" id="write"><input id="own" placeholder="Write in a pick" maxlength="40" autocomplete="off"><button class="glass primary" type="submit">Draft</button></form>';
+  } else if (view === "timeline") {
+    stage.innerHTML = seg + '<div class="rows">' + ([...L.log].reverse().map((event) => '<article class="live-event"><b>' + esc(event.pick) + ' ' + (event.delta > 0 ? '+' : '') + event.delta + '</b><p>' + esc(event.reason || 'Manual points from ' + event.by) + '</p>' + sourceLink(event.source) + ' <time datetime="' + new Date(event.at).toISOString() + '">' + esc(new Date(event.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) + '</time></article>').join('') || '<p class="t-label empty">No point updates yet. Every sourced award will appear here.</p>') + '</div>';
+    dock.innerHTML = '<p class="t-caption">' + esc(L.live?.lastMessage || 'Text Nickel, score ' + L.topic + ' to check current results.') + '</p>';
   } else {
     stage.innerHTML = seg + '<div class="rows">' + standings().map((s, i) =>
       '<div class="rowi tall' + (s.m === me() ? " me" : "") + '"><span class="rk">' + (i + 1) + "</span>" + avatar(s.m) + '<span class="who"><b>' + esc(s.m) + "</b><span>" + (s.picks.map((p) => esc(p.name)).join(", ") || "No picks yet") + '</span></span><span class="num">' + s.points + "</span></div>").join("") + "</div>";
     dock.innerHTML = '<p class="t-caption">Tap a pick on the draft board to score it</p>';
   }
+  if (L.live) stage.insertAdjacentHTML("afterbegin", liveInfo());
   dock.hidden = false;
   stage.querySelectorAll("[data-v]").forEach((b) => b.onclick = () => { view = b.dataset.v; draw(); });
   stage.querySelectorAll("[data-take]").forEach((b) => b.onclick = async (e) => { e.stopPropagation(); await call("draft", { member: me(), pick: b.dataset.take }); draw(); });
   stage.querySelectorAll("[data-pick]").forEach((r) => r.onclick = () => scoreSheet(L.pool.find((p) => p.name === r.dataset.pick)));
+  stage.querySelectorAll("a").forEach((a) => a.onclick = (e) => e.stopPropagation());
   const form = $("write");
   if (form) form.onsubmit = async (e) => { e.preventDefault(); const v = $("own").value.trim(); if (v) { await call("draft", { member: me(), pick: v }); draw(); } };
 }

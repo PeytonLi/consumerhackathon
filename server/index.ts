@@ -3,6 +3,7 @@ import { hub, hubCard } from "./hub.js";
 import { confirmTopUp, payBuyIn, potView, startTopUp, sweepForfeits, topUp, walletCard, walletView, walletViewer, withForfeitNews, withdraw } from "./wallet.js";
 import { authGate, claimStatus, turnTrusted } from "./auth.js";
 import { assistTurn, gradeKrillion, gradedResult, naceStats, punishmentAllowed } from "./nace.js";
+import { finishLiveTurn, tickLiveLeagues } from "./live.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -36,6 +37,8 @@ function headTags(card: { kicker: string; title: string; sub: string; league: st
 console.log("Nickel state: " + (await hydrate()));
 sweepForfeits(Date.now());
 setInterval(() => sweepForfeits(Date.now()), 60000);
+void tickLiveLeagues();
+setInterval(() => { void tickLiveLeagues(); }, 4 * 60 * 60 * 1000);
 
 Bun.serve({
   port,
@@ -73,12 +76,14 @@ Bun.serve({
       }
       const trusted = turnTrusted(request);
       const turn = await assistTurn((text) => handleTurn({ trusted, hasPhoto, text, sender: body.sender, senderPhone: body.senderPhone, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined }), text, body.sender);
+      await finishLiveTurn(turn);
       if (turn.art) await Promise.race([generateArt(turn.art.token, turn.art.role), new Promise((r) => setTimeout(r, 40000))]);
-      if (turn.addressed && turn.line && Number(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false })) >= 18) {
+      const leagueReply = turn.card?.path.startsWith("/f/");
+      if (!leagueReply && turn.addressed && turn.line && Number(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false })) >= 18) {
         const due = dueNudges();
         if (due.length) turn.line += " " + due.map((n) => n.text).join(" ");
       }
-      return json(withForfeitNews(turn));
+      return json(leagueReply ? turn : withForfeitNews(turn));
     }
 
     const resultApi = path.match(/^\/api\/rounds\/([a-z0-9-]+)\/result$/);
