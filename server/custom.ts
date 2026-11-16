@@ -3,6 +3,7 @@ import { applyExtras, explain, streakDays, type Points, type PointsPart, type Sc
 import { ALL_PUNISHMENTS, PUNISHMENT_TIERS, PUNISHMENT_SAFETY, intensityIn, safePunishment, sourceOf, threeOptions, type Intensity } from "./punishments.js";
 import { punishmentAllowed } from "./nace.js";
 import { nameClaimed } from "./auth.js";
+import { recordEconomyPlay } from "./game-economy.js";
 
 export type Template = "guess" | "take" | "trivia" | "caption" | "fastest" | "unique";
 
@@ -362,7 +363,7 @@ export function getGame(id: string, now = Date.now()): CustomGame | null {
   return game;
 }
 
-export function submitAnswer(id: string, name: string, raw: unknown, seconds: unknown, verified = false): { ok: boolean; error?: string } {
+export function submitAnswer(id: string, name: string, raw: unknown, seconds: unknown, verified = false, authenticatedPhone?: string): { ok: boolean; error?: string } {
   const game = getGame(id);
   const who = internals.person(name);
   if (!game || !who) return { ok: false, error: "Not found" };
@@ -382,6 +383,7 @@ export function submitAnswer(id: string, name: string, raw: unknown, seconds: un
   }
   if (!game.members.includes(who)) game.members.push(who);
   game.entries[who] = { value, seconds: clamp(Number(seconds) || 0, 0, game.seconds), at: Date.now(), verified };
+  if (verified && authenticatedPhone) recordEconomyPlay(game.league, authenticatedPhone, 0);
   internals.save();
   settleIfDue(game);
   return { ok: true };
@@ -654,7 +656,7 @@ type RouteResult =
   | { kind: "page"; game: ReturnType<typeof gameView> | null; card: ReturnType<typeof gameCard> | null; league?: RuledLeague | null }
   | { kind: "card"; card: ReturnType<typeof gameCard> };
 
-export async function customRoute(method: string, url: URL, read: () => Promise<unknown>, actor?: string): Promise<RouteResult | null> {
+export async function customRoute(method: string, url: URL, read: () => Promise<unknown>, actor?: string, authenticatedPhone?: string): Promise<RouteResult | null> {
   const path = url.pathname;
   const requested = internals.person(url.searchParams.get("u") ?? "");
   const viewer = actor || (nameClaimed(requested) ? "" : requested);
@@ -678,7 +680,7 @@ export async function customRoute(method: string, url: URL, read: () => Promise<
     if (method === "POST") {
       const body = ((await read()) ?? {}) as { action?: string; name?: string; value?: unknown; seconds?: unknown; key?: string; answer?: string; verified?: boolean };
       name = actor || (typeof body.name === "string" ? body.name : "");
-      result = body.action === "answer" ? submitAnswer(api[1], name, body.value, body.seconds, !!actor) : body.action === "vote" ? castVote(api[1], name, String(body.key ?? "")) : body.action === "reveal" ? revealGame(api[1], name, body.answer) : { ok: false, error: "Unknown action" };
+      result = body.action === "answer" ? submitAnswer(api[1], name, body.value, body.seconds, !!actor, authenticatedPhone) : body.action === "vote" ? castVote(api[1], name, String(body.key ?? "")) : body.action === "reveal" ? revealGame(api[1], name, body.answer) : { ok: false, error: "Unknown action" };
     }
     const game = getGame(api[1]);
     if (!game) return { kind: "json", data: { ok: false, error: "Not found" }, status: 404 };

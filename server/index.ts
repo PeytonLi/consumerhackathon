@@ -10,6 +10,7 @@ import { isArcadeGame } from "./arcade.js";
 import { finishLiveTurn, tickLiveLeagues } from "./live.js";
 import { walletRoute } from "./money.js";
 import { agentMoney } from "./agent-money.js";
+import { flushGameEconomy } from "./game-economy.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -43,9 +44,11 @@ function headTags(card: { kicker: string; title: string; sub: string; league: st
 console.log("Nickel state: " + (await hydrate()));
 sweepForfeits(Date.now());
 void flushPotMoves();
+void flushGameEconomy();
 setInterval(() => {
   sweepForfeits(Date.now());
   void flushPotMoves();
+  void flushGameEconomy();
 }, 60000);
 void tickLiveLeagues();
 setInterval(() => { void tickLiveLeagues(); }, 4 * 60 * 60 * 1000);
@@ -62,6 +65,7 @@ Bun.serve({
     const path = url.pathname;
     const base = origin(request);
     const me = getProfile(session?.token ?? "");
+    const authenticatedPhone = session ? internals.store.profiles[session.token]?.phone : undefined;
     const page = (body: string) => html(body.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n<script>window.ME = ' + inline(me) + ";</script>"));
 
     if (request.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type" } });
@@ -100,13 +104,16 @@ Bun.serve({
       return json(leagueReply ? turn : withForfeitNews(turn));
     }
 
-    const custom = await customRoute(request.method, url, () => request.json().catch(() => ({})), me?.name);
+    const custom = await customRoute(request.method, url, () => request.json().catch(() => ({})), me?.name, authenticatedPhone);
     if (custom?.kind === "json") return json(custom.data, custom.status);
     if (custom?.kind === "card") return new Response((await cardPng(custom.card)) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
     if (custom) return page((await Bun.file(site + "custom.html").text()).replace("<!--GAME-->", (custom.card ? headTags(custom.card, base, "") : "") + "\n<script>window.GAME = " + inline(custom.game) + "; window.CUSTOM_LEAGUE = " + inline(custom.league ?? null) + ";</script>"));
 
     const resultApi = path.match(/^\/api\/rounds\/([a-z0-9-]+)\/result$/);
-    if (resultApi && request.method === "POST") return json(recordResult(resultApi[1], await gradedResult(getRound(resultApi[1]), (await request.json().catch(() => ({}))) as Parameters<typeof recordResult>[1])));
+    if (resultApi && request.method === "POST") {
+      if (url.searchParams.get("practice") === "1") return json({ ok: false });
+      return json(recordResult(resultApi[1], await gradedResult(getRound(resultApi[1]), (await request.json().catch(() => ({}))) as Parameters<typeof recordResult>[1]), authenticatedPhone));
+    }
 
     const gradeApi = path.match(/^\/api\/rounds\/([a-z0-9-]+)\/grade$/);
     if (gradeApi && request.method === "POST") {
