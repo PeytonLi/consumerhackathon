@@ -871,7 +871,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   }
 
   const asked = (input.game ?? "").toLowerCase();
-  if (/^@?nickel[,\s]+(?:games|arcade)[.!?\s]*$/i.test(text)) return { addressed: true, line: "Wordle Blitz, One in a Krillion, Rock Paper Scissors, Reaction, Free Throw, Memory, Math Sprint, Higher or Lower. Say: Nickel, play reaction." };
+  if (/^@?nickel[,\s]+(?:(?:please|pls|plz)\s+)?(?:(?:show|list)(?:\s+me)?\s+(?:the\s+)?)?(?:games|arcade|game\s+(?:menu|list))(?:[,\s]+(?:please|pls|plz))?[.!?\s]*$/i.test(text)) return { addressed: true, line: "Wordle Blitz, One in a Krillion, Rock Paper Scissors, Reaction, Free Throw, Memory, Math Sprint, Higher or Lower. Say: Nickel, play reaction." };
   const arcade = arcadeGame(asked) ?? arcadeGame(lower);
   const game: Round["game"] = arcade ?? (asked === "wordle" || asked === "krillion" || asked === "rps" ? asked : /word/.test(lower) ? "wordle" : /krill/.test(lower) ? "krillion" : /rock|paper|scissors|rps/.test(lower) ? "rps" : /challenge|\bvs\b|versus|against|1v1/.test(lower) ? "rps" : "wordle");
   const skip = new Set(["between", "me", "and", "to", "a", "an", "the", "with", "my", "us", "him", "her", "them", "pls", "please", "plz", "thanks", "gc", "chat", "here", "now", "today", "tonight", "rn", "nickel", "for", "in", "at", "wordle", "krillion", "rps", "rock", "game"]);
