@@ -75,7 +75,11 @@ let W, amount = 500;
 const asked = Number(params.get("add"));
 if (Number.isInteger(asked) && asked >= 100 && asked <= 50000) {
   amount = asked;
-  if (!AMOUNTS.includes(asked)) AMOUNTS.splice(AMOUNTS.findIndex((c) => c > asked) >>> 0, 0, asked);
+  if (!AMOUNTS.includes(asked)) {
+    const near = AMOUNTS.reduce((a, b) => (Math.abs(b - asked) < Math.abs(a - asked) ? b : a));
+    AMOUNTS.splice(AMOUNTS.indexOf(near), 1, asked);
+    AMOUNTS.sort((a, b) => a - b);
+  }
 }
 const back = params.get("back");
 if (back && /^\/[a-z0-9/-]*$/i.test(back)) sessionStorage.setItem("nickel.back", back);
