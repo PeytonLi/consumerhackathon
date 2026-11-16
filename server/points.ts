@@ -1,4 +1,4 @@
-export type Game = "wordle" | "krillion" | "rps";
+export type Game = "wordle" | "krillion" | "rps" | "custom";
 
 export interface PointsPart {
   label: string;

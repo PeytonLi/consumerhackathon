@@ -146,7 +146,7 @@ function draw() {
   } else {
     stage.innerHTML = seg + '<div class="rows">' + standings().map((s, i) =>
       '<div class="rowi tall' + (s.m === me() ? " me" : "") + '"><span class="rk">' + (i + 1) + "</span>" + avatar(s.m) + '<span class="who"><b>' + esc(s.m) + "</b><span>" + (s.picks.map((p) => esc(p.name)).join(", ") || "No picks yet") + '</span></span><span class="num">' + s.points + "</span></div>").join("") + "</div>";
-    dock.innerHTML = '<p class="t-caption">Tap a pick on the draft board to score it</p>';
+    dock.innerHTML = '<p class="t-caption">' + (L.scoring ? "Scoring: " + esc(L.scoring) : "Tap a pick on the draft board to score it") + (L.seasonDays ? " · " + L.seasonDays + "-day season" : "") + '</p><a class="secondary" href="/leagues/' + L.id + '">League rules</a><a class="t-caption" href="/leagues/new">New league</a>';
   }
   dock.hidden = false;
   stage.querySelectorAll("[data-v]").forEach((b) => b.onclick = () => { view = b.dataset.v; draw(); });

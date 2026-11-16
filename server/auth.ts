@@ -130,7 +130,7 @@ export async function authGate(request: Request, socket = ""): Promise<{ request
   if (request.method !== "POST") return { request, session };
   const path = new URL(request.url).pathname;
   const profileEdit = path.match(/^\/api\/me\/([a-z0-9-]+)$/);
-  const route = path === "/api/claim" ? "claim" : path === "/api/turn" ? "turn" : /^\/api\/rounds\/[a-z0-9-]+\/result$/.test(path) ? "result" : /^\/api\/pot\/[a-z0-9-]+$/.test(path) ? "pot" : path === "/api/wallet" ? "wallet" : /^\/api\/fantasy\/[a-z0-9-]+\/(draft|score)$/.test(path) ? "fantasy" : profileEdit ? "profile" : "";
+  const route = path === "/api/claim" ? "claim" : path === "/api/turn" ? "turn" : /^\/api\/rounds\/[a-z0-9-]+\/result$/.test(path) || /^\/api\/(games|leagues)(?:\/[a-z0-9-]+)?$/.test(path) ? "result" : /^\/api\/pot\/[a-z0-9-]+$/.test(path) ? "pot" : path === "/api/wallet" ? "wallet" : /^\/api\/fantasy\/[a-z0-9-]+\/(draft|score)$/.test(path) ? "fantasy" : profileEdit ? "profile" : "";
   if (!route) return { request, session };
 
   if (Number(request.headers.get("content-length") ?? 0) > SIZES[route]) return deny(413, "That is too much data.");

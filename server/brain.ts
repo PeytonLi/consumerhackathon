@@ -4,12 +4,14 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { hubCard, hubLine, hubTurn, notePicks, renamePlayer, wantsHub } from "./hub.js";
 import { scoreResult, type Points, type ResultPayload } from "./points.js";
+import { customScore, customTurn, leagueIsClosed, punishmentPool, type PreparedTurn } from "./custom.js";
+import { ALL_PUNISHMENTS } from "./punishments.js";
 import { attachAuth, claimPath, nameClaimed } from "./auth.js";
 import { ledgerOf, payBuyIn, walletCard, walletTurn } from "./wallet.js";
 
 export interface Round {
   id: string;
-  game: "wordle" | "krillion" | "rps";
+  game: "wordle" | "krillion" | "rps" | "custom";
   title: string;
   league: string;
   members: string[];
@@ -111,6 +113,7 @@ export function draftPick(id: string, member: string, pickName: string): { ok: b
   const who = person(member);
   const name = cap(pickName).slice(0, 40);
   if (!league || !who || !name) return { ok: false, error: "Not found" };
+  if (leagueIsClosed(league)) return { ok: false, error: "This league's season has ended" };
   if (!league.members.includes(who)) league.members.push(who);
   if (league.pool.filter((p) => p.owner === who).length >= league.rosterSize) return { ok: false, error: "Your roster is full" };
   let pick = league.pool.find((p) => p.name.toLowerCase() === name.toLowerCase());
@@ -128,13 +131,14 @@ export function scorePick(id: string, pickName: string, delta: number, by: strin
   const league = store.fantasy[id];
   const pick = typeof pickName === "string" ? league?.pool.find((p) => p.name.toLowerCase() === pickName.trim().toLowerCase()) : undefined;
   if (!league || !pick || !Number.isFinite(delta) || Math.abs(delta) > 100) return { ok: false, error: "Not found" };
+  if (leagueIsClosed(league)) return { ok: false, error: "This league's season has ended" };
   pick.points += Math.round(delta);
   league.log.push({ pick: pick.name, delta: Math.round(delta), by: person(by) || "Someone", at: Date.now() });
   save();
   return { ok: true, league };
 }
 
-function createFantasy(topic: string, picks: string[], sender: string): FantasyLeague {
+export function createFantasy(topic: string, picks: string[], sender: string): FantasyLeague {
   const names = picks.length ? picks : (POOLS.find(([re]) => re.test(topic))?.[1] ?? []);
   const unique = [...new Map(names.map((n) => [cap(n).toLowerCase(), cap(n).slice(0, 40)])).values()].filter(Boolean).slice(0, 24);
   const league: FantasyLeague = {
@@ -279,24 +283,7 @@ function potTurn(text: string, lower: string, sender: string): { line: string; p
 }
 
 
-export const PUNISHMENTS = [
-  "runs a milk mile: four laps, a full glass of milk before each one",
-  "retakes the SAT and posts the score in the chat",
-  "spends 24 hours in a Waffle House, minus one hour per waffle eaten",
-  "does a five-minute open mic set and the group picks the topic",
-  "sets up a lemonade stand and cannot leave until it makes 20 dollars",
-  "wears a full suit to every class for a week and explains nothing",
-  "lets the group write their dating profile and keeps it up for a month",
-  "films a calendar shoot, one themed photo for each month, printed for everyone",
-  "makes a three-minute apology video to the league and pins it",
-  "takes the group's coffee order every morning for a week, by hand, on foot",
-  "holds a sign on the busiest corner on campus that says they finished last",
-  "gets the league trophy: a framed photo of the winner on their desk all season",
-  "performs karaoke of the winner's choice, sober, first song of the night",
-  "cooks dinner for the whole group in a costume the winner picks",
-  "sends a good morning text to the group chat every day until next season",
-  "runs a 5K in jeans and posts the splits",
-];
+export const PUNISHMENTS = ALL_PUNISHMENTS;
 
 const TITLES = ["Front runner", "Closing fast", "Mid-table merchant", "Vibes only", "Down bad", "Paying for dinner"];
 
@@ -655,7 +642,7 @@ function setPunishment(text: string): string {
   const custom = text.match(/punishment\s*(?:is|:|=)\s*(.{6,160})$/i)?.[1]?.trim().replace(/[.!]+$/, "");
   if (custom) store.punishment = custom.replace(/^(last place|loser)\s+/i, "");
   else {
-    const pool = PUNISHMENTS.filter((p) => p !== store.punishment);
+    const pool = punishmentPool().filter((p) => p !== store.punishment);
     store.punishment = pool[Math.floor(Math.random() * pool.length)];
   }
   save();
@@ -674,7 +661,9 @@ export function recordResult(roundId: string, payload: ResultPayload & { verifie
   if (round.game === "rps" && (!rival || rival === name || (round.challenger && name !== round.challenger && name !== round.opponent) || (payload.verified === false && nameClaimed(rival)))) return { ok: false };
   const bump = (who: string, delta: number) => { if (who) store.nickels[who] = (store.nickels[who] ?? 0) + delta; };
   const tally = (who: string, won: boolean) => { if (!who) return; const t = (store.stats[who] ??= { played: 0, wins: 0, losses: 0 }); t.played += 1; if (won) t.wins += 1; else t.losses += 1; };
-  const scored = scoreResult(round, payload, { name, rival }, store);
+  const custom = customScore(round, name);
+  if (round.game === "custom" && !custom) return { ok: false };
+  const scored = custom ?? scoreResult(round, payload, { name, rival }, store);
   const line = scored.line;
   let loser = "";
   if (round.game === "rps") {
@@ -700,7 +689,7 @@ export function nickelStandings(): string {
   return rows.length ? "Nickels: " + rows.slice(0, 6).map(([who, n]) => who + " " + (n > 0 ? "+" : "") + n).join(", ") + "." : "No Nickels have moved yet. First to finish a game takes the lead.";
 }
 
-export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string; hasPhoto?: boolean; trusted?: boolean }): TurnReply {
+export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string; hasPhoto?: boolean; trusted?: boolean; customPrepared?: PreparedTurn }): TurnReply {
   const text = input.text.trim();
   const lower = text.toLowerCase();
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
@@ -708,6 +697,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   if (walletReply) return walletReply;
   const hubReply = hubTurn(input);
   if (hubReply) return hubReply;
+  const customReply = customTurn(input);
+  if (customReply) return customReply;
   const fantasyTalk = /fantasy/.test(lower) && !/punish/.test(lower);
   const phone = (input.senderPhone ?? "").replace(/[^+0-9]/g, "");
   const intro = person(text.match(/\b(?:i'?m|i am|this is|call me|my name is|it'?s)\s+([A-Za-z]{2,14})\b/i)?.[1]);
@@ -795,7 +786,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     const pick = score && latest.pool.find((p) => lower.includes(p.name.toLowerCase()));
     if (score && pick) {
       const delta = Number(score[1].replace(/\s/g, ""));
-      if (!scorePick(latest.id, pick.name, delta, sender).ok) return reply("Scores move 100 points at a time at most. " + pick.name + " stays at " + pick.points + ".", fantasyCard(latest));
+      const scored = scorePick(latest.id, pick.name, delta, sender);
+      if (!scored.ok) return reply(scored.error === "Not found" ? "Scores move 100 points at a time at most. " + pick.name + " stays at " + pick.points + "." : scored.error ?? "Could not score that pick.", fantasyCard(latest));
       const top = fantasyStandings(latest)[0];
       const tail = !pick.owner ? "Nobody owns " + pick.name + " yet, so it is still up for grabs." : top.points > 0 ? top.member + " leads Fantasy " + latest.topic + " with " + top.points + "." : "Fantasy " + latest.topic + " is still wide open.";
       return reply(pick.name + " " + (delta > 0 ? "+" : "") + delta + ". " + tail, fantasyCard(latest));
