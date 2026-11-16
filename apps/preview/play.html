@@ -435,11 +435,16 @@ function krillion() {
     const elapsed = countdown(R.seconds, () => submit());
     const submit = () => {
       const typed = input.value.trim();
-      const hit = grade[typed.toLowerCase()] ?? 0;
       const secs = elapsed();
       input.blur();
       stopClock(icon("check") + fmt(secs));
       haptic();
+      $("send").disabled = true;
+      input.disabled = true;
+      const judged = !typed ? Promise.resolve(null) : fetch("/api/rounds/" + R.id + "/grade", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ answer: typed }), signal: AbortSignal.timeout(2500) }).then((r) => r.json()).then((d) => d.grade ?? null).catch(() => null);
+      judged.then((g) => reveal(typed, secs, g ? g.rarity : grade[typed.toLowerCase()] ?? 0));
+    };
+    const reveal = (typed, secs, hit) => {
       show(
         (practice ? '<span class="tag">' + icon("again") + "Practice</span>" : "") +
         '<div class="result"><p class="t-display" id="m">0m</p><p class="t-head">' + tiers[hit][0] + '</p><p class="t-label">“' + esc(typed || "—") + '”</p><div class="points" id="points"></div></div>' + depth(hit),
@@ -451,7 +456,7 @@ function krillion() {
       let n = 0;
       const step = setInterval(() => { n = Math.min(target, n + Math.ceil(target / 26)); $("m").textContent = n + "m"; if (n >= target) clearInterval(step); }, 40);
       $("again").onclick = () => practice ? krillion() : tell(null);
-      post({ name: me(), tries: hit ? "1/1" : "X/1", time: fmt(secs), seconds: secs, rarity: hit }).then(showPoints);
+      post({ name: me(), tries: hit ? "1/1" : "X/1", time: fmt(secs), seconds: secs, rarity: hit, answer: typed }).then(showPoints);
     };
     $("send").onclick = submit;
     input.onkeydown = (e) => { if (e.key === "Enter" && input.value.trim()) submit(); };
