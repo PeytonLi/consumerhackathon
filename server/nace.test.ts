@@ -106,7 +106,8 @@ describe("krillion grading", () => {
     reply(drex({ valid: 0.95, rarity: 0 }));
     const made = plain("nickel play krillion", "Maya");
     const round = brain.getRound(made.card!.path.slice(3))!;
-    const graded = await nace.gradedResult(round, { name: "Maya", tries: "1/1", seconds: 25, rarity: 5, answer: "the obvious one" } as never);
+    round.prompt = "Pizza toppings";
+    const graded = await nace.gradedResult(round, { name: "Maya", tries: "1/1", seconds: 25, rarity: 5, answer: "olives" } as never);
     expect(graded).toMatchObject({ tries: "1/1", rarity: 1 });
     expect(brain.recordResult(round.id, graded).line).not.toContain("One in a Krillion answer");
     reply(drex({ valid: 0.1 }));
