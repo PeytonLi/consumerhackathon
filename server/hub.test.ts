@@ -33,10 +33,10 @@ describe("memory", () => {
   });
 
   it("strips emojis and markup and files strangers under the group", () => {
-    expect(turn("Nickel, remember that Zed brings <b>snacks</b> \u{1F355}\u{1F525}", "Maya").line).toBe("Noted for the group: Zed brings bsnacks/b.");
-    expect(turn("Nickel, what do you know about Zed").line).toBe("Zed: Zed brings bsnacks/b.");
-    expect(hub.groupMemory()).toContain("Zed brings bsnacks/b");
-    expect(hub.memoryOf("Zed")).toEqual(["Zed brings bsnacks/b"]);
+    expect(turn("Nickel, remember that Zed brings <b>snacks</b> \u{1F355}\u{1F525}", "Maya").line).toBe("Noted for the group: Zed brings snacks.");
+    expect(turn("Nickel, what do you know about Zed").line).toBe("Zed: Zed brings snacks.");
+    expect(hub.groupMemory()).toContain("Zed brings snacks");
+    expect(hub.memoryOf("Zed")).toEqual(["Zed brings snacks"]);
     expect(hub.forget("zed brings", "Maya").ok).toBe(true);
   });
 

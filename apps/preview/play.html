@@ -453,7 +453,7 @@ function krillion() {
       const target = tiers[hit][1];
       let n = 0;
       const step = setInterval(() => { n = Math.min(target, n + Math.ceil(target / 26)); $("m").textContent = n + "m"; if (n >= target) clearInterval(step); }, 40);
-      $("again").onclick = () => practice ? krillion() : tell(null);
+      $("again").onclick = () => practice ? krillion() : parent === window ? location.assign("/h") : tell(null);
       post({ name: me(), tries: hit ? "1/1" : "X/1", time: fmt(secs), seconds: secs, rarity: hit, answer: typed }).then((p) => celebrate(hit > 0, p));
     };
     $("send").onclick = submit;
@@ -465,6 +465,7 @@ function rps() {
   const hands = { rock: "✊", paper: "✋", scissors: "✌️" };
   const beats = { rock: "scissors", paper: "rock", scissors: "paper" };
   const need = Math.ceil(R.bestOf / 2);
+  if (R.challenger && me() === R.opponent) R.opponent = R.challenger;
   let mine = 0, theirs = 0, round = 0;
   setClock(icon("coin") + R.stake);
   const pips = (who) => '<div class="pips" id="p' + who + '">' + "<i></i>".repeat(need) + "</div>";

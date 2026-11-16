@@ -400,15 +400,15 @@ async function sendGroup(text) {
   const after = document.getElementById("group-after");
   document.querySelectorAll("#thread-group .delivered").forEach((el) => el.remove());
   after.insertAdjacentHTML("beforeend", '<div class="row me"><div class="bubble">' + escText(text) + '</div></div><div class="delivered" style="text-align:right">Delivered</div>');
+  const mine = [...after.querySelectorAll(".row.me .bubble")].pop();
   scrollGroup();
   let reply;
   try {
-    reply = await (await fetch("/api/turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, sender: "Peyton" }) })).json();
+    reply = await (await fetch("/api/turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, sender: window.ME?.name ?? "" }) })).json();
   } catch { return toast("Nickel is offline."); }
-  if (!reply.addressed) return;
+  if (!reply.addressed) { if (reply.error) toast(reply.error); return; }
   await new Promise((r) => setTimeout(r, 700));
   if (reply.react) {
-    const mine = [...after.querySelectorAll(".row.me .bubble")].pop();
     mine.insertAdjacentHTML("beforeend", '<span class="react">' + reply.react.emoji + "</span>");
     mine.parentElement.style.marginTop = "22px";
     await new Promise((r) => setTimeout(r, 500));
