@@ -1,5 +1,5 @@
-import { v } from "convex/values";
-import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server.js";
+import { ConvexError, v } from "convex/values";
+import { action, internalAction, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server.js";
 import { internal } from "./_generated/api.js";
 import type { Doc, Id } from "./_generated/dataModel.js";
 import { HOUSE, WORLD, assertServer, balanceOf, playerWallet, postMove, potWallet } from "./money.js";
@@ -10,7 +10,13 @@ export const MAX_TOP_UP_CENTS = 50000;
 export const MIN_CASH_OUT_CENTS = 100;
 export const MAX_DAILY_LIMIT_CENTS = 50000;
 export const DEFAULT_DAILY_LIMIT_CENTS = 2000;
+export const TOP_UP_FEE_BPS = 270;
+export const TOP_UP_FEE_FIXED_CENTS = 30;
+export const TRANSFER_FEE_BPS = 300;
 const APPROVAL_MS = 24 * 60 * 60 * 1000;
+
+export const topUpFeeCents = (paidCents: number) => Math.round((paidCents * TOP_UP_FEE_BPS) / 10000) + TOP_UP_FEE_FIXED_CENTS;
+export const transferFeeCents = (amountCents: number) => Math.round((amountCents * TRANSFER_FEE_BPS) / 10000);
 
 export const holdWallet = (id: Id<"payouts">) => "hold:" + id;
 const secret = v.optional(v.string());
@@ -56,6 +62,43 @@ async function spentToday(ctx: QueryCtx, playerId: Id<"players">, now = Date.now
 
 async function playerByWhopAccount(ctx: QueryCtx, accountId: string) {
   return ctx.db.query("players").filter((q) => q.eq(q.field("whopAccountId"), accountId)).first();
+}
+
+async function playerByPhone(ctx: QueryCtx, phone: string) {
+  return ctx.db.query("players").withIndex("by_phone", (q) => q.eq("phone", phone)).unique();
+}
+
+async function commissionedGroup(ctx: QueryCtx, actorPhone: string, chatId: string | undefined) {
+  const actor = await playerByPhone(ctx, actorPhone);
+  if (!actor) throw new ConvexError("Only the commissioner can do that.");
+  if (chatId) {
+    const group = await ctx.db.query("groups").withIndex("by_chat", (q) => q.eq("chatId", chatId)).unique();
+    if (!group) throw new ConvexError("This chat is not a Nickel group yet.");
+    if (group.commissionerId !== actor._id) throw new ConvexError("Only the commissioner can do that.");
+    return { actor, group };
+  }
+  const groups = await ctx.db.query("groups").filter((q) => q.eq(q.field("commissionerId"), actor._id)).collect();
+  if (!groups.length) throw new ConvexError("Only the commissioner can do that.");
+  if (groups.length > 1) throw new ConvexError("You run more than one group. Ask from that group's chat.");
+  return { actor, group: groups[0] };
+}
+
+const lastTenDigits = (raw: string) => raw.replace(/\D/g, "").slice(-10);
+
+async function memberNamed(ctx: QueryCtx, groupId: Id<"groups">, who: string) {
+  const rows = (await ctx.db.query("groupMembers").withIndex("by_group", (q) => q.eq("groupId", groupId)).collect()).filter((r) => !r.leftAt);
+  const members = await Promise.all(rows.map(async (row) => ({ row, player: await mustPlayer(ctx, row.playerId) })));
+  const label = who.trim();
+  const byPhone = who.replace(/\D/g, "").length >= 10;
+  const found = members.filter(({ player }) => (byPhone ? lastTenDigits(player.phone) === lastTenDigits(who) : player.name.trim().toLowerCase() === label.toLowerCase()));
+  if (found.length > 1) throw new ConvexError("More than one player is called " + label + ". Use their phone number.");
+  if (!found.length) throw new ConvexError(label + " is not in this group.");
+  return found[0];
+}
+
+async function pendingDebit(ctx: MutationCtx, row: { approverId: Id<"players">; requestedBy: Id<"players">; groupId: Id<"groups">; to: string; amountCents: number; note?: string; key: string }) {
+  const now = Date.now();
+  return ctx.db.insert("approvals", { ...row, status: "pending", from: playerWallet(row.approverId), reason: "adjustment", createdAt: now, expiresAt: now + APPROVAL_MS });
 }
 
 export const ensurePlayer = mutation({
@@ -188,21 +231,7 @@ export const requestAdjustment = mutation({
     const existing = await ctx.db.query("approvals").withIndex("by_key", (q) => q.eq("key", args.key)).unique();
     if (existing) return { ok: true as const, status: existing.status, approvalId: existing._id };
     if (args.toPlayerId) await mustPlayer(ctx, args.toPlayerId);
-    const now = Date.now();
-    const approvalId = await ctx.db.insert("approvals", {
-      status: "pending",
-      approverId: args.playerId,
-      requestedBy: args.byPlayerId,
-      from: target,
-      to: args.toPlayerId ? playerWallet(args.toPlayerId) : potWallet(args.groupId),
-      amountCents: args.amountCents,
-      groupId: args.groupId,
-      reason: "adjustment",
-      note: args.note,
-      key: args.key,
-      createdAt: now,
-      expiresAt: now + APPROVAL_MS,
-    });
+    const approvalId = await pendingDebit(ctx, { approverId: args.playerId, requestedBy: args.byPlayerId, groupId: args.groupId, to: args.toPlayerId ? playerWallet(args.toPlayerId) : potWallet(args.groupId), amountCents: args.amountCents, note: args.note, key: args.key });
     return { ok: true as const, status: "pending" as const, approvalId };
   },
 });
@@ -255,6 +284,51 @@ export const wallet = query({
       .slice(0, 20)
       .map((r) => ({ at: r.createdAt, amountCents: r.to === me ? r.amountCents : -r.amountCents, reason: r.reason, note: r.note ?? "" }));
     return { balanceCents: await balanceOf(ctx, me), dailyLimitCents: player.dailyLimitCents, spentTodayCents: await spentToday(ctx, playerId), consent: !!player.consentAt, kyc: player.kyc, activity };
+  },
+});
+
+export const agentWallet = query({
+  args: { secret, phone: v.string() },
+  handler: async (ctx, { secret, phone }) => {
+    assertServer(secret);
+    const player = await playerByPhone(ctx, phone);
+    if (!player) return null;
+    return { balanceCents: await balanceOf(ctx, playerWallet(player._id)), dailyLimitCents: player.dailyLimitCents, spentTodayCents: await spentToday(ctx, player._id) };
+  },
+});
+
+export const proposeAdjustment = mutation({
+  args: { secret, actorPhone: v.string(), chatId: v.optional(v.string()), player: v.string(), amountCents: v.number(), reason: v.string() },
+  handler: async (ctx, { secret, actorPhone, chatId, player, amountCents, reason }) => {
+    assertServer(secret);
+    if (!wholeCents(amountCents)) throw new ConvexError("Give an amount above zero.");
+    if (!reason.trim()) throw new ConvexError("Give a reason.");
+    const { actor, group } = await commissionedGroup(ctx, actorPhone, chatId);
+    const { player: target } = await memberNamed(ctx, group._id, player);
+    const id = await pendingDebit(ctx, { approverId: target._id, requestedBy: actor._id, groupId: group._id, to: potWallet(group._id), amountCents, note: reason, key: "" });
+    await ctx.db.patch(id, { key: "adj:" + id });
+    return { id: id as string, player: target.name, playerPhone: target.phone, actorName: actor.name };
+  },
+});
+
+export const approveAdjustment = mutation({
+  args: { secret, phone: v.string(), id: v.string(), amountCents: v.number(), reason: v.string() },
+  handler: async (ctx, { secret, phone, id, amountCents, reason }) => {
+    assertServer(secret);
+    const approvalId = ctx.db.normalizeId("approvals", id);
+    const approval = approvalId ? await ctx.db.get(approvalId) : null;
+    const player = await playerByPhone(ctx, phone);
+    if (!approval || !player || approval.approverId !== player._id) throw new ConvexError("That request is not yours to approve.");
+    if (approval.status !== "pending") throw new ConvexError("That request was already " + approval.status + ".");
+    if (Date.now() > approval.expiresAt) throw new ConvexError("That request expired.");
+    if (approval.amountCents !== amountCents || (approval.note ?? "") !== reason) throw new ConvexError("That does not match the request.");
+    const member = await membership(ctx, approval.groupId, player._id);
+    if (!member || member.leftAt) throw new ConvexError("You are no longer in that group.");
+    const balanceCents = await balanceOf(ctx, approval.from);
+    if (balanceCents < amountCents) throw new ConvexError("Your Nickel balance is too low for this. Add money first.");
+    await postMove(ctx, { from: approval.from, to: approval.to, amountCents, reason: "adjustment", key: "adj:" + approval._id, actor: "player", actorPlayerId: player._id, approvalId: approval._id, groupId: approval.groupId, note: approval.note });
+    await ctx.db.patch(approval._id, { status: "approved", decidedAt: Date.now() });
+    return { balanceCents: balanceCents - amountCents };
   },
 });
 
@@ -311,8 +385,11 @@ export const beginPayout = internalMutation({
 async function finishPayout(ctx: MutationCtx, payout: Doc<"payouts">, outcome: "completed" | "failed", failureReason?: string) {
   if (payout.status !== "pending") return payout.status;
   const hold = holdWallet(payout._id);
-  if (outcome === "completed") await postMove(ctx, { from: hold, to: WORLD, amountCents: payout.amountCents, reason: "payout", key: payout.key + ":done", actor: "whop", actorPlayerId: payout.playerId, note: "Cash out sent" });
-  else await postMove(ctx, { from: hold, to: playerWallet(payout.playerId), amountCents: payout.amountCents, reason: "refund", key: payout.key + ":release", actor: "whop", actorPlayerId: payout.playerId, note: "Cash out failed" });
+  if (outcome === "completed") {
+    await postMove(ctx, { from: hold, to: WORLD, amountCents: payout.amountCents, reason: "payout", key: payout.key + ":done", actor: "whop", actorPlayerId: payout.playerId, note: "Cash out sent" });
+    const fee = transferFeeCents(payout.amountCents);
+    if (fee > 0) await postMove(ctx, { from: HOUSE, to: WORLD, amountCents: fee, reason: "fee", key: payout.key + ":fee", actor: "whop", actorPlayerId: payout.playerId, note: "Transfer fee" });
+  } else await postMove(ctx, { from: hold, to: playerWallet(payout.playerId), amountCents: payout.amountCents, reason: "refund", key: payout.key + ":release", actor: "whop", actorPlayerId: payout.playerId, note: "Cash out failed" });
   await ctx.db.patch(payout._id, { status: outcome, settledAt: Date.now(), failureReason });
   return outcome;
 }
@@ -328,30 +405,28 @@ export const recordTransfer = internalMutation({
   },
 });
 
-export const leaveMembership = internalMutation({
-  args: { groupId: v.id("groups"), byPlayerId: v.id("players"), playerId: v.id("players") },
-  handler: async (ctx, { groupId, byPlayerId, playerId }) => {
-    const group = await ctx.db.get(groupId);
-    if (!group) throw new Error("Unknown group");
-    if (group.commissionerId !== byPlayerId) throw new Error("Only the commissioner can remove a player");
-    if (byPlayerId === playerId) throw new Error("The commissioner cannot remove themselves");
-    const player = await mustPlayer(ctx, playerId);
-    const row = await membership(ctx, groupId, playerId);
-    if (!row || row.leftAt) return { refundedCents: 0, suspendAccountId: null };
-    const me = playerWallet(playerId);
-    const pot = potWallet(groupId);
+export const removePlayer = mutation({
+  args: { secret, actorPhone: v.string(), chatId: v.optional(v.string()), player: v.string() },
+  handler: async (ctx, { secret, actorPhone, chatId, player }): Promise<{ player: string; refundedCents: number }> => {
+    assertServer(secret);
+    const { actor, group } = await commissionedGroup(ctx, actorPhone, chatId);
+    const { player: target, row } = await memberNamed(ctx, group._id, player);
+    if (target._id === actor._id) throw new ConvexError("The commissioner cannot remove themselves.");
+    const me = playerWallet(target._id);
+    const pot = potWallet(group._id);
     let net = 0;
-    for await (const move of ctx.db.query("ledger").withIndex("by_group", (q) => q.eq("groupId", groupId))) {
+    for await (const move of ctx.db.query("ledger").withIndex("by_group", (q) => q.eq("groupId", group._id))) {
       if (move.from === me && move.to === pot) net += move.amountCents;
       if (move.from === pot && move.to === me) net -= move.amountCents;
     }
     const refundedCents = Math.max(0, Math.min(net, await balanceOf(ctx, pot)));
-    if (refundedCents > 0) await postMove(ctx, { from: pot, to: me, amountCents: refundedCents, reason: "refund", key: "remove:" + row._id + ":" + row.joinedAt, actor: "commissioner", actorPlayerId: byPlayerId, groupId, note: "Removed from " + group.name });
+    if (refundedCents > 0) await postMove(ctx, { from: pot, to: me, amountCents: refundedCents, reason: "refund", key: "remove:" + row._id + ":" + row.joinedAt, actor: "commissioner", actorPlayerId: actor._id, groupId: group._id, note: "Removed from " + group.name });
     await ctx.db.patch(row._id, { leftAt: Date.now() });
-    const otherGroups = (await ctx.db.query("groupMembers").withIndex("by_player", (q) => q.eq("playerId", playerId)).collect()).some((m) => !m.leftAt && m._id !== row._id);
-    const payoutPending = await ctx.db.query("payouts").withIndex("by_player", (q) => q.eq("playerId", playerId)).filter((q) => q.eq(q.field("status"), "pending")).first();
+    const otherGroups = (await ctx.db.query("groupMembers").withIndex("by_player", (q) => q.eq("playerId", target._id)).collect()).some((m) => !m.leftAt && m._id !== row._id);
+    const payoutPending = await ctx.db.query("payouts").withIndex("by_player", (q) => q.eq("playerId", target._id)).filter((q) => q.eq(q.field("status"), "pending")).first();
     const idle = !otherGroups && !payoutPending && (await balanceOf(ctx, me)) === 0;
-    return { refundedCents, suspendAccountId: idle && player.whopAccountId ? player.whopAccountId : null };
+    if (idle && target.whopAccountId) await ctx.scheduler.runAfter(0, internal.payments.suspendWhopAccount, { accountId: target.whopAccountId });
+    return { player: target.name, refundedCents };
   },
 });
 
@@ -376,6 +451,7 @@ async function applyEvent(ctx: MutationCtx, type: string, data: Record<string, a
     const credit = Number.isInteger(asked) && asked > 0 ? Math.min(asked, paid) : paid;
     if (!data.id || credit <= 0) return "ignored:amount";
     const out = await postMove(ctx, { from: WORLD, to: playerWallet(playerId), amountCents: credit, reason: "top_up", key: "whop:" + data.id, actor: "whop", actorPlayerId: playerId, note: "Top up" });
+    await postMove(ctx, { from: HOUSE, to: WORLD, amountCents: topUpFeeCents(paid), reason: "fee", key: "whop:" + data.id + ":fee", actor: "whop", actorPlayerId: playerId, note: "Card fee" });
     return out.duplicate ? "duplicate" : "credited";
   }
   if (type === "transfer.completed" || type === "transfer.failed") {
@@ -478,12 +554,9 @@ export const walletToken = action({
   },
 });
 
-export const removePlayer = action({
-  args: { secret, groupId: v.id("groups"), byPlayerId: v.id("players"), playerId: v.id("players") },
-  handler: async (ctx, { secret, groupId, byPlayerId, playerId }): Promise<{ ok: true; refundedCents: number; suspended: boolean }> => {
-    assertServer(secret);
-    const out = await ctx.runMutation(internal.payments.leaveMembership, { groupId, byPlayerId, playerId });
-    if (out.suspendAccountId) await whop().suspendAccount(out.suspendAccountId);
-    return { ok: true, refundedCents: out.refundedCents, suspended: !!out.suspendAccountId };
+export const suspendWhopAccount = internalAction({
+  args: { accountId: v.string() },
+  handler: async (_ctx, { accountId }) => {
+    await whop().suspendAccount(accountId);
   },
 });

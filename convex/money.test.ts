@@ -18,4 +18,13 @@ describe("money ledger", () => {
     await expect(t.mutation(testApp.internal.money.move, { from: me, to: money.HOUSE, amountCents: 1000, reason: "stake", key: "k3", actor: "agent" })).rejects.toThrow(/Insufficient/);
     await expect(t.mutation(testApp.internal.money.move, { from: me, to: money.HOUSE, amountCents: 1.5, reason: "stake", key: "k4", actor: "agent" })).rejects.toThrow(/whole number/);
   });
+
+  it("lets the house run negative only to pay a processor fee", async () => {
+    const t = testApp.createTest();
+    const playerId = await t.run((ctx) => ctx.db.insert("players", { phone: "+14085550101", name: "Peyton", kyc: "none", status: "active", dailyLimitCents: 100, createdAt: 0 }));
+    await expect(t.mutation(testApp.internal.money.move, { from: money.HOUSE, to: money.playerWallet(playerId), amountCents: 50, reason: "chest", key: "c1", actor: "agent" })).rejects.toThrow(/Insufficient/);
+    await t.mutation(testApp.internal.money.move, { from: money.HOUSE, to: money.WORLD, amountCents: 57, reason: "fee", key: "f1", actor: "whop" });
+    expect(await t.query(testApp.api.money.walletBalance, { wallet: money.HOUSE })).toBe(-57);
+    await expect(t.mutation(testApp.internal.money.move, { from: money.HOUSE, to: money.WORLD, amountCents: 10, reason: "adjustment", key: "a1", actor: "admin" })).rejects.toThrow(/Insufficient/);
+  });
 });

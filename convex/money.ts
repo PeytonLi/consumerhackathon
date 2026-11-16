@@ -35,7 +35,8 @@ export async function postMove(ctx: MutationCtx, args: MoveArgs) {
   if (existing) return { id: existing._id, duplicate: true };
   if (!Number.isInteger(args.amountCents) || args.amountCents <= 0) throw new Error("Amount must be a positive whole number of cents");
   if (args.from === args.to) throw new Error("A move needs two different wallets");
-  if (args.from !== WORLD && (await balanceOf(ctx, args.from)) < args.amountCents) throw new Error("Insufficient balance in " + args.from);
+  const mayOverdraw = args.from === WORLD || (args.from === HOUSE && args.reason === "fee");
+  if (!mayOverdraw && (await balanceOf(ctx, args.from)) < args.amountCents) throw new Error("Insufficient balance in " + args.from);
   const id = await ctx.db.insert("ledger", { ...args, createdAt: Date.now() });
   return { id, duplicate: false };
 }

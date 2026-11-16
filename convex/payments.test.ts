@@ -5,10 +5,13 @@ import * as money from "./money.js";
 import * as payments from "./payments.js";
 import http from "./http.js";
 import { httpWhop, signWhopWebhook, useWhop, verifyWhopWebhook, WhopError, type Kyc, type WhopApi } from "./lib/whopApi.js";
+import type { Id } from "./_generated/dataModel.js";
 
 const testApp = defineTestApp({ schema }).defineModules({ money, payments, http: { default: http } });
 const { api } = testApp;
 const SECRET = "ws_test_secret_0123456789";
+const MAYA = "+14085550101";
+const DEV = "+14085550102";
 
 function fakeWhop() {
   const calls: { method: string; input: unknown }[] = [];
@@ -62,6 +65,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.useRealTimers();
   useWhop(httpWhop);
 });
 
@@ -249,24 +253,30 @@ describe("payments: cash out through a Whop subaccount", () => {
 
 describe("payments: removal and reconciliation", () => {
   it("refunds a removed player's stake and suspends an idle subaccount only", async () => {
+    vi.useFakeTimers();
     const t = testApp.createTest();
     const { maya, dev, group } = await setup(t);
+    const remove = (actorPhone: string, player: string, chatId: string) => t.mutation(api.payments.removePlayer, { actorPhone, chatId, player });
+    const suspended = async () => (await t.finishAllScheduledFunctions(vi.runAllTimers), whop.calls.filter((c) => c.method === "suspendAccount").map((c) => c.input));
     await t.run((ctx) => ctx.db.patch(dev, { whopAccountId: "biz_dev", kyc: "verified" }));
     await t.mutation(api.payments.setLimit, { playerId: dev, dailyLimitCents: 1000, consent: true });
     await webhook(t, paid("d", dev, "4.00"));
     await t.mutation(api.payments.takeStake, { playerId: dev, groupId: group, amountCents: 400, key: "dev-stake" });
-    await expect(t.action(api.payments.removePlayer, { groupId: group, byPlayerId: dev, playerId: maya })).rejects.toThrow(/commissioner/);
+    await expect(remove(DEV, "Maya", "chat-1")).rejects.toThrow(/commissioner/);
+    await expect(remove(MAYA, "Maya", "chat-1")).rejects.toThrow("The commissioner cannot remove themselves.");
     const other = await t.mutation(api.payments.ensureGroup, { chatId: "chat-2", name: "Work", commissionerId: maya });
     await t.mutation(api.payments.joinGroup, { groupId: other, playerId: dev });
-    expect(await t.action(api.payments.removePlayer, { groupId: group, byPlayerId: maya, playerId: dev })).toEqual({ ok: true, refundedCents: 400, suspended: false });
+    expect(await remove(MAYA, "Dev", "chat-1")).toEqual({ player: "Dev", refundedCents: 400 });
     expect(await balance(t, money.playerWallet(dev))).toBe(400);
-    expect(await t.action(api.payments.removePlayer, { groupId: group, byPlayerId: maya, playerId: dev })).toEqual({ ok: true, refundedCents: 0, suspended: false });
+    await expect(remove(MAYA, "Dev", "chat-1")).rejects.toThrow("Dev is not in this group.");
+    expect(await balance(t, money.playerWallet(dev))).toBe(400);
     await expect(t.mutation(api.payments.takeStake, { playerId: dev, groupId: group, amountCents: 100, key: "late" })).rejects.toThrow(/Not in this group/);
+    expect(await suspended()).toEqual([]);
 
     await t.mutation(api.payments.takeStake, { playerId: dev, groupId: other, amountCents: 400, key: "dev-stake-2" });
     await t.mutation(api.payments.settlePot, { groupId: other, shares: [{ playerId: maya, cents: 400 }], key: "other-season" });
-    expect(await t.action(api.payments.removePlayer, { groupId: other, byPlayerId: maya, playerId: dev })).toEqual({ ok: true, refundedCents: 0, suspended: true });
-    expect(whop.calls.filter((c) => c.method === "suspendAccount").map((c) => c.input)).toEqual(["biz_dev"]);
+    expect(await remove(MAYA, "+1 (408) 555-0102", "chat-2")).toEqual({ player: "Dev", refundedCents: 0 });
+    expect(await suspended()).toEqual(["biz_dev"]);
   });
 
   it("compares the ledger against the Whop platform balance", async () => {
@@ -276,7 +286,112 @@ describe("payments: removal and reconciliation", () => {
     await t.mutation(api.payments.setLimit, { playerId: maya, dailyLimitCents: 1000, consent: true });
     await t.mutation(api.payments.takeStake, { playerId: maya, groupId: group, amountCents: 250, key: "k" });
     await t.mutation(testApp.internal.money.move, { from: money.WORLD, to: money.HOUSE, amountCents: 100, reason: "fee", key: "house", actor: "admin" });
-    expect(await t.query(api.payments.reconcile, { whopBalanceCents: 1100 })).toEqual({ players: 750, pots: 250, holds: 0, house: 100, world: -1100, internalCents: 1100, whopBalanceCents: 1100, diffCents: 0, ok: true, unknownWallets: [] });
-    expect(await t.query(api.payments.reconcile, { whopBalanceCents: 1070 })).toMatchObject({ diffCents: -30, ok: false });
+    expect(await t.query(api.payments.reconcile, { whopBalanceCents: 1043 })).toEqual({ players: 750, pots: 250, holds: 0, house: 43, world: -1043, internalCents: 1043, whopBalanceCents: 1043, diffCents: 0, ok: true, unknownWallets: [] });
+    expect(await t.query(api.payments.reconcile, { whopBalanceCents: 1013 })).toMatchObject({ diffCents: -30, ok: false });
+  });
+});
+
+describe("payments: Whop fees", () => {
+  it("credits the gross top-up and books the card fee to the house once", async () => {
+    const t = testApp.createTest();
+    const { maya } = await setup(t);
+    expect([payments.topUpFeeCents(1000), payments.topUpFeeCents(2000), payments.transferFeeCents(1000)]).toEqual([57, 84, 30]);
+    await webhook(t, paid("1", maya, "20.00"));
+    expect(await (await webhook(t, { ...paid("1", maya, "20.00"), id: "msg_retry" })).json()).toMatchObject({ outcome: "duplicate" });
+    expect(await balance(t, money.playerWallet(maya))).toBe(2000);
+    expect(await balance(t, money.HOUSE)).toBe(-84);
+    expect(await t.query(api.payments.reconcile, { whopBalanceCents: 2000 - 84 })).toMatchObject({ players: 2000, house: -84, diffCents: 0, ok: true });
+  });
+
+  it("books the transfer fee to the house when a cash out completes, never when it fails", async () => {
+    const t = testApp.createTest();
+    const { maya } = await setup(t);
+    await t.run((ctx) => ctx.db.patch(maya, { whopAccountId: "biz_player1", kyc: "verified" }));
+    whop.state.kyc = "verified";
+    await webhook(t, paid("1", maya, "20.00"));
+    const cash = (amountCents: number) => t.action(api.payments.cashOut, { playerId: maya, amountCents, returnUrl: "https://nickel.test/wallet" });
+    await cash(500);
+    expect(await (await webhook(t, { id: "msg_f", type: "transfer.failed", data: { id: "ctt_1", status: "failed" } })).json()).toMatchObject({ outcome: "payout:failed" });
+    expect(await balance(t, money.HOUSE)).toBe(-84);
+    const out = (await cash(1000)) as { payoutId: string };
+    const done = { id: "msg_t", type: "transfer.completed", data: { id: "ctt_2", status: "succeeded", metadata: { payoutId: out.payoutId } } };
+    await webhook(t, done);
+    await webhook(t, { ...done, id: "msg_t_retry" });
+    expect(await balance(t, money.HOUSE)).toBe(-84 - 30);
+    expect(await balance(t, money.playerWallet(maya))).toBe(1000);
+    expect(await t.query(api.payments.reconcile, { whopBalanceCents: 2000 - 84 - 1000 - 30 })).toMatchObject({ holds: 0, diffCents: 0, ok: true });
+  });
+});
+
+describe("payments: agent money calls", () => {
+  it("reads a wallet by phone", async () => {
+    const t = testApp.createTest();
+    const { maya, group } = await setup(t);
+    expect(await t.query(api.payments.agentWallet, { phone: "+14085550199" })).toBeNull();
+    await webhook(t, paid("1", maya, "10.00"));
+    await t.mutation(api.payments.setLimit, { playerId: maya, dailyLimitCents: 500, consent: true });
+    await t.mutation(api.payments.takeStake, { playerId: maya, groupId: group, amountCents: 300, key: "s1" });
+    expect(await t.query(api.payments.agentWallet, { phone: MAYA })).toEqual({ balanceCents: 700, dailyLimitCents: 500, spentTodayCents: 300 });
+  });
+
+  it("lets only the commissioner propose, and finds the player by name or phone", async () => {
+    const t = testApp.createTest();
+    const { maya, dev, group } = await setup(t);
+    const propose = (actorPhone: string, player: string, chatId?: string) => t.mutation(api.payments.proposeAdjustment, { actorPhone, player, amountCents: 200, reason: "Missed dues", ...(chatId && { chatId }) });
+    await expect(propose(DEV, "Maya", "chat-1")).rejects.toThrow("Only the commissioner can do that.");
+    await expect(propose(DEV, "Maya")).rejects.toThrow("Only the commissioner can do that.");
+    await expect(propose("+14085550199", "Dev")).rejects.toThrow("Only the commissioner can do that.");
+    await expect(propose(MAYA, "Dev", "chat-unknown")).rejects.toThrow("This chat is not a Nickel group yet.");
+    await expect(propose(MAYA, "Zed", "chat-1")).rejects.toThrow("Zed is not in this group.");
+    await expect(t.mutation(api.payments.proposeAdjustment, { actorPhone: MAYA, player: "Dev", amountCents: 0, reason: "x" })).rejects.toThrow("Give an amount above zero.");
+    const made = await propose(MAYA, " dev ", "chat-1");
+    expect(made).toEqual({ id: expect.any(String), player: "Dev", playerPhone: DEV, actorName: "Maya" });
+    expect(await propose(MAYA, "(408) 555-0102")).toMatchObject({ player: "Dev" });
+    const row = await t.run((ctx) => ctx.db.get(made.id as Id<"approvals">));
+    expect(row).toMatchObject({ status: "pending", approverId: dev, requestedBy: maya, from: money.playerWallet(dev), to: money.potWallet(group), amountCents: 200, note: "Missed dues", key: "adj:" + made.id });
+    expect(await t.query(api.payments.pendingApprovals, { playerId: dev })).toHaveLength(2);
+    expect(await t.run((ctx) => ctx.db.query("ledger").collect())).toHaveLength(0);
+
+    const twin = await t.mutation(api.payments.ensurePlayer, { phone: "+14085550103", name: "Dev" });
+    await t.mutation(api.payments.joinGroup, { groupId: group, playerId: twin });
+    await expect(propose(MAYA, "Dev", "chat-1")).rejects.toThrow("More than one player is called Dev. Use their phone number.");
+    await t.mutation(api.payments.ensureGroup, { chatId: "chat-2", name: "Work", commissionerId: maya });
+    await expect(propose(MAYA, DEV)).rejects.toThrow("You run more than one group. Ask from that group's chat.");
+    expect(await propose(MAYA, DEV, "chat-1")).toMatchObject({ player: "Dev" });
+  });
+
+  it("debits only after the charged player approves the exact request, and only once", async () => {
+    const t = testApp.createTest();
+    const { dev, group } = await setup(t);
+    await webhook(t, paid("d", dev, "10.00"));
+    const propose = (amountCents: number, reason: string) => t.mutation(api.payments.proposeAdjustment, { actorPhone: MAYA, chatId: "chat-1", player: "Dev", amountCents, reason });
+    const { id } = await propose(200, "Missed dues");
+    const approve = (phone: string, over: { id?: string; amountCents?: number; reason?: string } = {}) => t.mutation(api.payments.approveAdjustment, { phone, id, amountCents: 200, reason: "Missed dues", ...over });
+    await expect(approve(MAYA)).rejects.toThrow("That request is not yours to approve.");
+    await expect(approve(DEV, { id: "nope" })).rejects.toThrow("That request is not yours to approve.");
+    await expect(approve(DEV, { amountCents: 2000 })).rejects.toThrow("That does not match the request.");
+    await expect(approve(DEV, { reason: "Something else" })).rejects.toThrow("That does not match the request.");
+    expect(await balance(t, money.playerWallet(dev))).toBe(1000);
+    expect(await approve(DEV)).toEqual({ balanceCents: 800 });
+    await expect(approve(DEV)).rejects.toThrow("That request was already approved.");
+    expect(await t.mutation(api.payments.decideApproval, { approvalId: id as Id<"approvals">, playerId: dev, approve: true })).toEqual({ ok: true, status: "approved" });
+    expect(await balance(t, money.playerWallet(dev))).toBe(800);
+    expect(await balance(t, money.potWallet(group))).toBe(200);
+    const moves = await t.run((ctx) => ctx.db.query("ledger").filter((q) => q.eq(q.field("reason"), "adjustment")).collect());
+    expect(moves).toEqual([expect.objectContaining({ key: "adj:" + id, from: money.playerWallet(dev), to: money.potWallet(group), amountCents: 200, actor: "player", approvalId: id })]);
+
+    const big = await propose(5000, "Big");
+    await expect(approve(DEV, { id: big.id, amountCents: 5000, reason: "Big" })).rejects.toThrow("Your Nickel balance is too low for this. Add money first.");
+    expect(await t.run((ctx) => ctx.db.get(big.id as Id<"approvals">))).toMatchObject({ status: "pending" });
+    const stale = await propose(100, "Old");
+    await t.run((ctx) => ctx.db.patch(stale.id as Id<"approvals">, { expiresAt: Date.now() - 1 }));
+    await expect(approve(DEV, { id: stale.id, amountCents: 100, reason: "Old" })).rejects.toThrow("That request expired.");
+    const gone = await propose(100, "Gone");
+    await t.run(async (ctx) => {
+      const row = await ctx.db.query("groupMembers").withIndex("by_group_player", (q) => q.eq("groupId", group).eq("playerId", dev)).unique();
+      await ctx.db.patch(row!._id, { leftAt: Date.now() });
+    });
+    await expect(approve(DEV, { id: gone.id, amountCents: 100, reason: "Gone" })).rejects.toThrow("You are no longer in that group.");
+    expect(await balance(t, money.playerWallet(dev))).toBe(800);
   });
 });
