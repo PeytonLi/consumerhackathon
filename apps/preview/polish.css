@@ -1,0 +1,213 @@
+body.social-club {
+  --bg: light-dark(#f5f5f7, #111214);
+  --surface: light-dark(#fff, #1d1f22);
+  --surface-2: light-dark(#eceef1, #2a2d31);
+  --ink: light-dark(#17191d, #f7f8fa);
+  --ink-2: light-dark(#656a74, #a9aeb8);
+  --ink-3: light-dark(#777d87, #939aa5);
+  --hair: light-dark(rgb(25 34 51 / .08), rgb(255 255 255 / .1));
+  --you: light-dark(#006bea, #338fff);
+  --game: #249c68;
+  --t-sheet: 240ms;
+  --club-shadow: light-dark(0 3px 6px rgb(26 39 59 / .025), 0 3px 6px rgb(0 0 0 / .1));
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  color: var(--ink);
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+body.social-club *, body.social-club *::before, body.social-club *::after { box-sizing: border-box; transition-duration: 180ms; animation-duration: 240ms; }
+body.social-club :is(button, a, input):focus-visible { outline: 3px solid var(--you); outline-offset: 4px; }
+body.social-club button { touch-action: manipulation; }
+body.social-club button:disabled { cursor: default; opacity: .48; }
+body.social-club button:not(:disabled):active, body.social-club a:active { transform: scale(.98); transition: transform 100ms ease; }
+body.social-club a { color: inherit; text-decoration: none; }
+body.social-club .app { background: var(--bg); padding-inline: 20px; }
+body.social-club .club-bar { height: 76px; grid-template-columns: 44px 1fr auto; gap: 12px; }
+body.social-club .club-bar .name { text-align: left; }
+body.social-club .club-bar .name b { font-size: 19px; letter-spacing: -.6px; }
+body.social-club .club-bar .name span { font-size: 12px; margin-top: 3px; }
+body.social-club .club-badge { font-size: 12px; font-weight: 700; letter-spacing: 1.2px; padding: 9px 11px; border: 1px solid var(--hair); border-radius: 8px; color: var(--ink-2); }
+body.social-club .club-monogram { width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center; background: var(--ink); color: var(--bg); font-size: 23px; font-weight: 700; letter-spacing: -2px; }
+body.social-club .stage { justify-content: flex-start; align-items: stretch; overflow-y: auto; overflow-x: hidden; gap: 20px; padding: 12px 0 8px; scrollbar-width: none; }
+body.social-club .stage.center { justify-content: center; align-items: center; }
+body.social-club .dock { padding: 12px 0 max(20px, env(safe-area-inset-bottom)); gap: 8px; }
+body.social-club .primary { background: var(--you); color: #fff; box-shadow: 0 5px 12px rgb(0 106 235 / .15), inset 0 1px 0 rgb(255 255 255 / .16); min-height: 56px; height: auto; padding: 16px 24px; border-radius: 18px; transition: transform 120ms ease, opacity 180ms ease; }
+body.social-club a.primary { display: flex; justify-content: center; align-items: center; gap: 16px; }
+body.social-club .primary:disabled { color: var(--ink-2); background: var(--surface-2); box-shadow: none; }
+body.social-club .glass.primary::before { display: none; }
+body.social-club .secondary { min-height: 50px; }
+body.social-club .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-2); }
+body.social-club h1 { margin: 12px 0 14px; font-size: clamp(34px, 10.5vw, 46px); font-weight: 700; letter-spacing: -2px; line-height: 1.04; text-wrap: balance; }
+body.social-club .intro p { font-size: 16px; line-height: 1.5; color: var(--ink-2); max-width: 320px; margin: 0; }
+body.social-club .inline-status { min-height: 17px; text-align: center; color: var(--ink-2); font-size: 12px; line-height: 1.4; margin: 0; }
+body.social-club .toast { height: auto; min-height: 44px; max-width: calc(100% - 40px); width: max-content; text-align: center; padding: 12px 18px; font-size: 14px; border-radius: 16px; background: var(--ink); color: var(--bg); box-shadow: 0 8px 30px rgb(0 0 0 / .15); }
+body.social-club .toast::before { display: none; }
+body.social-club .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+body.fantasy-page .fantasy-hero { padding: 22px 22px 0; border: 1px solid var(--hair); background: var(--surface); border-radius: 28px; box-shadow: var(--club-shadow), 0 16px 38px rgb(25 40 65 / .035); flex: none; overflow: hidden; position: relative; }
+body.fantasy-page .fantasy-hero::before { content: ""; position: absolute; width: 110px; height: 110px; right: -52px; top: 47px; border: 21px solid light-dark(#d9f4e5, #173e2c); border-radius: 50%; pointer-events: none; }
+body.fantasy-page .hero-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+body.fantasy-page .hero-top .eyebrow { font-size: 12px; letter-spacing: 1.1px; }
+body.fantasy-page .live-label { font-size: 12px; font-weight: 600; color: light-dark(#1c7d50, #6bdda3); white-space: nowrap; display: flex; align-items: center; gap: 5px; }
+body.fantasy-page .live-label::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+body.fantasy-page .fantasy-hero h1 { position: relative; margin: 20px 0 18px; font-size: clamp(34px, 10vw, 44px); }
+body.fantasy-page .fantasy-hero h1 span { color: light-dark(#208755, #59d595); }
+body.fantasy-page .hero-people { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-2); padding-bottom: 22px; }
+body.fantasy-page .avatar-stack { display: flex; padding-left: 4px; flex: none; }
+body.fantasy-page .avatar-stack .avatar { width: 27px; height: 27px; margin-left: -4px; border: 2px solid var(--surface); font-size: 12px; }
+body.fantasy-page .hero-stats { display: grid; grid-template-columns: repeat(3, 1fr); padding: 17px 0; border-top: 1px solid var(--hair); }
+body.fantasy-page .hero-stats > div { padding-left: 15px; border-left: 1px solid var(--hair); }
+body.fantasy-page .hero-stats > div:first-child { padding-left: 0; border: 0; }
+body.fantasy-page .hero-stats b { display: block; font: 700 27px/1 var(--round); letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+body.fantasy-page .hero-stats small { font-size: 14px; font-weight: 500; color: var(--ink-2); letter-spacing: 0; }
+body.fantasy-page .hero-stats span { display: block; font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+body.fantasy-page .seg { display: flex; padding: 4px; background: var(--surface-2); border-radius: 16px; flex: none; }
+body.fantasy-page .seg button { flex: 1; min-height: 44px; border-radius: 12px; color: var(--ink-2); font-size: 14px; font-weight: 600; transition: background 180ms ease; }
+body.fantasy-page .seg button.on { color: var(--ink); background: var(--surface); box-shadow: 0 2px 6px rgb(24 35 58 / .09); }
+body.fantasy-page .section-label { display: flex; justify-content: space-between; align-items: center; margin: 0 2px 12px; }
+body.fantasy-page .section-label h2 { margin: 0; font-size: 19px; letter-spacing: -.5px; }
+body.fantasy-page .section-label > span { color: var(--ink-2); font-size: 12px; }
+body.fantasy-page .rows { gap: 8px; }
+body.fantasy-page .rowi { min-height: 76px; height: auto; padding: 12px; gap: 10px; border: 1px solid var(--hair); border-radius: 20px; box-shadow: var(--club-shadow); animation: none; flex: none; }
+body.fantasy-page .rowi.mine, body.fantasy-page .rowi.me { border-color: color-mix(in srgb, var(--you) 36%, transparent); box-shadow: inset 3px 0 var(--you), var(--club-shadow); }
+body.fantasy-page .pick-index { color: var(--ink-3); font: 500 12px/1 var(--round); width: 18px; }
+body.fantasy-page .pick-detail { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; min-height: 44px; min-width: 0; flex: 1; text-align: left; }
+body.fantasy-page .pick-detail b { font-size: 16px; line-height: 1.25; overflow-wrap: anywhere; flex: none; }
+body.fantasy-page .pick-detail span { font-size: 12px; color: var(--ink-2); margin-top: 5px; }
+body.fantasy-page .pick-points { text-align: right; font-size: 19px; font-weight: 600; min-width: 27px; }
+body.fantasy-page .pick-points small { display: block; font: 500 12px/1.3 var(--font); color: var(--ink-2); margin-top: 3px; }
+body.fantasy-page .take { height: 44px; min-width: 58px; padding: 0 12px; background: light-dark(#eaf3ff, #1a304b); color: var(--you); border-radius: 13px; font-size: 13px; font-weight: 600; }
+body.fantasy-page .rowi > .avatar { width: 34px; height: 34px; font-size: 13px; margin-inline: 9px; }
+body.fantasy-page .available-mark { width: 34px; text-align: center; margin-inline: 9px; color: var(--ink-3); }
+body.fantasy-page .rowi .who { flex: 1; min-width: 0; }
+body.fantasy-page .rowi .who b { display: block; font-size: 16px; line-height: 1.3; }
+body.fantasy-page .rowi .who > span { display: block; margin-top: 5px; color: var(--ink-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.fantasy-page .who em { color: var(--you); background: light-dark(#eaf3ff, #1a304b); font-size: 12px; font-style: normal; padding: 3px 5px; border-radius: 5px; margin-left: 5px; vertical-align: middle; }
+body.fantasy-page .write { display: flex; gap: 8px; }
+body.fantasy-page .write input { width: 0; flex: 1; min-height: 56px; border: 1px solid var(--hair); border-radius: 18px; background: var(--surface); padding: 0 16px; font-size: 15px; outline: none; }
+body.fantasy-page .write .primary { width: auto; min-width: 85px; padding-inline: 20px; }
+body.fantasy-page .roster-ready { text-align: center; padding: 8px 0; }
+body.fantasy-page .roster-ready b { display: block; font-size: 15px; }
+body.fantasy-page .roster-ready span { display: block; margin-top: 5px; font-size: 12px; color: var(--ink-2); }
+body.fantasy-page .connection-status { color: var(--ink-2); font-size: 12px; text-align: center; margin: 0; }
+body.fantasy-page .people { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; margin-top: 16px; }
+body.fantasy-page .person { min-height: 114px; background: var(--surface); border: 2px solid transparent; border-radius: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 13px; }
+body.fantasy-page .person.on { border-color: var(--you); }
+body.fantasy-page .person .avatar { width: 52px; height: 52px; font-size: 22px; }
+body.fantasy-page .empty-state { text-align: center; padding: 30px 20px; border: 1px dashed var(--hair); border-radius: 24px; }
+body.fantasy-page .empty-mark { font: 700 32px/1 var(--round); color: var(--ink-3); }
+body.fantasy-page .empty-state h2 { font-size: 20px; margin: 15px 0 8px; }
+body.fantasy-page .empty-state p { font-size: 14px; color: var(--ink-2); line-height: 1.5; margin: 0; }
+body.fantasy-page .sheet { max-width: 480px; margin-inline: auto; background: var(--surface); border: 1px solid var(--hair); padding: 32px 24px 24px; box-shadow: 0 16px 60px rgb(0 0 0 / .18); }
+body.fantasy-page .sheet .eyebrow { display: block; text-align: center; }
+body.fantasy-page .sheet .t-title { margin: 12px 0 8px; }
+body.fantasy-page .sheet-summary { text-align: center; color: var(--ink-2); font-size: 14px; margin: 0 0 24px; }
+body.fantasy-page .bumps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+body.fantasy-page .bumps button { min-height: 64px; border-radius: 18px; font: 700 22px/1 var(--round); color: var(--you); background: light-dark(#eaf3ff, #1a304b); }
+body.fantasy-page .sheet .inline-status { padding: 14px 0; }
+body.profile-page .stage { gap: 26px; }
+body.profile-page .intro { padding-top: 8px; }
+body.profile-page .intro h1 { font-size: clamp(40px, 12vw, 52px); }
+body.profile-page .player-id { position: relative; flex: none; padding: 22px; border-radius: 26px; border: 1px solid light-dark(#d8e2f1, #2e435d); background: linear-gradient(145deg, light-dark(#fff, #24354b), light-dark(#edf4ff, #1b283a)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .7), 0 12px 24px rgb(26 67 116 / .09), 0 2px 4px rgb(26 67 116 / .04); }
+body.profile-page .id-top { display: flex; justify-content: space-between; align-items: center; }
+body.profile-page .id-top .eyebrow { color: light-dark(#3b5e8c, #9abce9); font-size: 12px; letter-spacing: 1.6px; }
+body.profile-page .id-emblem { color: var(--you); font-size: 22px; font-weight: 700; letter-spacing: -2px; }
+body.profile-page .id-person { display: flex; align-items: center; gap: 18px; padding: 24px 0; }
+body.profile-page .shot { position: relative; width: 94px; height: 112px; flex: none; border-radius: 17px; background: light-dark(#dbe7f8, #304867); display: grid; place-items: center; color: light-dark(#4273af, #bdd8fa); border: 3px solid var(--surface); box-shadow: 0 3px 8px rgb(25 57 97 / .1); }
+body.profile-page .shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 13px; }
+body.profile-page .photo-initial { font-size: 44px; font-weight: 600; }
+body.profile-page .camera-badge { position: absolute; bottom: -7px; right: -7px; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--you); color: #fff; border: 3px solid var(--surface); }
+body.profile-page .camera-badge svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+body.profile-page .id-person > div { min-width: 0; }
+body.profile-page .id-label { font-size: 12px; color: var(--ink-2); }
+body.profile-page #card-name { margin: 5px 0 8px; font-size: clamp(24px, 7vw, 30px); font-weight: 700; line-height: 1.05; letter-spacing: -1.2px; overflow-wrap: anywhere; }
+body.profile-page .id-member { font-size: 12px; color: var(--ink-2); }
+body.profile-page .id-bottom { padding-top: 15px; border-top: 1px solid light-dark(#d9e3f0, #3a4e66); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+body.profile-page .id-bottom > span:first-child { font-size: 12px; color: var(--ink-2); }
+body.profile-page .id-bars { display: block; width: 54px; height: 20px; opacity: .45; background: repeating-linear-gradient(90deg, var(--ink) 0 2px, transparent 2px 4px, var(--ink) 4px 5px, transparent 5px 8px); }
+body.profile-page .fields { display: flex; flex-direction: column; gap: 10px; }
+body.profile-page .fields label { font-size: 14px; font-weight: 600; }
+body.profile-page .fields input { width: 100%; height: 56px; border: 1px solid var(--hair); background: var(--surface); border-radius: 16px; padding: 0 16px; color: var(--ink); font-size: 17px; outline: none; }
+body.profile-page .fields > span { font-size: 12px; color: var(--ink-2); }
+body.profile-page .success-label { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 600; color: light-dark(#23824e, #7add9d); }
+body.profile-page .success-label::before { content: "✓"; display: grid; place-items: center; width: 21px; height: 21px; border-radius: 50%; background: light-dark(#dbf3e2, #20422b); }
+body.profile-page .done .player-id { transform: rotate(-2deg); margin: 8px 3px; }
+body.messages-page {
+  --bg: light-dark(#fff, #08090b);
+  --in: light-dark(#eeeef1, #26282d);
+  --out: light-dark(#087cf1, #1284ff);
+  --text: light-dark(#16181c, #f4f5f8);
+  --sub: light-dark(#747880, #9da3ae);
+  --line: light-dark(rgb(25 34 51 / .1), rgb(255 255 255 / .12));
+  --bar: light-dark(rgb(250 250 252 / .94), rgb(20 21 25 / .94));
+  --game-bg: light-dark(#f5f5f7, #111214);
+  color: var(--text);
+  color-scheme: light dark;
+}
+:root[data-theme="light"] body.messages-page { color-scheme: light; }
+:root[data-theme="dark"] body.messages-page { color-scheme: dark; }
+body.messages-page .inbox-head { padding: calc(10px + var(--safe-t)) 20px 14px; }
+body.messages-page .inbox-head .edit { align-items: center; min-height: 44px; }
+body.messages-page .inbox-head h1 { margin: 10px 0 16px; font-size: 36px; letter-spacing: -1.4px; }
+body.messages-page .search { min-height: 44px; border-radius: 13px; background: var(--in); }
+body.messages-page .search input { min-width: 0; width: 100%; background: transparent; border: 0; font: inherit; color: var(--text); outline: none; }
+body.messages-page .chat { min-height: 90px; padding: 12px 20px 0 6px; gap: 12px; }
+body.messages-page .chat .body { padding-bottom: 18px; }
+body.messages-page .chat .l1 b { line-height: 1.4; }
+body.messages-page .chat p { margin-top: 4px; line-height: 1.4; }
+body.messages-page .note { color: var(--sub); line-height: 1.5; padding: 24px 36px; }
+body.messages-page .av.grp i { border-color: var(--bg); }
+body.messages-page .nav { padding-inline: 20px; }
+body.messages-page .title .av.grp i { font-size: 12px; }
+body.messages-page .face { font-size: 12px; }
+body.messages-page .delivered { font-size: 12px; }
+body.messages-page .back { min-width: 44px; }
+body.messages-page .thread { padding: 12px 20px 16px; gap: 4px; }
+body.messages-page .day { font-size: 12px; margin-block: 16px 12px; }
+body.messages-page .name { font-size: 12px; }
+body.messages-page .bubble { padding: 10px 14px; border-radius: 20px; line-height: 1.35; max-width: min(80%, 330px); }
+body.messages-page .link { width: min(82%, 330px); border-radius: 22px; background: var(--in); border: 1px solid var(--line); box-shadow: 0 3px 8px rgb(0 0 0 / .035); }
+body.messages-page .og-image { display: block; width: 100%; height: auto; aspect-ratio: 1200 / 630; object-fit: cover; background: var(--in); }
+body.messages-page .og-image[hidden] + .og-fallback { display: flex; }
+body.messages-page .og-fallback { display: none; aspect-ratio: 1200 / 630; padding: 20px; flex-direction: column; justify-content: center; gap: 10px; background: var(--in); }
+body.messages-page .og-fallback b { font-size: 20px; }
+body.messages-page .og-fallback span { color: var(--sub); font-size: 13px; }
+body.messages-page .meta { padding: 12px 14px 13px; }
+body.messages-page .meta b { font-size: 14px; line-height: 1.35; }
+body.messages-page .meta span { margin-top: 4px; font-size: 12px; }
+body.messages-page .vault { border: 1px solid var(--line); border-radius: 22px; }
+body.messages-page .vault .art { background: radial-gradient(at 100% 0%, color-mix(in srgb, var(--h) 15%, transparent), transparent 70%), var(--surface); color: var(--ink); padding: 16px; }
+body.messages-page .vault .art p { color: var(--sub); }
+body.messages-page .vault .app { font-size: 12px; }
+body.messages-page .vault .app { background: transparent; position: static; }
+body.messages-page .composer { padding-inline: 20px; gap: 10px; }
+body.messages-page .plus { background: var(--in); width: 44px; height: 44px; flex: none; color: var(--sub); }
+body.messages-page .field { min-height: 44px; border-color: var(--line); border-radius: 23px; }
+body.messages-page .send { width: 44px; height: 44px; background: var(--out); }
+body.messages-page .chips { padding: 8px 20px; gap: 8px; }
+body.messages-page .chips button { min-height: 44px; border-radius: 16px; padding-inline: 14px; background: var(--bg); color: var(--out); }
+body.messages-page .x { width: 44px; height: 44px; background: var(--in); color: var(--sub); }
+body.messages-page .crumb { padding-inline: 20px; }
+body.messages-page .crumb button { min-height: 44px; font-size: 15px; }
+body.messages-page .sheet-top { height: 60px; color: var(--sub); }
+body.messages-page .tb { border-color: var(--bg); }
+body.messages-page .view, body.messages-page .sheet, body.messages-page .safari { transition: transform 240ms cubic-bezier(.2,.8,.2,1); }
+body.messages-page .sheet-dim { transition: opacity 200ms ease; }
+body.messages-page .connection-note { font-size: 12px; color: var(--sub); padding: 8px 20px; text-align: center; margin: 0; }
+@media (min-width: 650px) {
+  body.social-club:not(.messages-page) .app { max-width: 520px; margin-inline: auto; border-inline: 1px solid var(--hair); }
+  body.messages-page .view { max-width: 600px; margin-inline: auto; border-inline: 1px solid var(--line); }
+  body.messages-page .view.off { transform: translateX(110vw); }
+  body.messages-page .view.under { transform: none; }
+}
+@media (max-height: 720px) {
+  body.profile-page .stage { gap: 18px; }
+  body.profile-page .intro h1 { font-size: 38px; margin-block: 8px 10px; }
+  body.profile-page .intro p { font-size: 14px; }
+  body.profile-page .id-person { padding-block: 15px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.social-club *, body.social-club *::before, body.social-club *::after { transition-duration: 0ms !important; animation: none !important; scroll-behavior: auto !important; }
+}
+@media (prefers-contrast: more) {
+  body.social-club { --hair: currentColor; --ink-2: var(--ink); }
+}

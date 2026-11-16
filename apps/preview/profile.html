@@ -3,31 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f5f7">
 <title>Your Nickel player card</title>
 <!--PROFILE-->
 <link rel="stylesheet" href="/nickel.css">
-<style>
-  :root { --game: light-dark(#30d158, #30d158); }
-  .stage { align-items: center; justify-content: center; gap: var(--s4); }
-  .shot { position: relative; width: 148px; height: 148px; border-radius: 50%; border: 0; padding: 0; background: var(--surface); overflow: hidden; display: grid; place-items: center; color: var(--ink-2); font: 600 14px/1.2 var(--font); box-shadow: 0 0 0 4px color-mix(in srgb, var(--game) 55%, transparent); }
-  .shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .shot svg { width: 34px; height: 34px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; display: block; margin: 0 auto 6px; }
-  .fields { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 10px; }
-  .fields label { font: 600 13px/1 var(--font); color: var(--ink-2); padding-left: 4px; }
-  .fields input { width: 100%; height: 52px; border-radius: 14px; border: 0; background: var(--surface); padding: 0 16px; font: 500 17px/1 var(--font); color: var(--ink); outline: none; }
-  .fields input:focus { box-shadow: 0 0 0 2px var(--game); }
-  .done h2 { margin: 0; font: 700 30px/1.1 var(--font); letter-spacing: -0.025em; text-align: center; }
-</style>
+<link rel="stylesheet" href="/polish.css">
 </head>
-<body>
+<body class="social-club profile-page">
 <div class="app">
-  <header class="bar">
-    <div></div>
-    <div class="name"><b>Player card</b><span id="league">Nickel</span></div>
-    <div></div>
-  </header>
+  <header class="bar club-bar"><span class="club-monogram">N</span><div class="name"><b>Nickel</b><span>Your place in the group</span></div><div><span class="club-badge">PLAYER ID</span></div></header>
   <main class="stage" id="stage"></main>
   <footer class="dock" id="dock"></footer>
 </div>
@@ -36,65 +20,99 @@
 <script>
 let P = window.PROFILE;
 let claim = window.CLAIM;
-const code = new URLSearchParams(location.search).get("k");
+const params = new URLSearchParams(location.search), code = params.get("k");
+if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
-let photo = "";
-function toast(text) { const t = $("toast"); t.textContent = text; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 1800); }
-const CAMERA = '<svg viewBox="0 0 24 24"><path d="M4 8.5h3l1.5-2.5h7L17 8.5h3a1 1 0 0 1 1 1v8.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>';
-
+let photo = "", saving = false, photoLoading = false;
+function toast(text) { $("toast").textContent = text; $("toast").classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => $("toast").classList.remove("on"), 2400); }
+const CAMERA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5h3l1.5-2.5h7L17 8.5h3a1 1 0 0 1 1 1v8.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>';
+function playerCard(editable) {
+  const face = photo || P.face;
+  return '<section class="player-id"><div class="id-top"><span class="eyebrow">Nickel Social Club</span><span class="id-emblem" aria-hidden="true">N</span></div><div class="id-person">' + (editable ? '<button class="shot" id="shot" type="button" aria-label="' + (face ? 'Change' : 'Add') + ' your photo">' : '<span class="shot">') + (face ? '<img src="' + esc(face) + '" alt="Your player photo">' : '<span class="photo-initial">' + esc((P.name || 'N')[0]) + '</span>') + (editable ? '<span class="camera-badge">' + CAMERA + '</span></button>' : '</span>') + '<div><span class="id-label">Official group regular</span><h2 id="card-name">' + esc(P.name || 'Your name') + '</h2><span class="id-member">' + (editable ? 'Made for the group chat.' : 'One of the day ones.') + '</span></div></div><div class="id-bottom"><span>Good company. Great games.</span><span class="id-bars" aria-hidden="true"></span></div></section>';
+}
 function form() {
-  if (!P) { $("stage").innerHTML = '<p class="t-title">This card link is not valid.</p><p class="t-caption">Text "Nickel, set me up" in the group for a new one.</p>'; return; }
   $("stage").className = "stage";
-  if (claim === "locked") {
-    $("stage").innerHTML = '<span class="shot" style="width:128px;height:128px">' + (P.face ? '<img src="' + P.face + '" alt="">' : esc((P.name || "N")[0])) + '</span><p class="t-title" style="text-align:center">' + (P.name ? esc(P.name) + "'s card is set up on another phone." : "This link was already used.") + '</p><p class="t-caption" style="text-align:center;max-width:300px">Is this you? Text "Nickel, set me up" in the group and open the fresh link on this phone.</p>';
-    $("dock").innerHTML = '<a class="glass primary" href="/l" style="text-decoration:none;display:grid;place-items:center">See the leaderboard</a>';
+  if (!P) {
+    $("stage").innerHTML = '<div class="intro"><span class="eyebrow">A fresh start</span><h1>Let’s get<br>you a card.</h1><p>This link is no longer available. Text “Nickel, set me up” in the group for a new one.</p></div>';
+    $("dock").innerHTML = '<a class="primary" href="/l">See the leaderboard</a>';
     return;
   }
-  $("stage").innerHTML =
-    '<button class="shot" id="shot" type="button" aria-label="Add your photo">' + (P.face ? '<img src="' + P.face + '" alt="">' : "<span>" + CAMERA + "Add a photo</span>") + "</button>" +
-    '<div class="fields"><label for="name">First name</label><input id="name" maxlength="14" autocomplete="given-name" placeholder="Sritej" value="' + esc(P.name || "") + '"></div>' +
-    '<p class="t-caption" style="text-align:center;max-width:300px">One time. After this, every Nickel link on this phone opens as you.</p>';
-  $("dock").innerHTML = '<button class="glass primary" id="save" type="button">Save my card</button>';
+  if (claim === "locked") {
+    $("stage").innerHTML = '<div class="intro"><span class="eyebrow">A little security check</span><h1>This card<br>is spoken for.</h1><p>Already set up on another phone? Text “Nickel, set me up” for a fresh link on this one.</p></div>' + playerCard(false);
+    $("dock").innerHTML = '<a class="primary" href="/l">See the leaderboard</a>';
+    return;
+  }
+  $("stage").innerHTML = '<div class="intro"><span class="eyebrow">Your people. Your player card.</span><h1>Make it<br>official.</h1><p>A familiar face for every game, draft and group win.</p></div>' + playerCard(true) + '<div class="fields"><label for="name">What should we call you?</label><input id="name" maxlength="14" autocomplete="given-name" placeholder="Your first name" value="' + esc(P.name || '') + '" aria-describedby="name-help"><span id="name-help">Your first name, just like in the chat.</span></div>';
+  $("dock").innerHTML = '<p class="inline-status" id="save-status" role="status">One setup. Every link opens as you.</p><button class="primary" id="save" type="button">Save my card <span aria-hidden="true">↗</span></button>';
   $("shot").onclick = () => $("file").click();
+  $("name").oninput = () => { $("card-name").textContent = $("name").value.trim() || "Your name"; $("save-status").textContent = "Looking good. Save when you’re ready."; };
+  $("name").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); save(); } };
   $("save").onclick = save;
 }
-
 $("file").onchange = () => {
   const file = $("file").files[0];
-  if (!file) return;
-  const img = new Image();
-  img.onload = () => {
-    const side = Math.min(img.width, img.height), c = document.createElement("canvas");
-    c.width = c.height = 256;
-    c.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 256, 256);
-    photo = c.toDataURL("image/jpeg", 0.78);
-    $("shot").innerHTML = '<img src="' + photo + '" alt="">';
-    URL.revokeObjectURL(img.src);
-  };
-  img.onerror = () => toast("That photo did not work. Try another.");
-  img.src = URL.createObjectURL(file);
-};
-
-async function save() {
-  const name = $("name").value.trim();
-  if (!name) return toast("Add your first name.");
+  if (!file || saving) return;
+  photoLoading = true;
   $("save").disabled = true;
-  const body = { name };
-  if (photo) body.photo = photo;
-  if (claim === "open") {
-    const claimed = await (await fetch("/api/claim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: P.token, code }) })).json().catch(() => ({ ok: false, error: "Nickel is offline." }));
-    if (!claimed.ok) { claim = "locked"; toast(claimed.error || "Could not save."); return form(); }
-    claim = "owner";
-    history.replaceState(null, "", location.pathname);
+  $("save-status").textContent = "Preparing your photo…";
+  const img = new Image(), url = URL.createObjectURL(file);
+  img.onload = () => {
+    try {
+      const side = Math.min(img.width, img.height), canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 256;
+      canvas.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 256, 256);
+      photo = canvas.toDataURL("image/jpeg", 0.78);
+      $("shot").innerHTML = '<img src="' + photo + '" alt="Your player photo"><span class="camera-badge">' + CAMERA + '</span>';
+      $("shot").setAttribute("aria-label", "Change your photo");
+      $("save-status").textContent = "Photo ready. Save to make it yours.";
+    } catch { toast("That photo did not work. Try another."); }
+    finally { URL.revokeObjectURL(url); $("file").value = ""; photoLoading = false; if ($("save")) $("save").disabled = saving; }
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); $("file").value = ""; photoLoading = false; $("save").disabled = false; $("save-status").textContent = "That photo did not work. Try another."; toast("That photo did not work. Try another."); };
+  img.src = url;
+};
+async function save() {
+  if (saving || photoLoading) return;
+  const name = $("name").value.trim();
+  if (!name) { $("save-status").textContent = "Add your first name to make it official."; $("name").focus(); return; }
+  saving = true;
+  $("save").disabled = true;
+  $("save").textContent = "Saving your card…";
+  $("name").disabled = true;
+  $("shot").disabled = true;
+  $("save-status").textContent = "Getting your card ready…";
+  try {
+    if (claim === "open") {
+      const response = await fetch("/api/claim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: P.token, code }) });
+      const claimed = await response.json();
+      if (!claimed.ok || !response.ok) {
+        if (response.status === 403) { claim = "locked"; form(); toast(claimed.error || "This link has expired."); return; }
+        throw new Error(claimed.error || "Could not save. Try again.");
+      }
+      claim = "owner";
+      history.replaceState(null, "", location.pathname);
+    }
+    const body = { name };
+    if (photo) body.photo = photo;
+    const response = await fetch("/api/me/" + P.token, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "Could not save. Try again.");
+    P = result.profile;
+    photo = "";
+    $("stage").className = "stage done";
+    $("stage").innerHTML = '<div class="intro"><span class="success-label">Card saved</span><h1>You’re in,<br>' + esc(P.name) + '.</h1><p>Every Nickel link on this phone now opens as you. Your people are waiting in the chat.</p></div>' + playerCard(false);
+    $("dock").innerHTML = '<a class="primary" href="/l">See the leaderboard <span aria-hidden="true">↗</span></a><button class="secondary" id="edit" type="button">Edit my card</button>';
+    $("edit").onclick = form;
+    $("stage").querySelector("h1").tabIndex = -1;
+    $("stage").querySelector("h1").focus();
+  } catch (error) {
+    $("save-status").textContent = error instanceof SyntaxError || error instanceof TypeError ? "Couldn’t connect. Your changes are here. Try again." : error.message;
+    toast("Card not saved. Try again.");
+  } finally {
+    saving = false;
+    if ($("save")) { $("save").disabled = false; $("save").textContent = "Save my card ↗"; $("name").disabled = false; $("shot").disabled = false; }
   }
-  const res = await (await fetch("/api/me/" + P.token, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json().catch(() => ({ ok: false, error: "Nickel is offline." }));
-  if (!res.ok) { $("save").disabled = false; return toast(res.error || "Could not save."); }
-  P = res.profile;
-  $("stage").className = "stage done";
-  $("stage").innerHTML = '<span class="shot" style="width:128px;height:128px">' + (P.face ? '<img src="' + P.face + '" alt="">' : esc(P.name[0])) + "</span><h2>You are set, " + esc(P.name) + '.</h2><p class="t-caption" style="text-align:center;max-width:300px">Every game, draft and buy-in link now opens as you. Go back to the chat.</p>';
-  $("dock").innerHTML = '<a class="glass primary" href="/l" style="text-decoration:none;display:grid;place-items:center">See the leaderboard</a><button class="glass" id="edit" type="button" style="margin-top:8px">Edit my card</button>';
-  $("edit").onclick = form;
 }
 form();
 </script>

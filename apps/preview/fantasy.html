@@ -3,53 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f5f7">
 <title>Nickel Fantasy</title>
 <!--LEAGUE-->
 <link rel="stylesheet" href="/nickel.css">
-<style>
-  :root { --game: light-dark(#34c759, #30d158); }
-  .stage { justify-content: flex-start; align-items: stretch; overflow-y: auto; gap: var(--s3); padding: var(--s2) 0 var(--s3); -webkit-overflow-scrolling: touch; }
-  .stage.center { justify-content: center; align-items: center; }
-  .seg { display: flex; flex: none; padding: 3px; border-radius: var(--r-pill); background: var(--surface-2); }
-  .seg button { flex: 1; height: 34px; border-radius: var(--r-pill); font: 600 14px/1 var(--font); color: var(--ink-2); transition: background var(--t-lock) var(--ease); }
-  .seg button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgb(0 0 0 / .12); }
-  .rowi { flex: none; }
-  .rowi.tall { height: 64px; }
-  .rowi .who { flex: 1; min-width: 0; }
-  .rowi .who b { display: block; }
-  .rowi .who span { display: block; margin-top: 4px; font: 500 12px/1.2 var(--font); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .rowi .avatar { width: 30px; height: 30px; font-size: 13px; }
-  .take { height: 32px; padding: 0 14px; border-radius: var(--r-pill); background: var(--you); color: #fff; font: 600 14px/1 var(--font); }
-  .take:active { transform: scale(.94); }
-  .rowi.mine { box-shadow: inset 0 0 0 2px var(--you); }
-  .write { display: flex; gap: var(--s2); }
-  .write input { flex: 1; min-width: 0; height: 50px; border: 0; outline: none; border-radius: var(--r-pill); padding: 0 18px; background: var(--surface); font: 500 17px/1 var(--font); -webkit-user-select: text; user-select: text; }
-  .write button { width: 96px; height: 50px; flex: none; }
-  .people { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px 12px; width: 100%; max-width: 320px; }
-  .person { display: flex; flex-direction: column; align-items: center; gap: 8px; font: 500 15px/1 var(--font); color: var(--ink-2); }
-  .person.on { color: var(--ink); font-weight: 600; }
-  .person.on .avatar { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5.5px var(--you); }
-  .people.picked .person:not(.on) { opacity: .45; }
-  .bumps { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s2); }
-  .bumps button { height: 56px; border-radius: 18px; font: 700 20px/1 var(--round); }
-  .empty { text-align: center; padding: var(--s5) 0; }
-</style>
+<link rel="stylesheet" href="/polish.css">
 </head>
-<body>
+<body class="social-club fantasy-page">
 <div class="app" id="app">
-  <header class="bar">
-    <div id="me"></div>
-    <div class="name"><b id="title"></b><span id="league"></span></div>
-    <div><span class="glass pill" id="count" hidden></span></div>
-  </header>
+  <header class="bar club-bar"><div id="me" aria-label="Your player"></div><div class="name"><b>Nickel</b><span id="league">Fantasy club</span></div><div><span class="club-badge">FANTASY</span></div></header>
   <main class="stage" id="stage"></main>
   <footer class="dock" id="dock"></footer>
 </div>
 <div class="glass toast" id="toast" role="status"></div>
 <div class="scrim" id="scrim"></div>
-<section class="glass sheet" id="sheet" aria-hidden="true"></section>
+<section class="glass sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" aria-hidden="true" inert></section>
 <script>
 let L = window.LEAGUE;
 const params = new URLSearchParams(location.search);
@@ -57,111 +25,153 @@ if (params.get("theme")) document.documentElement.dataset.theme = params.get("th
 const $ = (id) => document.getElementById(id);
 const stage = $("stage"), dock = $("dock");
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
-const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", "#5e5ce6"];
-const hue = (name) => { const i = L.members.indexOf(name); return HUES[(i < 0 ? [...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) : i) % HUES.length]; };
-const avatar = (name, cls = "") => '<span class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + esc(name[0]) + "</span>";
+const HUES = ["#007aff", "#d87525", "#269d60", "#8d5bd6", "#e34a6f", "#158ba1", "#5956c9"];
+const hue = (name) => { const i = L.members.indexOf(name); return HUES[(i < 0 ? [...name].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) : i) % HUES.length]; };
+const avatar = (name, cls = "") => '<span aria-hidden="true" class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + esc(name[0]) + "</span>";
 const meKey = "nickel.me." + (params.get("via") ?? "link");
 const me = () => (window.ME && window.ME.name) || sessionStorage.getItem(meKey);
-let view = "draft";
+let view = "draft", busy = false, sheetTrigger, connectionError = false;
 
 function toast(text) {
-  const t = $("toast");
-  t.textContent = text;
-  t.classList.add("on");
+  $("toast").textContent = text;
+  $("toast").classList.add("on");
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => t.classList.remove("on"), 1600);
+  toast.t = setTimeout(() => $("toast").classList.remove("on"), 2400);
 }
-function closeSheet() { $("sheet").classList.remove("on"); $("scrim").classList.remove("on"); }
+function closeSheet() {
+  if (busy) return;
+  $("sheet").classList.remove("on");
+  $("scrim").classList.remove("on");
+  $("sheet").setAttribute("aria-hidden", "true");
+  $("sheet").inert = true;
+  $("app").inert = false;
+  sheetTrigger?.focus();
+}
 $("scrim").onclick = closeSheet;
+$("sheet").onkeydown = (e) => {
+  if (e.key === "Escape") { e.preventDefault(); closeSheet(); }
+  if (e.key !== "Tab") return;
+  const buttons = [...$("sheet").querySelectorAll("button:not(:disabled)")];
+  if (!buttons.length) { e.preventDefault(); return; }
+  const first = buttons[0], last = buttons.at(-1);
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+};
 
 async function call(action, body) {
-  const res = await fetch("/api/fantasy/" + L.id + (action ? "/" + action : ""), body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
-  const data = await res.json();
-  if (data.league) L = data.league;
-  if (!data.ok && data.error) toast(data.error);
-  return data;
+  try {
+    const res = await fetch("/api/fantasy/" + L.id + (action ? "/" + action : ""), body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
+    const data = await res.json();
+    if (data.league) L = data.league;
+    if (!res.ok || !data.ok) throw new Error(data.error || "Could not update the league. Try again.");
+    connectionError = false;
+    return data;
+  } catch (error) {
+    connectionError = true;
+    if (action) toast(error.message || "You are offline. Try again.");
+    return { ok: false, error: error.message || "You are offline. Try again." };
+  }
 }
-
 function standings() {
   return L.members.map((m) => {
     const picks = L.pool.filter((p) => p.owner === m);
     return { m, picks, points: picks.reduce((s, p) => s + p.points, 0) };
   }).sort((a, b) => b.points - a.points);
 }
-
 function pickName() {
   stage.className = "stage center";
-  stage.innerHTML = '<p class="t-title">Who\'s drafting?</p><div class="people" id="people">' +
-    L.members.map((m) => '<button class="person" type="button" data-name="' + esc(m) + '">' + avatar(m, "lg") + esc(m) + "</button>").join("") + "</div>";
-  dock.innerHTML = '<button class="glass primary" id="confirm" type="button" disabled>Pick yourself</button>';
+  stage.innerHTML = '<div class="intro"><span class="eyebrow">A league of your own</span><h1>Good picks.<br>Better company.</h1><p>Choose your player to join the draft.</p></div><div class="people" id="people">' + L.members.map((m) => '<button class="person" type="button" aria-pressed="false" data-name="' + esc(m) + '">' + avatar(m, "lg") + '<span>' + esc(m) + '</span></button>').join("") + '</div>';
+  dock.innerHTML = '<button class="glass primary" id="confirm" type="button" disabled>Choose your player</button>';
   let picked;
   stage.querySelectorAll(".person").forEach((b) => b.onclick = () => {
     picked = b.dataset.name;
-    stage.querySelectorAll(".person").forEach((x) => x.classList.toggle("on", x === b));
-    $("people").classList.add("picked");
+    stage.querySelectorAll(".person").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-pressed", x === b); });
     $("confirm").disabled = false;
-    $("confirm").textContent = "I'm " + picked;
+    $("confirm").textContent = "Continue as " + picked;
   });
   $("confirm").onclick = () => { sessionStorage.setItem(meKey, picked); draw(); };
 }
-
-function scoreSheet(pick) {
-  $("sheet").innerHTML = '<p class="t-title">' + esc(pick.name) + '</p><p class="t-label" style="text-align:center;margin-bottom:16px">' + pick.points + " points" + (pick.owner ? " for " + esc(pick.owner) : "") +
-    '</p><div class="bumps">' + [1, 5, 10, -5].map((d) => '<button class="fill" type="button" data-d="' + d + '">' + (d > 0 ? "+" : "") + d + "</button>").join("") + "</div>";
+function scoreSheet(pick, trigger) {
+  sheetTrigger = trigger;
+  $("sheet").innerHTML = '<span class="eyebrow">Keep the score</span><h2 class="t-title" id="sheet-title">' + esc(pick.name) + '</h2><p class="sheet-summary">' + pick.points + ' points' + (pick.owner ? ' · ' + esc(pick.owner) + "’s pick" : ' · Available to draft') + '</p><div class="bumps">' + [1, 5, 10, -5].map((d) => '<button class="fill" type="button" aria-label="' + (d > 0 ? 'Add ' : 'Subtract ') + Math.abs(d) + ' points" data-d="' + d + '">' + (d > 0 ? "+" : "") + d + '</button>').join("") + '</div><p class="inline-status" id="score-status" role="status">Choose an adjustment.</p><button class="secondary fill" id="sheet-close" type="button">Cancel</button>';
+  $("sheet").inert = false;
+  $("sheet").setAttribute("aria-hidden", "false");
   $("sheet").classList.add("on");
   $("scrim").classList.add("on");
+  $("app").inert = true;
+  $("sheet-close").onclick = closeSheet;
+  $("sheet").querySelector("[data-d]").focus();
   $("sheet").querySelectorAll("[data-d]").forEach((b) => b.onclick = async () => {
-    await call("score", { pick: pick.name, delta: Number(b.dataset.d), member: me() });
-    closeSheet();
-    toast(pick.name + " " + (b.dataset.d > 0 ? "+" : "") + b.dataset.d);
-    draw();
+    if (busy) return;
+    busy = true;
+    $("sheet").querySelectorAll("button").forEach((x) => x.disabled = true);
+    $("score-status").textContent = "Updating score…";
+    const result = await call("score", { pick: pick.name, delta: Number(b.dataset.d), member: me() });
+    busy = false;
+    $("sheet").querySelectorAll("button").forEach((x) => x.disabled = false);
+    if (!result.ok) { $("score-status").textContent = result.error; b.focus(); return; }
+    const name = pick.name;
+    closeSheet(); draw();
+    stage.querySelector('[data-pick="' + CSS.escape(name) + '"]')?.focus();
+    toast("Score updated · " + name + " " + (Number(b.dataset.d) > 0 ? "+" : "") + b.dataset.d);
   });
 }
-
+async function draft(name) {
+  if (busy) return;
+  busy = true;
+  stage.setAttribute("aria-busy", "true");
+  document.querySelectorAll("[data-take], #write button").forEach((b) => b.disabled = true);
+  const status = $("draft-status");
+  if (status) status.textContent = "Drafting " + name + "…";
+  const result = await call("draft", { member: me(), pick: name });
+  busy = false;
+  stage.setAttribute("aria-busy", "false");
+  document.querySelectorAll("[data-take], #write button").forEach((b) => b.disabled = false);
+  if (!result.ok) { if (status) status.textContent = result.error; return; }
+  draw();
+  toast(name + " is on your roster.");
+  stage.querySelector('[data-pick="' + CSS.escape(name) + '"]')?.focus();
+}
 function draw() {
   if (!L) {
     stage.className = "stage center";
-    stage.innerHTML = '<p class="t-title">This league ended</p><p class="t-label">Text Nickel to start a new one</p>';
-    dock.hidden = true;
+    stage.innerHTML = '<div class="intro"><span class="eyebrow">Until next season</span><h1>This league<br>has wrapped.</h1><p>The group chat is where the next great draft starts.</p></div>';
+    dock.innerHTML = '<a class="primary" href="/l">See the leaderboard</a>';
     return;
   }
-  $("title").textContent = "Fantasy " + L.topic;
   $("league").textContent = L.league;
   if (!me()) return pickName();
   $("me").innerHTML = avatar(me());
-  const mine = L.pool.filter((p) => p.owner === me());
-  const full = mine.length >= L.rosterSize;
-  $("count").hidden = false;
-  $("count").textContent = mine.length + "/" + L.rosterSize;
+  const mine = L.pool.filter((p) => p.owner === me()), full = mine.length >= L.rosterSize;
+  const scores = standings(), rank = scores.findIndex((s) => s.m === me()) + 1;
   stage.className = "stage";
-  const seg = '<div class="seg"><button type="button" data-v="draft" class="' + (view === "draft" ? "on" : "") + '">Draft board</button><button type="button" data-v="standings" class="' + (view === "standings" ? "on" : "") + '">Standings</button></div>';
+  const hero = '<section class="fantasy-hero"><div class="hero-top"><span class="eyebrow">The group chat draft</span><span class="live-label">Live league</span></div><h1>Fantasy<br><span>' + esc(L.topic) + '</span></h1><div class="hero-people"><span class="avatar-stack">' + L.members.slice(0, 4).map((m) => avatar(m)).join("") + '</span><span>' + L.members.length + ' players. Endless opinions.</span></div><div class="hero-stats"><div><b>' + mine.length + '<small> / ' + L.rosterSize + '</small></b><span>Your picks</span></div><div><b>' + mine.reduce((n, p) => n + p.points, 0) + '</b><span>Your points</span></div><div><b>' + (rank ? '#' + rank : '—') + '</b><span>Your place</span></div></div></section>';
+  const seg = '<div class="seg" role="tablist" aria-label="League view">' + [["draft", "Draft board"], ["standings", "Standings"]].map(([v, title]) => '<button type="button" role="tab" id="tab-' + v + '" aria-selected="' + (view === v) + '" aria-controls="league-panel" tabindex="' + (view === v ? 0 : -1) + '" data-v="' + v + '" class="' + (view === v ? 'on' : '') + '">' + title + '</button>').join("") + '</div>';
+  let rows;
   if (view === "draft") {
-    const rows = [...L.pool].sort((a, b) => b.points - a.points).map((p) =>
-      '<div class="rowi' + (p.owner === me() ? " mine" : "") + '" data-pick="' + esc(p.name) + '"><b>' + esc(p.name) + '</b><span class="num">' + p.points + "</span>" +
-      (p.owner ? avatar(p.owner) : full ? "" : '<button class="take" type="button" data-take="' + esc(p.name) + '">Draft</button>') + "</div>").join("");
-    stage.innerHTML = seg + '<div class="rows">' + (rows || '<p class="t-label empty">Nothing on the board yet. Write in your first pick.</p>') + "</div>";
-    dock.innerHTML = full
-      ? '<p class="t-caption">Roster full. Score from the chat: "Nickel, ' + esc(mine[0].name) + ' +10"</p>'
-      : '<form class="write" id="write"><input id="own" placeholder="Write in a pick" maxlength="40" autocomplete="off"><button class="glass primary" type="submit">Draft</button></form>';
+    rows = [...L.pool].sort((a, b) => b.points - a.points).map((p, i) => '<div class="rowi pick-row' + (p.owner === me() ? ' mine' : '') + '"><span class="pick-index">' + String(i + 1).padStart(2, "0") + '</span><button class="pick-detail" type="button" data-pick="' + esc(p.name) + '" aria-label="Score ' + esc(p.name) + '"><b>' + esc(p.name) + '</b><span>' + (p.owner === me() ? 'Your roster' : p.owner ? esc(p.owner) + '’s pick' : 'Free agent') + '</span></button><span class="pick-points num">' + p.points + '<small>pts</small></span>' + (p.owner ? avatar(p.owner) : full ? '<span class="available-mark" aria-label="Available">—</span>' : '<button class="take" type="button" data-take="' + esc(p.name) + '" aria-label="Draft ' + esc(p.name) + '">Draft</button>') + '</div>').join("");
+    if (!rows) rows = '<div class="empty-state"><span class="empty-mark">01</span><h2>The first pick is yours.</h2><p>Write in a name below to get your league going.</p></div>';
+    dock.innerHTML = (full ? '<div class="roster-ready"><b>Your roster is locked in.</b><span>Tap any pick to keep the score moving.</span></div>' : '<form class="write" id="write"><label class="sr-only" for="own">Write in a pick</label><input id="own" placeholder="Got a sleeper pick?" maxlength="40" autocomplete="off"><button class="primary" type="submit">Draft</button></form>') + '<p class="inline-status" id="draft-status" role="status">' + (full ? mine.length + ' picks. Make them count.' : 'Pick from the board or write in your own.') + '</p>';
   } else {
-    stage.innerHTML = seg + '<div class="rows">' + standings().map((s, i) =>
-      '<div class="rowi tall' + (s.m === me() ? " me" : "") + '"><span class="rk">' + (i + 1) + "</span>" + avatar(s.m) + '<span class="who"><b>' + esc(s.m) + "</b><span>" + (s.picks.map((p) => esc(p.name)).join(", ") || "No picks yet") + '</span></span><span class="num">' + s.points + "</span></div>").join("") + "</div>";
-    dock.innerHTML = '<p class="t-caption">Tap a pick on the draft board to score it</p>';
+    rows = scores.map((s, i) => '<div class="rowi tall' + (s.m === me() ? ' me' : '') + '"><span class="rk">' + (i + 1) + '</span>' + avatar(s.m) + '<span class="who"><b>' + esc(s.m) + (s.m === me() ? '<em>You</em>' : '') + '</b><span>' + (s.picks.map((p) => esc(p.name)).join(', ') || 'The next great pick awaits') + '</span></span><span class="pick-points num">' + s.points + '<small>pts</small></span></div>').join("");
+    dock.innerHTML = '<div class="roster-ready"><b>Bragging rights, in real time.</b><span>Scores update as your group plays.</span></div>';
   }
-  dock.hidden = false;
-  stage.querySelectorAll("[data-v]").forEach((b) => b.onclick = () => { view = b.dataset.v; draw(); });
-  stage.querySelectorAll("[data-take]").forEach((b) => b.onclick = async (e) => { e.stopPropagation(); await call("draft", { member: me(), pick: b.dataset.take }); draw(); });
-  stage.querySelectorAll("[data-pick]").forEach((r) => r.onclick = () => scoreSheet(L.pool.find((p) => p.name === r.dataset.pick)));
+  stage.innerHTML = hero + seg + '<section id="league-panel" role="tabpanel" aria-labelledby="tab-' + view + '"><div class="section-label"><h2>' + (view === 'draft' ? 'The lineup' : 'The leaderboard') + '</h2><span>' + (view === 'draft' ? L.pool.length + ' picks' : L.members.length + ' players') + '</span></div><div class="rows">' + rows + '</div></section><p class="connection-status" role="status">' + (connectionError ? 'Reconnecting · showing the last saved league' : '') + '</p>';
+  stage.querySelectorAll("[data-v]").forEach((b) => {
+    b.onclick = () => { if (busy) return; view = b.dataset.v; draw(); $("tab-" + view).focus(); };
+    b.onkeydown = (e) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) { e.preventDefault(); view = e.key === "Home" ? "draft" : e.key === "End" ? "standings" : view === "draft" ? "standings" : "draft"; draw(); $("tab-" + view).focus(); } };
+  });
+  stage.querySelectorAll("[data-take]").forEach((b) => b.onclick = () => draft(b.dataset.take));
+  stage.querySelectorAll("[data-pick]").forEach((b) => b.onclick = () => { if (!busy) scoreSheet(L.pool.find((p) => p.name === b.dataset.pick), b); });
   const form = $("write");
-  if (form) form.onsubmit = async (e) => { e.preventDefault(); const v = $("own").value.trim(); if (v) { await call("draft", { member: me(), pick: v }); draw(); } };
+  if (form) form.onsubmit = (e) => { e.preventDefault(); const value = $("own").value.trim(); if (value) draft(value); else { $("draft-status").textContent = "Add a name for your pick first."; $("own").focus(); } };
 }
-
 draw();
 if (L) setInterval(async () => {
-  if ($("sheet").classList.contains("on") || document.activeElement === $("own")) return;
-  const before = JSON.stringify(L);
+  if (busy || $("sheet").classList.contains("on") || document.activeElement === $("own") || document.hidden) return;
+  const before = JSON.stringify(L), wasError = connectionError;
   await call("");
-  if (JSON.stringify(L) !== before && me()) draw();
+  if ((JSON.stringify(L) !== before || wasError !== connectionError) && me()) draw();
 }, 4000);
 </script>
 </body>

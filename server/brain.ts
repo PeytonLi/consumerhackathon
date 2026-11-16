@@ -6,6 +6,7 @@ import { hubCard, hubLine, hubTurn, notePicks, wantsHub } from "./hub.js";
 import { scoreResult, type Points, type ResultPayload } from "./points.js";
 import { attachAuth, claimPath } from "./auth.js";
 import { payBuyIn, walletCard, walletTurn } from "./wallet.js";
+import { renderChatCard, renderPersonCard } from "./card-art.js";
 
 export interface Round {
   id: string;
@@ -540,7 +541,6 @@ export function ensureArt() {
   }
 }
 
-const ordinal = (n: number) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th");
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "\u2026" : s);
 
 export function leaderboardImages(): string[] {
@@ -560,34 +560,10 @@ export function personCardSvg(index: number, as?: { token: string; role: string 
   const ai = p.role && token && existsSync(aiFile) ? "data:image/jpeg;base64," + readFileSync(aiFile).toString("base64") : "";
   const photo = token ? store.profiles[token].photo! : "";
   const src = ai || photo || (p.role ? stockArt(p.role) : "");
-  const tint = p.role === "loser" ? "#ff3b30" : p.role === "winner" ? "#ffcc00" : HUES[[...p.name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % HUES.length];
-  const h = [...p.name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0;
-  const eyes = ['<circle cx="36" cy="42" r="9" fill="#fff"/><circle cx="64" cy="40" r="13" fill="#fff"/><circle cx="38" cy="45" r="4"/><circle cx="60" cy="37" r="4"/>', '<path d="M27 44q9-11 18 0M55 44q9-11 18 0" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>', '<circle cx="36" cy="42" r="11" fill="#fff"/><circle cx="64" cy="42" r="11" fill="#fff"/><circle cx="41" cy="43" r="4"/><circle cx="59" cy="43" r="4"/>', '<rect x="20" y="34" width="60" height="15" rx="6"/>'];
-  const mouths = ['<path d="M33 62q17 18 34 0z"/><path d="M44 69q6 13 12 0z" fill="#ff6b81"/>', '<path d="M36 72q14-11 28 0" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>', '<ellipse cx="50" cy="69" rx="7" ry="9"/>', '<path d="M32 65h36" stroke="#000" stroke-width="4" stroke-linecap="round"/>'];
-  const art = src
-    ? '<image x="290" y="170" width="500" height="500" preserveAspectRatio="xMidYMid slice" clip-path="url(#a)" href="' + src + '"/>'
-    : '<rect x="290" y="170" width="500" height="500" rx="60" fill="' + tint + '"/><g transform="translate(290 170) scale(5)">' + eyes[h % 4] + mouths[(h >> 3) % 4] + "</g>";
-  const props = ai || (!photo && p.role) ? "" : p.role === "winner"
-    ? '<g transform="translate(385 40) scale(5.2) rotate(-6 30 20)"><path d="M4 36L2 10l14 12L30 2l14 20 14-12-2 26z" fill="#ffd60a" stroke="#b8860b" stroke-width="2" stroke-linejoin="round"/><circle cx="30" cy="27" r="3.5" fill="#ff375f"/></g>'
-    : p.role === "loser"
-      ? '<g transform="translate(520 -20) rotate(14 120 120) scale(4)"><path d="M30 2L52 56H8z" fill="#fff" stroke="#1c1c1e" stroke-width="2.5" stroke-linejoin="round"/><text x="30" y="46" text-anchor="middle" font-family="Inter" font-weight="600" font-size="20" fill="#ff3b30">L</text></g><path d="M430 470q-26 90 0 150q26-60 0-150zM650 470q-26 90 0 150q26-60 0-150z" fill="#40c8ff" stroke="#0a84ff" stroke-width="4"/>'
-      : "";
   const foot = p.role === "loser"
     ? board.stakes ? "Last place. Out " + board.stakes + "." : board.punishment ? "Last place " + clip(board.punishment.split(":")[0], 44) + "." : "Last place. Punishment pending."
     : clip(p.last || p.title, 52);
-  return (
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080"><defs>' +
-    '<linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + tint + '" stop-opacity="0.34"/><stop offset="1" stop-color="' + tint + '" stop-opacity="0"/></linearGradient>' +
-    '<clipPath id="a"><rect x="290" y="170" width="500" height="500" rx="60"/></clipPath><clipPath id="c"><rect x="40" y="40" width="1000" height="1000" rx="56"/></clipPath></defs>' +
-    '<rect width="1080" height="1080" fill="#f2f2f7"/><rect x="40" y="40" width="1000" height="1000" rx="56" fill="#ffffff"/><rect x="40" y="40" width="1000" height="460" fill="url(#t)" clip-path="url(#c)"/>' +
-    '<text x="96" y="124" font-family="Inter" font-weight="600" font-size="26" letter-spacing="2.5" fill="#6c6c70">' + esc(("Leaderboard \u00b7 " + board.league).toUpperCase()) + "</text>" +
-    '<text x="984" y="124" text-anchor="end" font-family="Inter" font-weight="600" font-size="30" fill="#1c1c1e">' + ordinal(p.rank) + " of " + p.n + "</text>" +
-    art + props +
-    '<text x="540" y="770" text-anchor="middle" font-family="Inter" font-weight="600" font-size="88" letter-spacing="-2.5" fill="#1c1c1e">' + esc(p.name) + "</text>" +
-    '<text x="540" y="826" text-anchor="middle" font-family="Inter" font-size="34" fill="#6c6c70">' + esc(p.title) + "</text>" +
-    '<text x="540" y="916" text-anchor="middle" font-family="Inter" font-weight="600" font-size="68" letter-spacing="-1.5" fill="#1c1c1e">' + (p.nickels > 0 ? "+" : "") + p.nickels + " Nickels</text>" +
-    '<text x="540" y="980" text-anchor="middle" font-family="Inter" font-weight="' + (p.role === "loser" ? "600" : "400") + '" font-size="30" fill="' + (p.role === "loser" ? "#ff3b30" : "#6c6c70") + '">' + esc(foot) + "</text></svg>"
-  );
+  return renderPersonCard({ ...p, league: board.league, foot, image: src });
 }
 
 export async function personCardPng(index: number, as?: { token: string; role: string }): Promise<Uint8Array | null> {
@@ -818,29 +794,9 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   return n % 2 === 0 ? { addressed: true, line, react: { emoji: "\u2753", tapback: "question" } } : { addressed: true, line };
 }
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", "#5e5ce6"];
-
 export function cardSvg(card: { kicker: string; title: string; sub: string; league: string; members: string[]; hue: string }): string {
-  const size = card.title.length > 22 ? 76 : card.title.length > 15 ? 96 : 120;
-  const faces = card.members.slice(0, 6).map((m, i) => {
-    const cx = 132 + i * 68;
-    return '<circle cx="' + cx + '" cy="470" r="30" fill="' + HUES[i % HUES.length] + '" stroke="#ffffff" stroke-width="4"/><text x="' + cx + '" y="480" text-anchor="middle" font-family="Inter" font-weight="600" font-size="26" fill="#ffffff">' + esc(m[0]) + "</text>";
-  }).join("");
-  return (
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630"><defs>' +
-    '<radialGradient id="g" cx="50%" cy="-10%" r="90%"><stop offset="0" stop-color="' + card.hue + '" stop-opacity="0.38"/><stop offset="0.7" stop-color="' + card.hue + '" stop-opacity="0"/></radialGradient>' +
-    '<linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3395ff"/><stop offset="1" stop-color="#007aff"/></linearGradient></defs>' +
-    '<rect width="1200" height="630" fill="#f2f2f7"/><rect width="1200" height="630" fill="url(#g)"/>' +
-    '<rect x="56" y="56" width="1088" height="518" rx="44" fill="#ffffff"/>' +
-    '<text x="104" y="136" font-family="Inter" font-weight="600" font-size="24" letter-spacing="2.5" fill="#6c6c70">' + esc((card.kicker + " \u00b7 " + card.league).toUpperCase()) + "</text>" +
-    '<rect x="104" y="164" width="72" height="8" rx="4" fill="' + card.hue + '"/>' +
-    '<text x="100" y="' + (220 + size * 0.86) + '" font-family="Inter" font-weight="600" font-size="' + size + '" letter-spacing="-3" fill="#1c1c1e">' + esc(card.title) + "</text>" +
-    '<text x="104" y="392" font-family="Inter" font-size="32" fill="#6c6c70">' + esc(card.sub) + "</text>" +
-    faces +
-    '<rect x="884" y="434" width="212" height="76" rx="38" fill="url(#b)"/><text x="990" y="483" text-anchor="middle" font-family="Inter" font-weight="600" font-size="30" fill="#ffffff">Open</text>' +
-    "</svg>"
-  );
+  const photos = Object.fromEntries(Object.values(store.profiles).filter((p) => p.name && p.photo).map((p) => [p.name, p.photo!]));
+  return renderChatCard(card, photos);
 }
 
 let render: ((svg: string) => Uint8Array) | null = null;
