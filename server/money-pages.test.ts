@@ -18,7 +18,7 @@ function mocked(search: string) {
   const window: { fetch: Fetch; ME?: { name: string } } = { fetch: original };
   runInNewContext(mockApi, {
     window,
-    location: new URL("http://nickel.test/w" + search),
+    location: new URL("http://nickel.test/wallet" + search),
     sessionStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) },
     Response, URL, URLSearchParams, setTimeout, structuredClone, Date: MockDate,
   });
@@ -57,7 +57,7 @@ describe("money pages", () => {
 
   it("serves the three pages from the Bun server", () => {
     const server = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
-    expect(server).toContain('if (path === "/w") return page(await Bun.file(site + "wallet.html").text());');
+    expect(server).toContain('if (path === "/wallet") return page((await Bun.file(site + "wallet.html").text()).replace("<!--WALLET-->", headTags(walletCard(), base, "")));');
     expect(server).toContain('if (path === "/chest") return page(await Bun.file(site + "chest.html").text());');
     expect(server).toContain('if (path === "/heist") return page(await Bun.file(site + "heist.html").text());');
   });
@@ -76,7 +76,7 @@ describe("money pages", () => {
     expect(w.balanceCents).toBe(w.activity.reduce((n: number, a: { amountCents: number }) => n + a.amountCents, 0));
     for (const a of w.activity) expect(Object.keys(a).sort()).toEqual(["amountCents", "at", "note", "reason"]);
     expect((await call("/api/wallet/topup", { amountCents: 50 })).status).toBe(400);
-    expect((await call("/api/wallet/topup", { amountCents: 500 })).data.checkoutUrl).toMatch(/^\/w\?.*paid=500/);
+    expect((await call("/api/wallet/topup", { amountCents: 500 })).data.checkoutUrl).toMatch(/^\/wallet\?.*paid=500/);
     expect((await call("/api/wallet/limit", { dailyLimitCents: 200 })).status).toBe(400);
     expect((await call("/api/wallet/limit", { dailyLimitCents: 200, consent: true })).data).toEqual({ ok: true });
     expect((await call("/api/wallet")).data.dailyLimitCents).toBe(200);

@@ -83,11 +83,15 @@ describe("group chat turns", () => {
     expect(made.url).toMatch(/\/p\/pot-[a-z0-9]+\?u=sritej$/);
     const id = made.card!.path.slice(3).split("?")[0];
     const joined = turn("nickel im in", "Maya");
-    expect(joined.line).toBe("Maya, your wallet is $5 short of the $5 buy-in. You have $0. Add money, then say you are in again.");
-    expect(joined.card!.path).toBe("/wallet?u=maya&add=500");
+    expect(joined.line).toBe("Maya is in. Tap the card to pay $5 from your Nickel balance. 2 in, $10 pot.");
+    expect(joined.card!.path).toBe("/p/" + id + "?u=maya");
+    expect(joined.pay).toBeUndefined();
+    expect(brain.getPot(id)!.members).toEqual({ Sritej: "in", Maya: "in" });
     expect(turn("nickel i'm in", "").line).toBe("Tell me your name first: Nickel, I'm Sritej. Then say you are in.");
     brain.joinPot(id, "Maya", "paid");
     brain.joinPot(id, "Maya", "in");
+    expect(brain.getPot(id)!.members).toEqual({ Sritej: "in", Maya: "paid" });
+    expect(turn("nickel im in", "Maya").line).toBe("Maya already paid. 2 in, $10 pot.");
     expect(brain.getPot(id)!.members).toEqual({ Sritej: "in", Maya: "paid" });
     expect(turn("nickel who paid", "Alex").line).toBe("$5 buy-in. 2 in, $5 of $10 paid. Still owed: Sritej.");
     expect(brain.potCard(brain.getPot(id)!).sub).toBe("2 in for a $10 pot. 1 paid.");
@@ -210,7 +214,7 @@ describe("group chat turns", () => {
   });
 
   it("points payment questions at the prepaid wallet", () => {
-    const line = "Buy-ins come out of your Nickel balance. Add money in your wallet through Whop: https://nickel.test/wallet.html";
+    const line = "Buy-ins come out of your Nickel balance. Add money in your wallet through Whop: https://nickel.test/wallet";
     expect(turn("nickel real payments", "Maya").line).toBe(line);
     expect(turn("nickel make payments real", "Maya").line).toBe(line);
     expect(turn("nickel fake payments for the demo", "Maya").line).toBe(line);
