@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>Nickel chest</title>
+<link rel="stylesheet" href="/nickel.css">
+<script src="/mock-api.js"></script>
+<style>
+  :root { --game: light-dark(#e0a100, #ffcc00); }
+  .pad { position: relative; width: 280px; height: 280px; display: grid; place-items: center; }
+  .pad::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--game) 60%, transparent), color-mix(in srgb, var(--game) 26%, transparent) 60%, transparent); }
+  .chest { position: relative; width: 200px; height: 170px; transition: transform 350ms var(--spring), opacity var(--t-lock) var(--ease); }
+  .chest .lid, .chest .body { position: absolute; left: 0; right: 0; }
+  .chest .lid { top: 0; height: 70px; border-radius: 46px 46px 10px 10px; transform-origin: 50% 100%; z-index: 2; }
+  .chest .body { bottom: 0; height: 96px; margin: 0 6px; border-radius: 10px 10px 28px 28px; }
+  .chest .band { position: absolute; left: 50%; width: 30px; margin-left: -15px; top: 0; bottom: 0; background: color-mix(in srgb, var(--game) 55%, transparent); }
+  .chest .lid .band { border-radius: 6px 6px 0 0; }
+  .chest .latch { position: absolute; z-index: 3; left: 50%; top: 52px; width: 36px; height: 40px; margin-left: -18px; border-radius: 11px; background: var(--game); color: #fff; display: grid; place-items: center; font-size: 18px; box-shadow: 0 4px 12px color-mix(in srgb, var(--game) 45%, transparent); }
+  .chest .beam { position: absolute; z-index: 1; left: 10px; right: 10px; top: 56px; height: 24px; border-radius: 50%; background: radial-gradient(closest-side, #fff, color-mix(in srgb, var(--game) 80%, transparent), transparent); opacity: 0; }
+  .chest:active { transform: scale(.97); }
+  .chest.idle { animation: breathe-scale 2.6s var(--ease) infinite; }
+  @keyframes breathe-scale { 0%, 100% { transform: none; } 50% { transform: translateY(-4px); } }
+  .chest.opening { pointer-events: none; animation: wobble 1200ms var(--ease) both; }
+  .chest.opening .lid { animation: lid 1200ms var(--ease) both; }
+  .chest.opening .latch { animation: latch 1200ms var(--ease) both; }
+  .chest.opening .beam { animation: beam 1200ms var(--ease) both; }
+  @keyframes wobble { 0% { transform: none; } 8% { transform: rotate(-5deg); } 18% { transform: rotate(5deg); } 28% { transform: rotate(-4deg) scale(1.02); } 38% { transform: rotate(3deg) scale(1.04); } 48%, 100% { transform: scale(1.04); } }
+  @keyframes lid { 0%, 48% { transform: none; } 72% { transform: translateY(-40px) rotate(-12deg); opacity: 1; } 100% { transform: translateY(-80px) rotate(-20deg); opacity: 0; } }
+  @keyframes latch { 0%, 45% { transform: none; } 60%, 100% { transform: translateY(16px) scale(.6); opacity: 0; } }
+  @keyframes beam { 0%, 50% { opacity: 0; transform: scale(.4); } 75% { opacity: 1; transform: scale(1.4, 2.4); } 100% { opacity: 0; transform: scale(3, 6); } }
+  .chest.shut { opacity: .45; pointer-events: none; }
+  .pad:has(.shut)::before { opacity: .3; }
+  .prize { display: flex; flex-direction: column; align-items: center; gap: var(--s2); text-align: center; }
+  .medal { width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center; font-size: 52px; color: var(--game); background: var(--surface); box-shadow: inset 0 0 0 3px var(--game); margin-bottom: var(--s3); }
+  .prize .t-display { margin-bottom: 2px; }
+  .prize .t-title { margin-bottom: 2px; }
+  .fade { animation: fadein 150ms linear both; }
+  @keyframes fadein { from { opacity: 0; } }
+  .odds { display: flex; flex-direction: column; margin-top: var(--s2); }
+  .odds .rule { justify-content: space-between; }
+  .odds .rule > span { display: flex; align-items: center; gap: var(--s4); }
+  .odds .num { font: 600 17px/1 var(--round); color: var(--ink-2); }
+  .sheet .t-caption { text-align: center; margin-top: var(--s3); }
+  .sheet .dock { margin-top: var(--s4); }
+  .halo { display: grid; place-items: center; width: 96px; height: 96px; border-radius: 50%; color: var(--ink-3); background: var(--surface); font-size: 40px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div id="me"></div>
+    <div class="name"><b>Daily chest</b><span>Nickel</span></div>
+    <div><button class="glass icon-btn" id="info" type="button" aria-label="Chest odds" hidden></button></div>
+  </header>
+  <main class="stage" id="stage"></main>
+  <footer class="dock" id="dock"></footer>
+</div>
+<div class="glass toast" id="toast" role="status"></div>
+<div class="scrim" id="scrim"></div>
+<section class="glass sheet" id="sheet" aria-hidden="true"></section>
+<script src="/nickel.js"></script>
+<script>
+const KIND = { points: "coin", perk: "gift", cash: "bank" };
+const PERK = {
+  lock: ["lock", "Skip a day, keep your nickel"],
+  double_steal: ["double", "Your next heist takes two"],
+  peek: ["eye", "See the ghost score first"],
+  shield: ["shield", "Blocks one revenge"],
+};
+let C;
+
+const chest = (cls) =>
+  '<div class="pad"><button class="chest ' + cls + '" id="chest" type="button" aria-label="Open chest">' +
+    '<span class="glass body"><span class="band"></span></span><span class="beam"></span>' +
+    '<span class="glass lid"><span class="band"></span></span><span class="latch">' + icon("lock") + "</span></button></div>";
+
+function prize(r) {
+  const perk = PERK[r.perk];
+  const big = r.kind === "points" ? '<p class="t-display">+' + (r.points ?? 0) + "</p>" : r.kind === "cash" ? '<p class="t-display">+' + cash(r.amountCents ?? 0) + "</p>" : '<p class="t-title">' + esc(r.label) + "</p>";
+  const line = r.kind === "points" ? "Nickels" : r.kind === "cash" ? "Cash bonus from Nickel" : perk ? perk[1] : "Perk";
+  return '<div class="prize"><span class="medal">' + icon(perk ? perk[0] : KIND[r.kind] ?? "gift") + "</span>" + big + '<p class="t-label">' + line + "</p></div>";
+}
+
+const done = () => (parent !== window ? parent.postMessage({ type: "nickel:done" }, "*") : location.assign("/h"));
+const doneButton = '<button class="glass primary" id="done" type="button">Done</button>';
+
+async function load() {
+  try { C = await api("/api/chest"); } catch { return nowhere("No chest right now", "Text Nickel for today's game"); }
+  $("info").hidden = false;
+  $("info").innerHTML = icon("info");
+  $("info").onclick = odds;
+  if (C.opened) return opened(C.opened);
+  if (!C.available) return gone();
+  closed();
+}
+
+function closed() {
+  show(chest("idle") + '<p class="t-label">Tap to open</p>', '<button class="secondary" id="skip" type="button">Skip</button>');
+  $("chest").onclick = open;
+  $("skip").onclick = async () => {
+    haptic();
+    $("skip").disabled = true;
+    try { await api("/api/chest/skip", {}); gone(); } catch (err) { toast(err.message); $("skip").disabled = false; }
+  };
+}
+
+async function open() {
+  const el = $("chest");
+  el.classList.remove("idle");
+  $("skip").disabled = true;
+  haptic();
+  const result = api("/api/chest/open", {});
+  const wait = reduced() ? 150 : 1200;
+  if (!reduced()) {
+    el.classList.add("opening");
+    [240, 480, 720].forEach((t) => setTimeout(() => haptic(), t));
+  }
+  const [r] = await Promise.allSettled([result, new Promise((ok) => setTimeout(ok, wait))]);
+  if (r.status === "rejected") { toast(r.reason.message); return load(); }
+  haptic(2);
+  show('<div class="' + (reduced() ? "fade" : "pop") + '">' + prize(r.value.result) + "</div>", doneButton);
+  $("done").onclick = done;
+}
+
+function opened(r) {
+  show('<span class="tag">' + icon("check") + "Opened today</span>" + prize(r) + '<p class="t-caption">Next chest tomorrow</p>', doneButton);
+  $("done").onclick = done;
+}
+
+function gone() {
+  show(chest("shut") + '<span class="tag">' + icon("clock") + "Back tomorrow</span>", doneButton);
+  $("done").onclick = done;
+}
+
+function odds() {
+  haptic();
+  openSheet(
+    '<p class="t-title">What\'s inside</p><div class="odds">' +
+      C.odds.map((o) => '<div class="rule"><span><span class="ico">' + icon(KIND[o.kind] ?? "gift") + '</span><span class="t-head">' + esc(o.label) + '</span></span><span class="num">' + o.pct + "%</span></div>").join("") +
+    '</div><p class="t-caption">Free once a day. Cash comes from Nickel, never your money.</p>' +
+    '<div class="dock"><button class="primary" type="button" data-close>Got it</button></div>'
+  );
+}
+
+setMe();
+load();
+</script>
+</body>
+</html>
