@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as economy from "../economy.js";
+import type * as economySchema from "../economySchema.js";
 import type * as http from "../http.js";
 import type * as league from "../league.js";
 import type * as lib_rewardMode from "../lib/rewardMode.js";
@@ -28,6 +30,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  economy: typeof economy;
+  economySchema: typeof economySchema;
   http: typeof http;
   league: typeof league;
   "lib/rewardMode": typeof lib_rewardMode;

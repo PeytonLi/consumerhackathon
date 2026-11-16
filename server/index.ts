@@ -1,5 +1,6 @@
-import { researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
+import { researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick, internals } from "./brain.js";
 import { hub, hubCard } from "./hub.js";
+import { economyRoute } from "./economy.js";
 import { authGate, claimStatus, turnTrusted } from "./auth.js";
 import { assistTurn, gradeKrillion, gradedResult, naceStats, punishmentAllowed } from "./nace.js";
 import { walletRoute } from "./money.js";
@@ -52,6 +53,9 @@ Bun.serve({
     if (request.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type" } });
     const wallet = await walletRoute(request, session, base);
     if (wallet) return wallet;
+
+    const economy = await economyRoute(request, session ? internals.store.profiles[session.token]?.phone : null);
+    if (economy) return economy;
 
     if (path === "/api/turn" && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as { text?: string; sender?: string; senderPhone?: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string };
