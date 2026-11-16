@@ -179,13 +179,14 @@
   .chips button { flex: none; height: 30px; padding: 0 12px; border-radius: 15px; border: 0.5px solid var(--line); font-size: 13px; color: #0a84ff; white-space: nowrap; background: transparent; }
   .og .bot span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
+<link rel="stylesheet" href="/polish.css">
 </head>
-<body>
+<body class="social-club messages-page">
 <section class="view" id="inbox">
   <div class="inbox-head">
-    <div class="edit"><span>Edit</span><span>✎</span></div>
+    <div class="edit"><span>All conversations</span><span>Nickel preview</span></div>
     <h1>Messages</h1>
-    <div class="search">⌕ Search</div>
+    <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search" aria-label="Search conversations"></label>
   </div>
   <div class="chats">
     <button class="chat" data-open="group" type="button">
@@ -198,11 +199,12 @@
       <span class="av n">N</span>
       <span class="body"><span class="l1"><b>Nickel</b><span>12:41 PM</span></span><p>Dev challenged you to Rock Paper Scissors. Best of 3, 5 Nickels.</p></span>
     </button>
-    <button class="chat" type="button">
+    <button class="chat" id="mom-chat" type="button">
       <span class="dot read"></span>
       <span class="av mom">M</span>
       <span class="body"><span class="l1"><b>Mom</b><span>Yesterday</span></span><p>call me when you're free</p></span>
     </button>
+    <p class="connection-note" id="search-empty" hidden>No conversations found. Try a different name.</p>
     <p class="note">Nickel preview · Messages is simulated here. Games and cards are the real web pages Keiki would open.</p>
   </div>
 </section>
@@ -222,14 +224,8 @@
     <div class="row" style="margin-top:3px">
       <div class="face n">N</div>
       <button class="link" data-round="wordle-212" data-via="link" type="button">
-        <div class="og">
-          <div class="k">NICKEL · CUPERTINO DAY ONES</div>
-          <div><h3>Wordle Blitz #212</h3><div class="tiles"><i class="o"></i><i></i><i class="b"></i><i></i><i class="o"></i></div></div>
-          <div class="bot">
-            <span class="rings"><b style="background:#ff8a3d">M</b><b style="background:#34c759">S</b><b style="background:#0a84ff">A</b><b class="off">D</b><b class="off" id="ring-me">P</b></span>
-            <span id="og-count">3 of 5 played · closes 9 PM</span>
-          </div>
-        </div>
+        <img class="og-image" id="seed-card" src="/og/r/wordle-212.png" alt="Wordle Blitz #212, the live Nickel game card" width="1200" height="630">
+        <div class="og-fallback"><b>Wordle Blitz #212</b><span>Preview unavailable. Tap to open the game.</span></div>
         <div class="meta"><b>Wordle Blitz #212 · Cupertino Day Ones</b><span>nickel.app</span></div>
         <span class="tb" id="tb-drop" hidden>‼️</span>
       </button>
@@ -241,7 +237,8 @@
     <div id="group-after"></div>
   </div>
   <div class="chips" id="chips"><button type="button">Nickel, challenge Maya</button><button type="button">Nickel, start a fantasy league for AI models</button><button type="button">Nickel, $5 buy-in</button><button type="button">Nickel, I'm in</button><button type="button">Nickel, play krillion</button><button type="button">Nickel, play reaction</button><button type="button">Nickel, play free throw</button><button type="button">Nickel, play memory</button><button type="button">Nickel, play math</button><button type="button">Nickel, play higher or lower</button><button type="button">Nickel, leaderboard</button><button type="button">Nickel, punishment</button><button type="button">Nickel, that was rigged</button></div>
-  <form class="composer" id="send-group"><div class="plus">+</div><input class="field" id="field-group" placeholder="iMessage" autocomplete="off" enterkeyhint="send"><button class="send" type="submit" aria-label="Send">&uarr;</button></form>
+  <p class="connection-note" id="send-status" role="status" hidden></p>
+  <form class="composer" id="send-group"><div class="plus" aria-hidden="true">+</div><input class="field" id="field-group" placeholder="iMessage" aria-label="Message to Cupertino Day Ones" autocomplete="off" enterkeyhint="send"><button class="send" type="submit" aria-label="Send">&uarr;</button></form>
 </section>
 
 <section class="view off" id="dm">
@@ -288,22 +285,33 @@
 </section>
 
 <div class="sheet-dim" id="dim"></div>
-<section class="sheet" id="sheet" aria-hidden="true">
+<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Nickel game in Keiki Vault" aria-hidden="true" inert>
   <div class="sheet-top"><span class="app"><i></i>Keiki Vault</span><button class="x" id="sheet-x" type="button" aria-label="Close">✕</button></div>
   <iframe id="sheet-frame" title="Nickel game"></iframe>
 </section>
 
-<section class="safari" id="safari" aria-hidden="true">
+<section class="safari" id="safari" role="dialog" aria-modal="true" aria-label="Nickel game" aria-hidden="true" inert>
   <div class="crumb"><button id="crumb" type="button">◀ Messages</button></div>
   <iframe id="safari-frame" title="Nickel game"></iframe>
 </section>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status"></div>
 
 <script>
 const views = { inbox: document.getElementById("inbox"), group: document.getElementById("group"), dm: document.getElementById("dm") };
+const theme = new URLSearchParams(location.search).get("theme");
+if (theme) document.documentElement.dataset.theme = theme;
 let current = "inbox";
 let groupResult = false;
+let modalTrigger, closeTimer, sendPending = false;
+views.group.inert = views.dm.inert = true;
+document.getElementById("search").oninput = (e) => {
+  const query = e.target.value.trim().toLowerCase();
+  const chats = [...document.querySelectorAll(".chat")];
+  chats.forEach((chat) => chat.hidden = !chat.textContent.toLowerCase().includes(query));
+  document.getElementById("search-empty").hidden = chats.some((chat) => !chat.hidden);
+};
+document.getElementById("mom-chat").onclick = () => toast("This preview has Nickel and Cupertino Day Ones. Mom’s chat is private.");
 
 function go(name) {
   if (name === current) return;
@@ -318,6 +326,9 @@ function go(name) {
     requestAnimationFrame(() => t.scrollTop = t.scrollHeight);
   }
   current = name;
+  Object.entries(views).forEach(([key, view]) => { view.inert = key !== name; view.setAttribute("aria-hidden", key !== name); });
+  if (name === "inbox") views.inbox.querySelector(".chat:not([hidden])")?.focus();
+  else views[name].querySelector("[data-back]").focus();
 }
 document.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => go(b.dataset.open));
 document.querySelectorAll("[data-back]").forEach((b) => b.onclick = () => go("inbox"));
@@ -328,19 +339,43 @@ function openRound(round, via) {
     document.getElementById("sheet-frame").src = src;
     document.getElementById("sheet").classList.add("on");
     document.getElementById("dim").classList.add("on");
+    activateModal("sheet", "sheet-x");
     return;
   }
   document.getElementById("safari-frame").src = src;
   document.getElementById("safari").classList.add("on");
+  activateModal("safari", "crumb");
   document.querySelector('meta[name="theme-color"]').content = "#f2f2f7";
 }
 function closeAll() {
   document.getElementById("sheet").classList.remove("on");
   document.getElementById("dim").classList.remove("on");
   document.getElementById("safari").classList.remove("on");
-  document.querySelector('meta[name="theme-color"]').content = "#ffffff";
-  setTimeout(() => { document.getElementById("sheet-frame").src = "about:blank"; document.getElementById("safari-frame").src = "about:blank"; }, 450);
+  ["sheet", "safari"].forEach((id) => { document.getElementById(id).inert = true; document.getElementById(id).setAttribute("aria-hidden", "true"); });
+  views[current].inert = false;
+  modalTrigger?.focus();
+  document.querySelector('meta[name="theme-color"]').content = getComputedStyle(document.body).getPropertyValue("--bg").trim();
+  closeTimer = setTimeout(() => { document.getElementById("sheet-frame").src = "about:blank"; document.getElementById("safari-frame").src = "about:blank"; }, 240);
 }
+function activateModal(id, closeId) {
+  clearTimeout(closeTimer);
+  modalTrigger = document.activeElement;
+  views[current].inert = true;
+  const modal = document.getElementById(id);
+  modal.inert = false;
+  modal.setAttribute("aria-hidden", "false");
+  document.getElementById(closeId).focus();
+}
+document.addEventListener("keydown", (e) => {
+  const modal = document.querySelector(".sheet.on, .safari.on");
+  if (!modal) return;
+  if (e.key === "Escape") { e.preventDefault(); closeAll(); }
+  if (e.key === "Tab") {
+    const first = modal.querySelector("button"), last = modal.querySelector("iframe");
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
 document.querySelectorAll("[data-round]").forEach((b) => b.onclick = () => openRound(b.dataset.round, b.dataset.via));
 document.getElementById("sheet-x").onclick = closeAll;
 document.getElementById("dim").onclick = closeAll;
@@ -362,13 +397,12 @@ function nickelSays(container, html, time) {
 }
 
 window.addEventListener("message", (e) => {
+  if (e.origin !== location.origin || ![document.getElementById("sheet-frame").contentWindow, document.getElementById("safari-frame").contentWindow].includes(e.source)) return;
   if (e.data?.type !== "nickel:done") return;
   const d = e.data.line;
   if (e.data.round === "wordle-212" && d && !groupResult) {
     groupResult = true;
-    document.getElementById("ring-me").classList.remove("off");
-    document.getElementById("ring-me").style.background = "#ff2d55";
-    document.getElementById("og-count").textContent = "4 of 5 played · closes 9 PM";
+    document.getElementById("seed-card").src = "/og/r/wordle-212.png?v=" + Date.now();
     document.getElementById("tb-drop").hidden = false;
     nickelSays(document.getElementById("group-after"),
       "Maya 3/6 · " + d.name + " " + d.tries + " · Sritej 4/6 · Alex 5/6<br>Dev didn't play. Group streak: 13 days.",
@@ -390,23 +424,48 @@ window.addEventListener("message", (e) => {
 
 const opponents = { "rps-dev": "Dev" };
 const escText = (v) => String(v).replace(/[&<>"]/g, (c) => "&#" + c.charCodeAt(0) + ";");
+function imageFallback(img) {
+  img.onerror = () => { img.hidden = true; };
+  if (img.complete && !img.naturalWidth) img.hidden = true;
+}
+document.querySelectorAll(".og-image").forEach(imageFallback);
+document.querySelectorAll(".vault[data-round]").forEach((card) => {
+  const title = card.querySelector(".cap b").textContent;
+  const img = document.createElement("img");
+  img.className = "og-image";
+  img.alt = title + ", Nickel game card";
+  img.src = "/og/r/" + card.dataset.round + ".png";
+  const fallback = document.createElement("div");
+  fallback.className = "og-fallback";
+  fallback.innerHTML = '<b>' + escText(title) + '</b><span>Preview unavailable. Tap to open.</span>';
+  card.querySelector(".art").replaceWith(img, fallback);
+  imageFallback(img);
+});
 function openUrl(path) {
   document.getElementById("safari-frame").src = path + (path.includes("?") ? "&" : "?") + "via=link";
   document.getElementById("safari").classList.add("on");
+  activateModal("safari", "crumb");
   document.querySelector('meta[name="theme-color"]').content = "#f2f2f7";
 }
 function scrollGroup() { const t = document.getElementById("thread-group"); t.scrollTop = t.scrollHeight; }
 async function sendGroup(text) {
+  if (sendPending) return;
+  sendPending = true;
+  document.querySelectorAll("#send-group button, #chips button").forEach((b) => b.disabled = true);
+  const status = document.getElementById("send-status");
+  status.hidden = false;
+  status.textContent = "Sending to Nickel…";
   const after = document.getElementById("group-after");
   document.querySelectorAll("#thread-group .delivered").forEach((el) => el.remove());
   after.insertAdjacentHTML("beforeend", '<div class="row me"><div class="bubble">' + escText(text) + '</div></div><div class="delivered" style="text-align:right">Delivered</div>');
   const mine = [...after.querySelectorAll(".row.me .bubble")].pop();
   scrollGroup();
-  let reply;
   try {
-    reply = await (await fetch("/api/turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, sender: window.ME?.name ?? "" }) })).json();
-  } catch { return toast("Nickel is offline."); }
-  if (!reply.addressed) { if (reply.error) toast(reply.error); return; }
+    const response = await fetch("/api/turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, sender: window.ME?.name ?? "" }) });
+    const reply = await response.json();
+    if (!response.ok || reply.ok === false) throw new Error(reply.error || "Nickel couldn’t receive that. Try again.");
+    status.hidden = true;
+  if (!reply.addressed) return;
   await new Promise((r) => setTimeout(r, 700));
   if (reply.react) {
     mine.insertAdjacentHTML("beforeend", '<span class="react">' + reply.react.emoji + "</span>");
@@ -429,18 +488,33 @@ async function sendGroup(text) {
     const row = document.createElement("div");
     row.className = "row";
     row.style.marginTop = "3px";
-    row.innerHTML = '<div class="face n">N</div><button class="link" type="button"><div class="og"><div class="k">' + escText(reply.card.kicker) + '</div><div><h3>' + escText(reply.card.title) + '</h3></div><div class="bot"><span>' + escText(reply.card.sub) + '</span></div></div><div class="meta"><b>' + escText(reply.card.title) + ' · Cupertino Day Ones</b><span>' + location.host + '</span></div></button>';
+    const cardPath = new URL(reply.card.path, location.origin).pathname;
+    const imagePath = cardPath === "/w" ? "/og/l.png" : "/og" + cardPath + ".png";
+    row.innerHTML = '<div class="face n">N</div><button class="link" type="button"><img class="og-image" src="' + escText(imagePath) + '" alt="' + escText(reply.card.title) + ', Nickel card" width="1200" height="630"><div class="og-fallback"><b>' + escText(reply.card.title) + '</b><span>Preview unavailable. Tap to open.</span></div><div class="meta"><b>' + escText(reply.card.title) + ' · Cupertino Day Ones</b><span>' + location.host + '</span></div></button>';
+    imageFallback(row.querySelector("img"));
     row.querySelector("button").onclick = () => openUrl(reply.card.path);
     after.append(row);
   }
   document.getElementById("prev-group").textContent = "Nickel: " + reply.line;
   scrollGroup();
+  } catch (error) {
+    status.hidden = false;
+    status.textContent = "Couldn’t connect. Your message is ready to retry.";
+    const field = document.getElementById("field-group");
+    if (!field.value) field.value = text;
+    const delivery = after.querySelector(".delivered:last-of-type");
+    if (delivery) delivery.textContent = "Not delivered";
+    toast(error instanceof TypeError ? "Nickel is offline. Try again." : error.message);
+  } finally {
+    sendPending = false;
+    document.querySelectorAll("#send-group button, #chips button").forEach((b) => b.disabled = false);
+  }
 }
 document.getElementById("send-group").onsubmit = (e) => {
   e.preventDefault();
   const field = document.getElementById("field-group");
   const text = field.value.trim();
-  if (!text) return;
+  if (!text || sendPending) return;
   field.value = "";
   sendGroup(text);
 };
