@@ -9,7 +9,7 @@ export const ARCADE = {
 } as const;
 
 export type ArcadeGame = keyof typeof ARCADE;
-export interface ArcadeEvent { at: number; value: number }
+export interface ArcadeEvent { at: number; value: number; cueAt?: number }
 export interface ArcadePayload { action: "status" | "start" | "finish"; events?: ArcadeEvent[]; abandoned?: boolean }
 export interface ArcadeOutcome { score: number; label: string; won: boolean }
 export interface ArcadeChallenge {
@@ -18,6 +18,7 @@ export interface ArcadeChallenge {
   questions: { text: string; choices: number[]; answer: number }[];
   deck: number[];
   speeds: number[];
+  qualityVersion?: number;
 }
 interface Attempt { startedAt: number; deadline: number }
 interface ArcadeRound { id: string; game: string; arcade?: unknown; arcadeAttempts?: unknown }
@@ -49,14 +50,21 @@ export function createArcade(game: ArcadeGame) {
   const questions = Array.from({ length: 20 }, (_, i) => {
     const a = 2 + int(i < 8 ? 15 : 25), b = 2 + int(12), multiply = i % 3 === 2;
     const answer = multiply ? a * b : a + b;
-    const choices = [answer, answer + 1 + int(5), answer - 1 - int(5)];
-    const shift = int(3);
-    return { text: a + (multiply ? " × " : " + ") + b, answer, choices: [...choices.slice(shift), ...choices.slice(0, shift)] };
+    const choices = [answer];
+    while (choices.length < 3) {
+      const choice = answer + int(11) - 5;
+      if (choice >= 0 && !choices.includes(choice)) choices.push(choice);
+    }
+    for (let j = choices.length - 1; j > 0; j--) {
+      const k = int(j + 1);
+      [choices[j], choices[k]] = [choices[k], choices[j]];
+    }
+    return { text: a + (multiply ? " × " : " + ") + b, answer, choices };
   });
   const deck = [2 + int(12)];
   for (let i = 0; i < 20; i++) {
-    let next = 2 + int(12);
-    if (next === deck[i]) next = next === 13 ? 2 : next + 1;
+    let next = 2 + int(11);
+    if (next >= deck[i]) next++;
     deck.push(next);
   }
   const arcade: ArcadeChallenge = {
@@ -64,7 +72,8 @@ export function createArcade(game: ArcadeGame) {
     sequence: Array.from({ length: 20 }, () => int(4)),
     questions,
     deck,
-    speeds: Array.from({ length: 5 }, (_, i) => 2.1 + i * 0.35),
+    speeds: Array.from({ length: 5 }, (_, i) => 1.3 + i * 0.15),
+    qualityVersion: 1,
   };
   return { title: ARCADE[game].title, seconds: ARCADE[game].seconds, arcade };
 }
@@ -90,9 +99,11 @@ export function validateArcade(game: ArcadeGame, challenge: ArcadeChallenge, eve
     if (input.length > 3) return "Reaction has three trials.";
     let start = 0;
     for (let i = 0; i < input.length; i++) {
-      const e = input[i], signal = start + challenge.reactionWaits[i];
+      const e = input[i], scheduled = start + challenge.reactionWaits[i];
+      const signal = e.cueAt ?? scheduled;
+      if (e.cueAt !== undefined && (!Number.isInteger(signal) || signal < scheduled || signal > e.at)) return "That signal timing is not possible.";
       if (e.value === 0) {
-        if (e.at >= signal) return "A false start must be before the signal.";
+        if (e.at >= scheduled) return "A false start must be before the signal.";
       } else {
         if (e.value < 120 || e.value > limit || Math.abs(e.at - signal - e.value) > 100) return "That reaction time is outside human limits.";
         score += Math.max(0, 1000 - e.value);
@@ -105,7 +116,8 @@ export function validateArcade(game: ArcadeGame, challenge: ArcadeChallenge, eve
     let start = 0;
     for (let i = 0; i < input.length; i++) {
       const e = input[i];
-      const expected = Math.round((Math.sin((e.at - start) / 1000 * challenge.speeds[i]) + 1) * 500);
+      const phase = (e.at - start) / 1000 * challenge.speeds[i];
+      const expected = Math.round((challenge.qualityVersion ? 1 - Math.cos(phase / 2) : Math.sin(phase) + 1) * 500);
       if (e.value < 0 || e.value > 1000 || e.at - start < 100 || Math.abs(e.value - expected) > 45) return "That shot does not match the moving bar.";
       score += Math.max(0, 100 - Math.round(Math.abs(e.value - 500) / 5));
       start = e.at + 500;
