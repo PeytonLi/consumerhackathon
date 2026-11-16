@@ -1,5 +1,6 @@
 import { payMode, startCheckout, confirmCheckout, researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
 import { hub } from "./hub.js";
+import { assistTurn, gradeKrillion, gradedResult, naceStats, punishmentAllowed } from "./nace.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -59,9 +60,9 @@ Bun.serve({
       let text = String(body.text ?? "");
       if (/punish/i.test(text) && /research|look.?up|\bfind\b|search|google|internet|online|ideas?\b|suggest|come up|what do (people|leagues)/i.test(text)) {
         const found = await researchPunishment(text);
-        if (found) text = "nickel punishment is " + found;
+        if (found && (await punishmentAllowed(found))) text = "nickel punishment is " + found;
       }
-      const turn = handleTurn({ hasPhoto, text, sender: body.sender, senderPhone: body.senderPhone, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined });
+      const turn = await assistTurn((text) => handleTurn({ hasPhoto, text, sender: body.sender, senderPhone: body.senderPhone, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined }), text, body.sender);
       if (turn.art) await Promise.race([generateArt(turn.art.token, turn.art.role), new Promise((r) => setTimeout(r, 40000))]);
       if (turn.addressed && turn.line && Number(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false })) >= 18) {
         const due = dueNudges();
@@ -71,7 +72,16 @@ Bun.serve({
     }
 
     const resultApi = path.match(/^\/api\/rounds\/([a-z0-9-]+)\/result$/);
-    if (resultApi && request.method === "POST") return json(recordResult(resultApi[1], (await request.json().catch(() => ({}))) as Parameters<typeof recordResult>[1]));
+    if (resultApi && request.method === "POST") return json(recordResult(resultApi[1], await gradedResult(getRound(resultApi[1]), (await request.json().catch(() => ({}))) as Parameters<typeof recordResult>[1])));
+
+    const gradeApi = path.match(/^\/api\/rounds\/([a-z0-9-]+)\/grade$/);
+    if (gradeApi && request.method === "POST") {
+      const found = getRound(gradeApi[1]);
+      const body = (await request.json().catch(() => ({}))) as { answer?: unknown };
+      if (!found || found.game !== "krillion") return json({ ok: false }, 404);
+      return json({ ok: true, grade: await gradeKrillion(String(found.prompt ?? ""), String(body.answer ?? "")) });
+    }
+    if (path === "/api/nace") return json(naceStats());
 
     const fantasyApi = path.match(/^\/api\/fantasy\/([a-z0-9-]+)(?:\/(draft|score))?$/);
     if (fantasyApi) {
