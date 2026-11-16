@@ -20,6 +20,7 @@
   .rowi .avatar { width: 30px; height: 30px; font-size: 13px; }
   .state { font: 600 13px/1 var(--font); color: var(--ink-3); }
   .state.paid { color: var(--game); }
+  .dock .t-caption a { color: var(--game); }
   .people { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px 12px; width: 100%; max-width: 320px; }
   .person { display: flex; flex-direction: column; align-items: center; gap: 8px; font: 500 15px/1 var(--font); color: var(--ink-2); }
   .person.on { color: var(--ink); font-weight: 600; }
@@ -104,7 +105,7 @@ function draw() {
     dock.innerHTML = '<button class="glass primary" id="agree" type="button">Agree to ' + money(P.amountCents) + '</button><p class="t-caption">Nothing is charged until you pay</p>';
     $("agree").onclick = async () => { await call({ member: me(), action: "agree" }); draw(); };
   } else {
-    const topUp = (short) => { dock.innerHTML = '<a class="glass primary" id="add" href="/wallet?u=' + encodeURIComponent(me().toLowerCase()) + "&add=" + short + "&back=" + encodeURIComponent(location.pathname) + '" style="text-decoration:none">Add money to your wallet</a><p class="t-caption">Your wallet is ' + money(short) + " short of the " + money(P.amountCents) + " buy-in</p>"; };
+    const topUp = (short) => { dock.innerHTML = '<a class="glass primary" id="add" href="/wallet?add=' + short + "&back=" + encodeURIComponent(location.pathname) + '" style="text-decoration:none">Add money to your wallet</a><p class="t-caption">Your wallet is ' + money(short) + " short of the " + money(P.amountCents) + " buy-in</p>"; };
     dock.innerHTML = '<button class="glass primary" id="pay" type="button">Pay ' + money(P.amountCents) + ' from wallet</button><p class="t-caption" id="bal">Comes out of your Nickel wallet</p>';
     $("pay").onclick = async () => {
       $("pay").disabled = true;
@@ -113,10 +114,10 @@ function draw() {
       if (out.ok) toast("Paid");
       draw();
     };
-    fetch("/api/wallet?u=" + encodeURIComponent(me())).then((r) => r.json()).then((w) => {
-      if (!$("pay") || !w.wallet || !w.wallet.name) return;
-      if (w.wallet.balanceCents < P.amountCents) topUp(P.amountCents - w.wallet.balanceCents);
-      else $("bal").textContent = "Wallet balance " + money(w.wallet.balanceCents);
+    fetch("/api/wallet").then((r) => (r.ok ? r.json() : null)).then((w) => {
+      if (!$("pay") || typeof w?.balanceCents !== "number") return;
+      if (w.balanceCents < P.amountCents) topUp(P.amountCents - w.balanceCents);
+      else $("bal").textContent = "Wallet balance " + money(w.balanceCents);
     }).catch(() => {});
   }
 }

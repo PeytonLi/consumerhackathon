@@ -1,5 +1,7 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server.js";
+import { internal } from "./_generated/api.js";
+import { verifyWhopWebhook } from "./lib/whopApi.js";
 import {
   buildVaultFaceIdApprovalCard,
   buildVaultPresentationCard,
@@ -80,6 +82,23 @@ http.route({
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
+  }),
+});
+
+http.route({
+  path: "/whop/webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.text();
+    if (!(await verifyWhopWebhook(body, request.headers, process.env.WHOP_WEBHOOK_SECRET))) return new Response("Invalid signature", { status: 401 });
+    let eventId = request.headers.get("webhook-id") ?? "";
+    try {
+      eventId = String((JSON.parse(body) as { id?: unknown }).id ?? eventId);
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
+    const out = await ctx.runMutation(internal.payments.handleWhopEvent, { eventId, payload: body });
+    return Response.json(out);
   }),
 });
 

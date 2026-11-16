@@ -194,6 +194,26 @@ describe("abuse limits", () => {
     expect(status).toBe(429);
   });
 
+  it("guards wallet, chest and heist writes with the same-site check, size cap and rate limit", async () => {
+    const paths = ["/api/wallet", "/api/wallet/topup", "/api/wallet/cashout", "/api/chest/open", "/api/chest/skip", "/api/heist/abc_12-X/start", "/api/heist/abc_12-X/attempt", "/api/heist/abc_12-X/peek"];
+    for (const path of paths) {
+      const cross = (await post(path, { ms: 5000 }, "", { origin: "https://evil.test" })) as Response;
+      expect([path, cross.status]).toEqual([path, 403]);
+      expect([path, ((await post(path, { pad: "x".repeat(2001) })) as Response).status]).toEqual([path, 413]);
+      const ok = await post(path, { ms: 5000 }, "", { origin: "https://nickel.test" });
+      expect(ok).not.toBeInstanceOf(Response);
+      expect(await (ok as { request: Request }).request.json()).toEqual({ ms: 5000 });
+    }
+    expect(await post("/api/walletx", { a: 1 }, "", { origin: "https://evil.test" })).not.toBeInstanceOf(Response);
+    let status = 0;
+    for (let i = 0; i < 121; i++) {
+      const out = await auth.authGate(new Request(base + "/api/heist/abc/start", { method: "POST", headers: { host: "nickel.test" }, body: "{}" }), "198.51.100.150");
+      status = out instanceof Response ? out.status : 200;
+      if (i === 119) expect(status).toBe(200);
+    }
+    expect(status).toBe(429);
+  });
+
   it("limits claim attempts per IP", async () => {
     let status = 0;
     for (let i = 0; i < 11; i++) status = ((await auth.authGate(new Request(base + "/api/claim", { method: "POST", headers: { host: "nickel.test" }, body: JSON.stringify({ token: "me-nope", code: "0".repeat(48) }) }), "198.51.100.99")) as Response).status;

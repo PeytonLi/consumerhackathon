@@ -7,7 +7,7 @@ import { scoreResult, type Points, type ResultPayload } from "./points.js";
 import { customScore, customTurn, leagueIsClosed, punishmentPool, type PreparedTurn } from "./custom.js";
 import { ALL_PUNISHMENTS } from "./punishments.js";
 import { attachAuth, claimPath, nameClaimed, type AuthStore } from "./auth.js";
-import { ledgerOf, payBuyIn, walletCard, walletTurn } from "./wallet.js";
+import { renameWallet, walletTurn } from "./wallet.js";
 import { demoMode, roster, rosterNames } from "./roster.js";
 import { ARCADE, arcadeGame, arcadeSubmission, arcadeView, createArcade, isArcadeGame, type ArcadeGame, type ArcadeReply } from "./arcade.js";
 import { renderChatCard, renderPersonCard } from "./card-art.js";
@@ -44,6 +44,7 @@ export interface TurnReply {
   line?: string;
   url?: string;
   card?: { kicker: string; title: string; sub: string; path: string };
+  presentation?: { type: "app"; id: string; url: string; caption: string; subcaption: string };
 }
 
 const LEAGUE_NAME = "Cupertino Day Ones";
@@ -61,7 +62,7 @@ const POOLS: [RegExp, string[]][] = [
 const dataDir = process.env.NICKEL_DATA_DIR ?? new URL("../.data/", import.meta.url).pathname;
 const dataFile = dataDir + "/store.json";
 const seedRounds = JSON.parse(readFileSync(new URL("../apps/preview/rounds.json", import.meta.url), "utf8")) as Record<string, Omit<Round, "id">>;
-const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number; loser?: string; roasted?: boolean }[]; quips: number; payMode?: "demo" | "stripe"; art: Record<string, number>; nudged: Record<string, string>; profiles: Record<string, Profile>; pots: Record<string, Pot>; latestPot: string | null; stats: Record<string, { played: number; wins: number; losses: number }>; punishment: string | null } = existsSync(dataFile)
+const store: { rounds: Record<string, Round>; fantasy: Record<string, FantasyLeague>; latestFantasy: string | null; names: Record<string, string>; nickels: Record<string, number>; results: { roundId: string; name: string; line: string; at: number; loser?: string; roasted?: boolean }[]; quips: number; art: Record<string, number>; nudged: Record<string, string>; profiles: Record<string, Profile>; pots: Record<string, Pot>; latestPot: string | null; stats: Record<string, { played: number; wins: number; losses: number }>; punishment: string | null } = existsSync(dataFile)
   ? JSON.parse(readFileSync(dataFile, "utf8"))
   : { rounds: {}, fantasy: {}, latestFantasy: null, names: {}, nickels: {}, results: [], pots: {}, latestPot: null, stats: {}, punishment: null, quips: 0, profiles: {}, nudged: {}, art: {} };
 store.names ??= {};
@@ -257,11 +258,6 @@ export function joinPot(id: string, member: string, state: "in" | "paid"): { ok:
 }
 
 
-export function payMode(): "demo" | "test" | "live" {
-  const key = process.env.STRIPE_SECRET_KEY ?? "";
-  return !key || store.payMode === "demo" ? "demo" : key.startsWith("sk_live") || key.startsWith("rk_live") ? "live" : "test";
-}
-
 export function potCard(pot: Pot) {
   const s = potSummary(pot);
   return {
@@ -275,7 +271,7 @@ export function potCard(pot: Pot) {
   };
 }
 
-function potTurn(text: string, lower: string, sender: string): { line: string; pot: Pot | null; pay?: { amountCents: number; memo: string }; shortCents?: number } | null {
+function potTurn(text: string, lower: string, sender: string): { line: string; pot: Pot | null; pay?: { amountCents: number; memo: string } } | null {
   const open = store.latestPot ? store.pots[store.latestPot] : null;
   const amount = lower.match(/\$\s?(\d{1,3}(?:\.\d{2})?)|(\d{1,3}(?:\.\d{2})?)\s?(?:dollars?|bucks)/);
   if (amount && /buy.?in|pot|stakes?|ante|put|throw|each/.test(lower)) {
@@ -291,10 +287,10 @@ function potTurn(text: string, lower: string, sender: string): { line: string; p
   if (/\b(i'?m in|im in|count me in|i agree|agreed|i'?m down|im down|deal me in|lock me in)\b/.test(lower)) {
     if (!sender) return { line: "Tell me your name first: Nickel, I'm Sritej. Then say you are in.", pot: open };
     const was = open.members[sender];
-    const paid = payBuyIn(open.id, sender);
+    const joined = joinPot(open.id, sender, "in");
+    if (!joined.ok) return { line: "That pot is closed. Say: Nickel, $5 buy-in.", pot: null };
     const s = potSummary(open);
-    if (!paid.ok) return { line: sender + ", your wallet is " + dollars(paid.shortCents ?? open.amountCents) + " short of the " + dollars(open.amountCents) + " buy-in. You have " + dollars(paid.balanceCents ?? 0) + ". Add money, then say you are in again.", pot: open, shortCents: paid.shortCents ?? open.amountCents };
-    return { line: was === "paid" ? sender + " already paid. " + s.names.length + " in, " + dollars(s.committedCents) + " pot." : sender + " is in and paid " + dollars(open.amountCents) + " from the wallet. " + s.names.length + " in, " + dollars(s.committedCents) + " pot. " + dollars(paid.balanceCents ?? 0) + " left in the wallet.", pot: open };
+    return { line: was === "paid" ? sender + " already paid. " + s.names.length + " in, " + dollars(s.committedCents) + " pot." : sender + " is in. Tap the card to pay " + dollars(open.amountCents) + " from your Nickel balance. " + s.names.length + " in, " + dollars(s.committedCents) + " pot.", pot: open };
   }
   if (/buy.?in|\bpot\b|who'?s in|who paid|pay ?out|payout/.test(lower)) {
     const s = potSummary(open);
@@ -372,7 +368,7 @@ export function saveProfile(token: string, body: { name?: string; account?: stri
     if (was && now) for (const key of ["played", "wins", "losses"] as const) now[key] += was[key];
     delete store.nickels[old];
     delete store.stats[old];
-    for (const entry of ledgerOf(old)) entry.name = name;
+    renameWallet(old, name);
     renamePlayer(old, name);
     const replace = (text: string) => text.replace(new RegExp("\\b" + old + "\\b", "g"), name);
     for (const result of store.results) {
@@ -741,6 +737,15 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     line,
     url: base + card.path,
     card: { kicker: (card.kicker + " \u00b7 " + card.league).toUpperCase(), title: card.title, sub: card.sub, path: card.path },
+    ...(base.startsWith("https://") && {
+      presentation: {
+        type: "app" as const,
+        id: ("nickel-" + new Date().toISOString().slice(0, 10) + card.path.replace(/[^a-z0-9]+/gi, "-")).slice(0, 128),
+        url: base + card.path,
+        caption: card.title.slice(0, 60),
+        subcaption: card.sub.slice(0, 80),
+      },
+    }),
   });
   const latest = store.latestFantasy ? store.fantasy[store.latestFantasy] : null;
   const claimCard = (p: Profile) => (input.trusted ? { ...profileCard(p), path: claimPath(p.token) } : profileCard(p));
@@ -781,18 +786,12 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   }
 
   if (/\b(demo|fake|test|real|live|stripe)\b.*\bpay(ment)?s?\b|\bpay(ment)?s?\b.*\b(demo|fake|test|real|live|stripe)\b/.test(lower) && !/\$\s?\d/.test(lower)) {
-    if (/\b(demo|fake)\b/.test(lower)) store.payMode = "demo";
-    else if (/\b(real|live|stripe|test)\b/.test(lower)) store.payMode = "stripe";
-    save();
-    const mode = payMode();
-    const wantedStripe = store.payMode !== "demo";
-    return { addressed: true, line: mode === "live" ? "Payments are live through Stripe. Cards are charged for real. Say demo payments to switch to fake ones." : mode === "test" ? "Payments run through Stripe in test mode. Use card 4242 4242 4242 4242, any future date, any CVC. No real money moves." : wantedStripe ? "Stripe is not connected yet, so payments stay in demo mode. No card is charged." : "Payments are in demo mode. The pay button marks you paid and no card is charged." };
+    return { addressed: true, line: "Buy-ins come out of your Nickel balance. Add money in your wallet through Whop: " + base + "/wallet" };
   }
 
   const money = fantasyTalk ? null : potTurn(text, lower, sender);
   if (money) {
     if (!money.pot) return { addressed: true, line: money.line };
-    if (money.shortCents) return reply(money.line, walletCard(sender, money.shortCents));
     const card = potCard(money.pot);
     return { ...reply(money.line, { ...card, path: card.path + (sender ? "?u=" + sender.toLowerCase() : "") }), pay: money.pay };
   }

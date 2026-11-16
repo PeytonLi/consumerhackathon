@@ -5,10 +5,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 let brain: typeof import("./brain.js");
 let hub: typeof import("./hub.js");
+let wallet: typeof import("./wallet.js");
 beforeAll(async () => {
   process.env.NICKEL_DATA_DIR = mkdtempSync(tmpdir() + "/nickel-hub-");
   brain = await import("./brain.js");
   hub = await import("./hub.js");
+  wallet = await import("./wallet.js");
+  (await import("./money.js")).useMoneyBackend(null);
 });
 
 const turn = (text: string, sender = "Sritej") => brain.handleTurn({ text, sender, baseUrl: "https://nickel.test/" });
@@ -83,7 +86,8 @@ describe("payouts ledger", () => {
     const id = turn("Nickel, $7.50 buy-in", "Maya").card!.path.slice(3).split("?")[0];
     expect(hub.settlePot(id)).toEqual({ ok: false, error: "Nobody has paid in yet" });
     expect(turn("Nickel, settle the pot").line).toBe("Nobody has paid into the pot yet, so there is nothing to settle.");
-    expect(hub.balanceOf("Maya")).toBe(0);
+    expect(hub.winningsOf("Maya")).toBe(0);
+    expect(wallet.pendingPotMoves()).toEqual([]);
   });
 
   it("pays the paid-in pot to the leader once, in cents", () => {
@@ -92,24 +96,29 @@ describe("payouts ledger", () => {
     brain.joinPot(id, "Dev", "paid");
     brain.joinPot(id, "Alex", "in");
     expect(brain.leaderboard().stakes).toBe("$7.5 buy-in");
-    expect(turn("Nickel, settle the pot", "Dev").line).toBe("Maya leads the board and takes the $15 pot. Maya's balance is $15. It stays on the Nickel ledger.");
-    expect(hub.balanceOf("Maya")).toBe(1500);
+    expect(turn("Nickel, balances").line).toBe("Nobody has won a pot yet. Balances stay private in each wallet.");
+    expect(turn("Nickel, settle the pot", "Dev").line).toBe("Maya leads the board and takes the $15 pot. It goes into Maya's Nickel wallet.");
+    expect(hub.winningsOf("Maya")).toBe(1500);
+    expect(wallet.pendingPotMoves()).toEqual([{ key: "win:" + id, potId: id, name: "Maya", cents: 1500, kind: "win", note: "Won the $15 pot" }]);
     expect(hub.settlePot(id)).toEqual({ ok: false, error: "Already settled" });
     expect(turn("Nickel, settle the pot", "Dev").line).toBe("That pot is already settled. Maya took it.");
-    expect(hub.balanceOf("Maya")).toBe(1500);
+    expect(hub.winningsOf("Maya")).toBe(1500);
+    expect(wallet.pendingPotMoves()).toHaveLength(1);
     expect(brain.leaderboard().stakes).toBeNull();
-    expect(turn("Nickel, my balance", "Maya").line).toBe("Maya, your balance is $15. It stays on the Nickel ledger.");
-    expect(turn("Nickel, my balance", "Dev").line).toBe("Dev, your balance is $0. It stays on the Nickel ledger.");
+    const privately = " Your balance is private, so check it in your wallet: say \"Nickel, wallet\".";
+    expect(turn("Nickel, my balance", "Maya").line).toBe("Maya, you have won $15 from pots." + privately);
+    expect(turn("Nickel, my balance", "Dev").line).toBe("Dev, you have won $0 from pots." + privately);
     expect(turn("Nickel, my balance", "").line).toBe("Tell me your name first: Nickel, I'm Sritej.");
-    expect(turn("Nickel, balances").line).toBe("Balances: Maya $15.");
+    expect(turn("Nickel, balances").line).toBe("Pot winnings: Maya $15. Balances stay private in each wallet.");
   });
 
   it("accumulates across pots", () => {
     const id = turn("Nickel, $5 buy-in", "Dev").card!.path.slice(3).split("?")[0];
     brain.joinPot(id, "Dev", "paid");
     const out = hub.settlePot(id);
-    expect(out).toMatchObject({ ok: true, balanceCents: 2000, payout: { name: "Maya", amountCents: 500, reason: "Won the $5 pot", potId: id } });
-    expect(Number.isInteger(hub.balanceOf("Maya"))).toBe(true);
+    expect(out).toMatchObject({ ok: true, payout: { name: "Maya", amountCents: 500, reason: "Won the $5 pot", potId: id } });
+    expect(hub.winningsOf("Maya")).toBe(2000);
+    expect(wallet.pendingPotMoves().map((m) => [m.key, m.name, m.cents])).toEqual([[expect.stringMatching(/^win:pot-/), "Maya", 1500], ["win:" + id, "Maya", 500]]);
   });
 });
 
@@ -117,12 +126,12 @@ describe("GET /api/hub payload", () => {
   it("matches the contract shape", () => {
     hub.remember("Maya calls every game rigged", "Dev");
     const out = hub.hub({ token: "me-abc", name: "Maya", face: null, account: "x" } as Parameters<typeof hub.hub>[0]);
-    expect(Object.keys(out)).toEqual(["me", "league", "people", "group", "pots", "payouts", "recent", "walletLedger", "roster"]);
+    expect(Object.keys(out)).toEqual(["me", "league", "people", "group", "pots", "payouts", "recent", "roster"]);
     expect(out.me).toEqual({ token: "me-abc", name: "Maya", face: null });
     expect(hub.hub(null).me).toBeNull();
     expect(out.league).toEqual({ name: "Cupertino Day Ones", stakes: null, punishment: null });
-    expect(Object.keys(out.people[0])).toEqual(["name", "rank", "nickels", "played", "wins", "losses", "title", "face", "last", "balanceCents", "memory"]);
-    expect(out.people[0]).toMatchObject({ name: "Maya", rank: 1, nickels: 24, played: 4, wins: 4, losses: 0, title: "Front runner", face: null, balanceCents: 2000 });
+    expect(Object.keys(out.people[0])).toEqual(["name", "rank", "nickels", "played", "wins", "losses", "title", "face", "last", "wonCents", "memory"]);
+    expect(out.people[0]).toMatchObject({ name: "Maya", rank: 1, nickels: 24, played: 4, wins: 4, losses: 0, title: "Front runner", face: null, wonCents: 2000 });
     expect(out.people[0].memory).toContain("Maya calls every game rigged");
     expect(out.people[0].memory).toContain("Maya always picks rock");
     expect(out.people.map((p) => p.name)).toEqual(brain.leaderboard().people.map((p) => p.name));

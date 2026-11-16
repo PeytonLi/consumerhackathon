@@ -8,11 +8,18 @@
  * @module
  */
 
+import type * as economy from "../economy.js";
+import type * as economySchema from "../economySchema.js";
 import type * as http from "../http.js";
 import type * as league from "../league.js";
 import type * as lib_rewardMode from "../lib/rewardMode.js";
 import type * as lib_systemOne from "../lib/systemOne.js";
+import type * as lib_whopApi from "../lib/whopApi.js";
+import type * as money from "../money.js";
+import type * as moneySchema from "../moneySchema.js";
 import type * as nickel from "../nickel.js";
+import type * as payments from "../payments.js";
+import type * as paymentsSchema from "../paymentsSchema.js";
 import type * as vault from "../vault.js";
 import type * as whop from "../whop.js";
 
@@ -23,11 +30,18 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  economy: typeof economy;
+  economySchema: typeof economySchema;
   http: typeof http;
   league: typeof league;
   "lib/rewardMode": typeof lib_rewardMode;
   "lib/systemOne": typeof lib_systemOne;
+  "lib/whopApi": typeof lib_whopApi;
+  money: typeof money;
+  moneySchema: typeof moneySchema;
   nickel: typeof nickel;
+  payments: typeof payments;
+  paymentsSchema: typeof paymentsSchema;
   vault: typeof vault;
   whop: typeof whop;
 }>;

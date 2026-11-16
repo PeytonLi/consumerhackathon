@@ -304,7 +304,7 @@ function youHtml() {
   if (!p) return setupHtml();
   return setupHtml() + '<button class="card you press" type="button" data-person="' + esc(p.name) + '">' + avatar(p.name) +
     '<span class="who"><span class="t-label">You</span><b>' + esc(p.name) + '</b><span class="t-caption">' + ordinal(p.rank) + " of " + H.people.length + " \u00b7 " + esc(p.title) + "</span></span>" +
-    '<span class="tot"><b>' + count("you:n", p.nickels, "n") + '</b><span class="t-caption">Nickels \u00b7 ' + count("you:usd", p.balanceCents, "usd") + "</span></span></button>";
+    '<span class="tot"><b>' + count("you:n", p.nickels, "n") + '</b><span class="t-caption">Nickels \u00b7 ' + count("you:usd", p.wonCents, "usd") + " won</span></span></button>";
 }
 
 const blank = () => !loaded || (!roster().members.length && !roster().pending.length);
@@ -385,7 +385,7 @@ function sheetHtml(p) {
     (chips.length ? '<p class="chips">' + chips.map((c) => '<span class="tag">' + esc(c) + "</span>").join("") + "</p>" : "") + "</div>" +
     '<div class="sheet-body"><div class="stats four">' +
     '<span class="stat"><b>' + count("sh:n:" + p.name, p.nickels, "n") + "</b><span>Nickels</span></span>" +
-    '<span class="stat"><b>' + count("sh:usd:" + p.name, p.balanceCents, "usd") + "</b><span>Balance</span></span>" +
+    '<span class="stat"><b>' + count("sh:usd:" + p.name, p.wonCents, "usd") + "</b><span>Won</span></span>" +
     '<span class="stat"><b>' + p.wins + "-" + p.losses + "</b><span>Record</span></span>" +
     '<span class="stat"><b>' + p.played + "</b><span>Played</span></span></div>" +
     (p.last ? '<p class="lastline">' + esc(brief(p.last)) + ".</p>" : "") +

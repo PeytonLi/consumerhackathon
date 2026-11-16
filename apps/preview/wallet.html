@@ -8,128 +8,230 @@
 <title>Nickel wallet</title>
 <!--WALLET-->
 <link rel="stylesheet" href="/nickel.css">
+<script src="/mock-api.js"></script>
 <style>
   :root { --game: light-dark(#34c759, #30d158); }
-  .stage { justify-content: flex-start; align-items: stretch; overflow-y: auto; gap: var(--s3); padding: var(--s4) 0; }
+  .stage { justify-content: flex-start; align-items: stretch; gap: var(--s3); padding-top: var(--s2); }
+  .hero { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--s3) 0 var(--s2); flex: none; }
+  .hero .t-display { animation: pop 420ms var(--spring) both; }
+  .hero .row { display: flex; gap: var(--s2); align-items: center; min-height: 32px; }
+  .tag.low { color: var(--them); background: color-mix(in srgb, var(--them) 14%, transparent); }
+  button.tag { height: 32px; padding: 0 12px; color: var(--ink); background: var(--surface); }
+  button.tag:active { transform: scale(.96); }
+  button.tag:disabled { color: var(--ink-3); }
+  .limit { display: flex; align-items: center; gap: var(--s3); height: 60px; padding: 0 var(--s4); text-align: left; flex: none; width: 100%; }
+  .limit:active { transform: scale(.98); transition: transform var(--t-press); }
+  .limit .ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 18px; color: var(--game); background: color-mix(in srgb, var(--game) 14%, transparent); flex: none; }
+  .limit .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .limit .meter { height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+  .limit .meter i { display: block; height: 100%; background: var(--game); border-radius: 2px; }
+  .limit .num { font: 600 17px/1 var(--round); }
+  .limit > .i { color: var(--ink-3); font-size: 16px; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; padding: var(--s1) var(--s1) 0; flex: none; }
+  .feed { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 6px; padding-bottom: var(--s2); -webkit-mask: linear-gradient(#000 calc(100% - 24px), transparent); mask: linear-gradient(#000 calc(100% - 24px), transparent); }
+  .feed .rowi { flex: none; height: 56px; }
+  .feed .rowi .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .feed .rowi .txt b { flex: none; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .feed .rowi .num { font: 600 16px/1 var(--round); color: var(--ink); }
+  .feed .rowi .num.plus { color: var(--game); }
+  .dir { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; flex: none; background: var(--surface-2); color: var(--ink-2); }
+  .dir.plus { color: var(--game); background: color-mix(in srgb, var(--game) 14%, transparent); }
+  .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--ink-3); }
+  .empty .i { font-size: 28px; }
+  .chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
+  .chip { height: 44px; border-radius: var(--r-pill); background: var(--surface); font: 600 17px/1 var(--round); box-shadow: inset 0 0 0 1px var(--hair); transition: box-shadow var(--t-lock) var(--ease), transform var(--t-press); }
+  .chip:active { transform: scale(.95); }
+  .chip.on { color: var(--you); box-shadow: inset 0 0 0 2.5px var(--you); }
+  .sheet .chip { background: var(--surface-2); box-shadow: none; }
+  .sheet .chip.on { background: var(--surface); box-shadow: inset 0 0 0 2.5px var(--you); }
+  .sheet .t-body { text-align: center; margin: var(--s5) var(--s2) var(--s2); }
+  .sheet .t-caption { text-align: center; }
+  .sheet .t-display { text-align: center; }
+  .sheet .t-label { text-align: center; margin-top: var(--s2); display: flex; justify-content: center; align-items: center; gap: 6px; }
+  .sheet .dock { margin-top: var(--s5); }
+  .halo { display: grid; place-items: center; width: 96px; height: 96px; border-radius: 50%; color: var(--ink-3); background: var(--surface); font-size: 40px; }
   .stage.center { justify-content: center; align-items: center; }
-  .hero { padding: var(--s5) var(--s4); text-align: center; display: flex; flex-direction: column; gap: 6px; align-items: center; flex: none; }
-  .hero .t-display { color: var(--ink); }
-  .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s2); flex: none; }
-  .quick button { height: 56px; border-radius: var(--r-card); background: var(--surface); font: 600 19px/1 var(--round); font-variant-numeric: tabular-nums; color: var(--ink); }
-  .quick button.on { box-shadow: inset 0 0 0 2px var(--you); }
-  .quick button:disabled { color: var(--ink-3); background: transparent; box-shadow: inset 0 0 0 1px var(--hair); }
-  .head { margin: var(--s2) var(--s1) 0; flex: none; }
-  .rowi { flex: none; }
-  .rowi .what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-  .rowi .what b { font-size: 15px; line-height: 1.25; }
-  .rowi .num.in { color: var(--game); }
-  .name-in { width: 100%; max-width: 320px; height: 56px; border: 0; outline: none; border-radius: var(--r-pill); padding: 0 20px; background: var(--surface); font: 500 17px/1 var(--font); text-align: center; -webkit-user-select: text; user-select: text; }
-  .sheet .quick button { background: var(--surface-2); }
-  a.primary { text-decoration: none; }
 </style>
 </head>
 <body>
 <div class="app">
   <header class="bar">
     <div id="me"></div>
-    <div class="name"><b>Wallet</b><span id="who"></span></div>
+    <div class="name"><b>Wallet</b><span>Nickel</span></div>
     <div></div>
   </header>
   <main class="stage" id="stage"></main>
   <footer class="dock" id="dock"></footer>
 </div>
-<div class="scrim" id="scrim"></div>
-<section class="glass sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title"></section>
 <div class="glass toast" id="toast" role="status"></div>
+<div class="scrim" id="scrim"></div>
+<section class="glass sheet" id="sheet" aria-hidden="true"></section>
+<script src="/nickel.js"></script>
 <script>
-let W = window.WALLET;
-const CHECKOUT = window.CHECKOUT;
-const params = new URLSearchParams(location.search);
-if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
-const $ = (id) => document.getElementById(id);
-const stage = $("stage"), dock = $("dock"), sheet = $("sheet"), scrim = $("scrim");
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
-const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", "#5e5ce6"];
-const hue = (name) => HUES[[...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % HUES.length];
-const avatar = (name) => '<span class="avatar" style="--hue:' + hue(name) + '">' + esc(name[0]) + "</span>";
-const money = (c) => "$" + (c % 100 ? Math.floor(c / 100) + "." + String(c % 100).padStart(2, "0") : c / 100);
-const back = /^\/p\/[a-z0-9-]+$/.test(params.get("back") || "") ? params.get("back") : "";
-const L = W.limits;
-let pick = L.quick.includes(Number(params.get("add"))) ? Number(params.get("add")) : L.quick.find((q) => q >= Number(params.get("add") || 500)) || 500;
-let out = 0;
-
-function toast(text) { const t = $("toast"); t.textContent = text; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 2200); }
-async function call(body) {
-  const res = await fetch("/api/wallet" + (body ? "" : "?u=" + encodeURIComponent(W.name)), body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ member: W.name, ...body }) } : undefined);
-  const data = await res.json();
-  if (data.wallet && data.wallet.name) W = data.wallet;
-  if (!data.ok && data.error) toast(data.error);
-  return data;
+const AMOUNTS = [100, 500, 1000];
+const LIMITS = [100, 200, 500];
+const LOW = 100;
+let W, amount = 500;
+const asked = Number(params.get("add"));
+if (Number.isInteger(asked) && asked >= 100 && asked <= 50000) {
+  amount = asked;
+  if (!AMOUNTS.includes(asked)) {
+    const near = AMOUNTS.reduce((a, b) => (Math.abs(b - asked) < Math.abs(a - asked) ? b : a));
+    AMOUNTS.splice(AMOUNTS.indexOf(near), 1, asked);
+    AMOUNTS.sort((a, b) => a - b);
+  }
 }
-const when = (at) => new Date(at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-const room = () => Math.min(L.maxCents, L.capCents - W.balanceCents);
+const back = params.get("back");
+if (back && /^\/[a-z0-9/-]*$/i.test(back)) sessionStorage.setItem("nickel.back", back);
+let cashoutAsked = params.has("cashout");
 
-function askName() {
-  stage.className = "stage center";
-  stage.innerHTML = '<p class="t-title">Whose wallet?</p><input class="name-in" id="own" placeholder="Your first name" maxlength="14" autocomplete="given-name">';
-  dock.innerHTML = '<button class="glass primary" id="confirm" type="button">Continue</button>';
-  $("confirm").onclick = () => {
-    const name = $("own").value.trim().replace(/[^A-Za-z]/g, "");
-    if (!name) return toast("Type your name");
-    params.set("u", name.toLowerCase());
-    location.search = params.toString();
-  };
-}
+const dollars = (c) => "$" + (c / 100).toFixed(2);
+const ago = (at) => {
+  const m = Math.max(0, Math.round((Date.now() - at) / 60000));
+  if (m < 1) return "Now";
+  if (m < 60) return m + "m ago";
+  if (m < 1440) return Math.round(m / 60) + "h ago";
+  return m < 2880 ? "Yesterday" : new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+};
+const LABELS = {
+  topup: () => "Added money",
+  stake: (n) => (n ? n + " stake" : "Stake"),
+  steal: (n, c) => (c > 0 ? "Steal from " : "Stolen by ") + (n || "someone"),
+  chest: () => "Chest",
+  buyin: () => "Buy-in",
+  cashout: () => "Cash out",
+  win: (n) => n || "Pot win",
+  refund: () => "Refund",
+  round: (n) => n || "Game",
+  bet: (n) => (n ? "Bet on " + n : "Bet"),
+  bounty: (n) => (n ? "Bounty on " + n : "Bounty"),
+  play_to_keep: () => "Kept your nickel",
+  adjustment: () => "Adjustment",
+};
+const label = (a) => (LABELS[a.reason] ?? ((n) => n || a.reason))(a.note, a.amountCents);
+const sub = (a) => ago(a.at) + (a.reason === "buyin" && a.note ? " \u00b7 " + a.note : "");
 
-function closeSheet() { sheet.classList.remove("on"); scrim.classList.remove("on"); }
-function cashSheet() {
-  const options = [...new Set([100, 500, 1000, W.balanceCents])].filter((c) => c >= L.minCents && c <= W.balanceCents);
-  if (!options.includes(out)) out = W.balanceCents;
-  sheet.innerHTML = '<h2 class="t-title" id="sheet-title">Cash out</h2><div class="quick">' + options.map((c) => '<button type="button" data-c="' + c + '" class="' + (c === out ? "on" : "") + '">' + (c === W.balanceCents ? "All" : money(c)) + "</button>").join("") + "</div>" +
-    '<div class="dock"><button class="glass primary" id="cash-go" type="button">Cash out ' + money(out) + '</button><p class="t-caption">Arrives in 1 to 2 days</p></div>';
-  sheet.querySelectorAll(".quick button").forEach((b) => b.onclick = () => { out = Number(b.dataset.c); cashSheet(); });
-  $("cash-go").onclick = async () => {
-    $("cash-go").disabled = true;
-    const done = await call({ action: "cashout", amountCents: out });
-    closeSheet();
-    if (done.ok) toast("Cash out is on its way");
-    draw();
-  };
-  sheet.classList.add("on");
-  scrim.classList.add("on");
+async function load() {
+  try { W = await api("/api/wallet"); } catch { stage.className = "stage center"; return nowhere("Wallet not found", "Open it from your Nickel link"); }
+  draw();
+  if (cashoutAsked && W.balanceCents) cashoutSheet();
+  cashoutAsked = false;
 }
-scrim.onclick = closeSheet;
 
 function draw() {
-  if (!W.name) return askName();
-  $("me").innerHTML = avatar(W.name);
-  $("who").textContent = W.name;
-  if (pick > room()) pick = [...L.quick].reverse().find((q) => q <= room()) || 0;
   stage.className = "stage";
-  stage.innerHTML =
-    '<div class="card hero"><p class="t-label">Balance</p><p class="t-display num">' + money(W.balanceCents) + '</p><p class="t-caption">Add ' + money(L.minCents) + " to " + money(L.maxCents) + " at a time. A wallet holds up to " + money(L.capCents) + ".</p></div>" +
-    '<div class="quick">' + L.quick.map((q) => '<button type="button" data-c="' + q + '" class="' + (q === pick ? "on" : "") + '"' + (q > room() ? " disabled" : "") + ">" + money(q) + "</button>").join("") + "</div>" +
-    '<p class="t-label head">Activity</p>' +
-    (W.ledger.length
-      ? '<div class="rows">' + W.ledger.map((e) => '<div class="rowi"><span class="what"><b>' + esc(e.reason) + '</b><span class="t-caption">' + esc(when(e.at)) + (e.status === "pending" ? " \u00b7 On its way" : "") + '</span></span><span class="num' + (e.amountCents > 0 ? " in" : "") + '">' + (e.amountCents > 0 ? "+" : e.amountCents < 0 ? "\u2212" : "") + money(Math.abs(e.type === "forfeit_out" ? e.stakeCents || 0 : e.amountCents)) + "</span></div>").join("") + "</div>"
-      : '<p class="t-caption" style="text-align:center">Nothing yet. Add money to get started.</p>');
-  stage.querySelectorAll(".quick button").forEach((b) => b.onclick = () => { pick = Number(b.dataset.c); draw(); });
-  const note = CHECKOUT === "live" ? "Secure checkout by Stripe" : CHECKOUT === "test" ? "Stripe test mode. Use card 4242 4242 4242 4242." : "Demo mode. No card is charged.";
-  dock.innerHTML = (pick ? '<button class="glass primary" id="add" type="button">Add ' + money(pick) + "</button>" : '<button class="glass primary" type="button" disabled>Wallet is full</button>') +
-    (back ? '<a class="glass secondary" href="' + esc(back) + '" style="text-decoration:none;color:inherit">Back to the buy-in</a>' : W.balanceCents >= L.minCents ? '<button class="glass secondary" id="cash" type="button">Cash out</button>' : "") +
-    '<p class="t-caption">' + note + "</p>";
-  if ($("cash")) $("cash").onclick = cashSheet;
-  if ($("add")) $("add").onclick = async () => {
-    $("add").disabled = true;
-    const added = pick;
-    const done = await call({ action: "topup", amountCents: added });
-    if (done.checkoutUrl) return location.href = done.checkoutUrl;
-    if (done.ok) toast("Added " + money(added));
-    draw();
+  const low = W.balanceCents < LOW && W.activity.length > 0;
+  const used = Math.min(100, W.dailyLimitCents ? (W.spentTodayCents / W.dailyLimitCents) * 100 : 0);
+  show(
+    '<section class="hero"><p class="t-label">Balance</p><p class="t-display" id="bal">' + dollars(W.balanceCents) + "</p>" +
+      '<div class="row">' + (low ? '<span class="tag low">' + icon("alert") + "Low</span>" : "") +
+      '<button class="tag" id="out" type="button"' + (W.balanceCents ? "" : " disabled") + ">" + icon("bank") + "Cash out</button></div></section>" +
+    '<button class="card limit" id="limit" type="button"><span class="ico">' + icon("gauge") + '</span><span class="txt"><b class="t-head">Daily limit</b>' +
+      (W.consent ? '<span class="t-caption">' + cash(W.spentTodayCents) + " used today</span>" + '<span class="meter"><i style="width:' + used + '%"></i></span>' : '<span class="t-caption">Not set</span>') +
+      "</span>" + (W.consent ? '<span class="num">' + cash(W.dailyLimitCents) + "</span>" : "") + icon("chevron") + "</button>" +
+    '<div class="head"><p class="t-label">Activity</p></div>' +
+    (W.activity.length
+      ? '<div class="feed">' + W.activity.map((a, i) => {
+          const plus = a.amountCents > 0 ? " plus" : "";
+          return '<div class="rowi" style="animation-delay:' + i * 50 + 'ms"><span class="dir' + plus + '">' + icon(plus ? "in" : "out") + '</span><span class="txt"><b>' + esc(label(a)) + '</b><span class="t-caption">' + esc(sub(a)) + '</span></span><span class="num' + plus + '">' + signed(a.amountCents) + "</span></div>";
+        }).join("") + "</div>"
+      : '<div class="empty">' + icon("coin") + '<p class="t-label">No activity yet</p></div>'),
+    '<div class="chips" id="chips">' + AMOUNTS.map((c) => '<button class="chip' + (c === amount ? " on" : "") + '" type="button" data-c="' + c + '">' + cash(c) + "</button>").join("") + "</div>" +
+    '<button class="glass primary" id="add" type="button">' + icon("plus") + "Add " + cash(amount) + "</button>"
+  );
+  $("chips").onclick = (e) => {
+    const b = e.target.closest(".chip");
+    if (!b) return;
+    amount = Number(b.dataset.c);
+    $("chips").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === b));
+    $("add").innerHTML = icon("plus") + "Add " + cash(amount);
+    haptic();
+  };
+  $("add").onclick = () => (W.consent ? topup() : limitSheet(topup));
+  $("limit").onclick = () => limitSheet();
+  $("out").onclick = cashoutSheet;
+}
+
+async function topup() {
+  haptic();
+  $("add").disabled = true;
+  try {
+    const { checkoutUrl } = await api("/api/wallet/topup", { amountCents: amount });
+    location.assign(checkoutUrl);
+  } catch (err) {
+    toast(err.message);
+    $("add").disabled = false;
+  }
+}
+
+function limitSheet(then) {
+  let pick = W.consent && LIMITS.includes(W.dailyLimitCents) ? W.dailyLimitCents : LIMITS[0];
+  const line = () => "Nickel can use up to <b>" + cash(pick) + "</b> a day for games you join.";
+  openSheet(
+    '<p class="t-title">Daily limit</p><div class="chips" id="lim">' + LIMITS.map((c) => '<button class="chip' + (c === pick ? " on" : "") + '" type="button" data-c="' + c + '">' + cash(c) + "</button>").join("") + "</div>" +
+    '<p class="t-body" id="line">' + line() + '</p><p class="t-caption">Anything more asks you first</p>' +
+    '<div class="dock"><button class="primary" id="allow" type="button">' + (W.consent ? "Save" : "Allow") + '</button><button class="secondary fill" type="button" data-close>Not now</button></div>'
+  );
+  $("lim").onclick = (e) => {
+    const b = e.target.closest(".chip");
+    if (!b) return;
+    pick = Number(b.dataset.c);
+    $("lim").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === b));
+    $("line").innerHTML = line();
+    haptic();
+  };
+  $("allow").onclick = async () => {
+    $("allow").disabled = true;
+    try {
+      await api("/api/wallet/limit", { dailyLimitCents: pick, consent: true });
+      Object.assign(W, { dailyLimitCents: pick, consent: true });
+      haptic(2);
+      closeSheet();
+      draw();
+      if (then) then();
+      else toast(cash(pick) + " a day");
+    } catch (err) {
+      toast(err.message);
+      $("allow").disabled = false;
+    }
   };
 }
-draw();
-if (params.get("paid")) history.replaceState(null, "", location.pathname + (W.name ? "?u=" + W.name.toLowerCase() : ""));
+
+function cashoutSheet() {
+  haptic();
+  const note = { verified: [icon("check"), "To your Whop wallet"], pending: [icon("clock"), "ID check in progress"] }[W.kyc] ?? [icon("lock"), "Whop checks your ID first"];
+  openSheet(
+    '<p class="t-title">Cash out</p><p class="t-display">' + dollars(W.balanceCents) + '</p><p class="t-label">' + note.join("") + "</p>" +
+    '<div class="dock"><button class="primary" id="go" type="button">' + icon("bank") + 'Cash out</button><button class="secondary fill" type="button" data-close>Cancel</button></div>'
+  );
+  $("go").onclick = async () => {
+    $("go").disabled = true;
+    try {
+      const res = await api("/api/wallet/cashout", { amountCents: W.balanceCents });
+      if (res.url) return location.assign(res.url);
+      haptic(2);
+      closeSheet();
+      toast("On its way");
+      load();
+    } catch (err) {
+      toast(err.message);
+      $("go").disabled = false;
+    }
+  };
+}
+
+setMe();
+load();
+if (params.has("paid")) {
+  toast("Payment sent");
+  setTimeout(async () => {
+    await load();
+    const to = sessionStorage.getItem("nickel.back");
+    if (!to) return;
+    sessionStorage.removeItem("nickel.back");
+    location.assign(to);
+  }, 3000);
+}
 </script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 import { getRound, internals, leaderboard, potSummary, type Pot, type TurnReply } from "./brain.js";
-import { creditWin, ledgerOf } from "./wallet.js";
+import { creditWin } from "./wallet.js";
 import { roster, standing } from "./roster.js";
 
 export interface Fact {
@@ -22,7 +22,6 @@ type SettledPot = Pot & { settled?: boolean; winner?: string; settledAt?: number
 interface HubState {
   memory: { people: Record<string, Fact[]>; group: Fact[] };
   payouts: Payout[];
-  balances: Record<string, number>;
   picks: Record<string, Record<string, number>>;
   pots: Record<string, SettledPot>;
 }
@@ -40,7 +39,6 @@ function state() {
   s.memory.people ??= {};
   s.memory.group ??= [];
   s.payouts ??= [];
-  s.balances ??= {};
   s.picks ??= {};
   return s as typeof internals.store & HubState;
 }
@@ -165,11 +163,10 @@ export function notePicks(name: string, payload: object) {
   }
 }
 
-export const balanceOf = (name: string) => state().balances[name] ?? 0;
+export const winningsOf = (name: string) => state().payouts.filter((p) => p.name === name).reduce((sum, p) => sum + p.amountCents, 0);
 
 export function renamePlayer(old: string, name: string) {
   const s = state();
-  if (old in s.balances) { s.balances[name] = (s.balances[name] ?? 0) + s.balances[old]; delete s.balances[old]; }
   if (s.picks[old]) {
     const counts = (s.picks[name] ??= {});
     for (const [pick, count] of Object.entries(s.picks[old])) counts[pick] = (counts[pick] ?? 0) + count;
@@ -183,7 +180,7 @@ export function renamePlayer(old: string, name: string) {
   for (const payout of s.payouts) if (payout.name === old) payout.name = name;
 }
 
-export function settlePot(potId: string): { ok: boolean; error?: string; payout?: Payout; balanceCents?: number } {
+export function settlePot(potId: string): { ok: boolean; error?: string; payout?: Payout } {
   const s = state();
   const pot = s.pots[potId];
   if (!pot) return { ok: false, error: "Not found" };
@@ -200,9 +197,9 @@ export function settlePot(potId: string): { ok: boolean; error?: string; payout?
   if (s.latestPot === potId) s.latestPot = null;
   s.payouts.push(payout);
   s.payouts.splice(0, s.payouts.length - PAYOUTS_KEPT);
-  const balanceCents = creditWin(winner, amountCents, payout.reason, potId);
   internals.save();
-  return { ok: true, payout, balanceCents };
+  creditWin(winner, amountCents, payout.reason, potId);
+  return { ok: true, payout };
 }
 
 export function hubTurn(input: { text: string; sender?: string; senderPhone?: string }): TurnReply | null {
@@ -244,16 +241,16 @@ export function hubTurn(input: { text: string; sender?: string; senderPhone?: st
     if (!s.latestPot) return say(last ? "That pot is already settled. " + last.winner + " took it." : "No buy-in to settle. Say: Nickel, $5 buy-in.");
     const out = settlePot(s.latestPot);
     if (!out.ok) return say(out.error === "Nobody has paid in yet" ? "Nobody has paid into the pot yet, so there is nothing to settle." : out.error === "No games played yet" ? "Nobody has played yet, so there is no leader to pay. Finish a game first." : "That pot is already settled.");
-    return say(out.payout!.name + " leads the board and takes the " + dollars(out.payout!.amountCents) + " pot. " + out.payout!.name + "'s balance is " + dollars(out.balanceCents!) + ". It stays on the Nickel ledger.");
+    return say(out.payout!.name + " leads the board and takes the " + dollars(out.payout!.amountCents) + " pot. It goes into " + out.payout!.name + "'s Nickel wallet.");
   }
 
   if (/\bbalances?\b|\bwinnings\b/.test(lower)) {
     if (/\bbalances\b|\beveryone|\ball\b|\bour\b/.test(lower)) {
-      const rows = Object.entries(s.balances).filter(([, cents]) => cents > 0).sort((a, b) => b[1] - a[1]);
-      return say(rows.length ? "Balances: " + rows.map(([who, cents]) => who + " " + dollars(cents)).join(", ") + "." : "Every balance is $0. Settle a pot to move one.");
+      const rows = [...new Set(s.payouts.map((p) => p.name))].map((who) => [who, winningsOf(who)] as const).sort((a, b) => b[1] - a[1]);
+      return say((rows.length ? "Pot winnings: " + rows.map(([who, cents]) => who + " " + dollars(cents)).join(", ") + ". " : "Nobody has won a pot yet. ") + "Balances stay private in each wallet.");
     }
     if (!sender) return say("Tell me your name first: Nickel, I'm Sritej.");
-    return say(sender + ", your balance is " + dollars(balanceOf(sender)) + ". It stays on the Nickel ledger.");
+    return say(sender + ", you have won " + dollars(winningsOf(sender)) + " from pots. Your balance is private, so check it in your wallet: say \"Nickel, wallet\".");
   }
 
   return null;
@@ -277,14 +274,13 @@ export function hub(me: { token: string; name: string; face: string | null } | n
       title: p.title,
       face: p.face,
       last: p.last,
-      balanceCents: s.balances[p.name] ?? 0,
+      wonCents: winningsOf(p.name),
       memory: [...derivedFor(p.name, all), ...toldAbout(p.name)],
     })),
     group: { memory: [...derivedForGroup(all), ...toldGroup(board.people.map((p) => p.name))] },
     pots: Object.values(s.pots).sort((a, b) => b.createdAt - a.createdAt).map((p) => ({ id: p.id, amountCents: p.amountCents, members: p.members, settled: !!p.settled, winner: p.winner ?? null })),
     payouts: [...s.payouts].reverse().map((p) => ({ id: p.id, name: p.name, amountCents: p.amountCents, reason: p.reason, at: p.at })),
     recent: [...s.results.map((r) => ({ line: r.line, at: r.at })), ...s.payouts.map((p) => ({ line: p.name + " took the " + dollars(p.amountCents) + " pot.", at: p.at }))].sort((a, b) => b.at - a.at).slice(0, 12),
-    walletLedger: me ? ledgerOf(me.name).reverse() : [],
     roster: standing(signed, board.people, all),
   };
 }

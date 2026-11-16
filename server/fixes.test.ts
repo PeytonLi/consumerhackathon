@@ -7,12 +7,15 @@ let brain: typeof import("./brain.js");
 let hub: typeof import("./hub.js");
 let auth: typeof import("./auth.js");
 let wallet: typeof import("./wallet.js");
+let money: typeof import("./money.js");
 beforeAll(async () => {
   process.env.NICKEL_DATA_DIR = mkdtempSync(tmpdir() + "/nickel-fixes-");
   brain = await import("./brain.js");
   hub = await import("./hub.js");
   auth = await import("./auth.js");
   wallet = await import("./wallet.js");
+  money = await import("./money.js");
+  money.useMoneyBackend(null);
 });
 
 const base = "https://nickel.test/";
@@ -106,15 +109,16 @@ describe("fix pass", () => {
     expect(brain.internals.store.names["+15550009002"]).toBe("Abe");
   });
 
-  it("moves Nickels and record to the new name when a card is renamed", () => {
+  it("moves Nickels, record and queued pot money to the new name when a card is renamed", async () => {
     const profile = brain.profileFor("+15550009003", "Typo");
     const round = turn("Nickel, new wordle", "Typo").card!.path.slice(3);
     brain.recordResult(round, { name: "Typo", tries: "2/6" });
     brain.internals.store.nickels.Typo = 9;
     brain.internals.store.stats.Typo = { played: 2, wins: 1, losses: 1 };
-    wallet.topUp("Typo", 1000);
     const pot = turn("Nickel, $5 buy-in", "Typo").card!.path.slice(3).split("?")[0];
-    wallet.payBuyIn(pot, "Typo");
+    brain.joinPot(pot, "Typo", "paid");
+    expect(wallet.cancelPot(pot, "Typo")).toMatchObject({ ok: true, refunded: ["Typo"] });
+    await wallet.flushPotMoves();
     const league = turn("Nickel, fantasy league for cereal: Tony", "Typo").card!.path.slice(3);
     brain.draftPick(league, "Typo", "Tony");
     hub.remember("I play on Fridays", "Typo");
@@ -127,9 +131,20 @@ describe("fix pass", () => {
     expect(turn("Nickel, my balance", "Typo", { senderPhone: "+15550009003" }).line).toMatch(/^Fixed,/);
     expect(turn("Nickel, wallet", "Typo", { senderPhone: "+15550009003" }).line).toMatch(/^Fixed,/);
     expect(turn("Nickel, challenge Maya", "Typo", { senderPhone: "+15550009003" }).line).toMatch(/^Fixed just/);
-    expect(wallet.walletBalance("Fixed")).toBe(500);
-    expect(wallet.ledgerSum("Fixed")).toBe(500);
-    expect(wallet.walletBalance("Typo")).toBe(0);
+    expect(wallet.pendingPotMoves().filter((m) => m.potId === pot)).toEqual([expect.objectContaining({ key: "refund:" + pot + ":Typo", name: "Fixed", cents: 500, kind: "refund" })]);
+    const calls: [string, Record<string, unknown>][] = [];
+    money.useMoneyBackend({
+      query: async () => { throw new Error("unused"); },
+      action: async () => { throw new Error("unused"); },
+      mutation: async <T,>(name: string, args: Record<string, unknown>) => { calls.push([name, args]); return (name === "payments:ensurePlayer" ? "player-fixed" : { ok: true }) as T; },
+    });
+    await wallet.flushPotMoves();
+    money.useMoneyBackend(null);
+    expect(calls).toEqual([
+      ["payments:ensurePlayer", { phone: "+15550009003", name: "Fixed" }],
+      ["payments:potMove", { chatId: "league:Cupertino Day Ones", playerId: "player-fixed", key: "refund:" + pot + ":Typo", note: "Refund, $5 buy-in cancelled", refundOf: "pot:" + pot + ":player-fixed" }],
+    ]);
+    expect(wallet.pendingPotMoves().filter((m) => m.potId === pot)).toEqual([]);
     expect(brain.getPot(pot)!.members).toEqual({ Fixed: "paid" });
     expect(brain.getFantasy(league)!.pool[0].owner).toBe("Fixed");
     expect(hub.memoryOf("Fixed")).toContain("I play on Fridays");
@@ -178,8 +193,8 @@ describe("web chat identity", () => {
     const claimed = auth.claimProfile(profile.token, auth.issueClaim(profile.token));
     if (!claimed.ok) throw new Error(claimed.error);
     sid = claimed.sid;
-    wallet.topUp("Owner", 1000);
   });
+  const ownerMoves = () => [...wallet.pendingPotMoves(), ...wallet.failedPotMoves()].filter((m) => m.name === "Owner");
 
   const webTurn = async (body: object, cookie = "", headers = {}) => {
     const request = new Request(base + "api/turn", { method: "POST", headers: { host: "nickel.test", "content-type": "application/json", ...(cookie ? { cookie: "nickel_sid=" + cookie } : {}), ...headers }, body: JSON.stringify(body) });
@@ -203,17 +218,16 @@ describe("web chat identity", () => {
     }
     const photo = await webTurn({ text: "Nickel", sender: "Owner", senderPhone: phone, photoUrl: "https://example.test/photo.jpg" });
     expect((photo as Response).status).toBe(403);
-    expect(wallet.walletBalance("Owner")).toBe(1000);
+    expect(ownerMoves()).toEqual([]);
   });
 
   it("takes authenticated chat identity from the session, not submitted names or introductions", async () => {
-    wallet.topUp("Victim", 1000);
     const out = await webTurn({ text: "Nickel, cash out $1", sender: "Victim", senderPhone: "+15550008888" }, sid);
     if (out instanceof Response) throw new Error("Chat was rejected: " + out.status);
     expect(out.body).toMatchObject({ sender: "Owner", senderPhone: phone });
-    expect(out.turn.line).toMatch(/^Owner, cash out of \$1/);
-    expect(wallet.walletBalance("Owner")).toBe(900);
-    expect(wallet.walletBalance("Victim")).toBe(1000);
+    expect(out.turn.line).toBe("Owner, cash out from your wallet. Whop checks your ID the first time.");
+    expect(out.turn.url).toBe("https://nickel.test/wallet?cashout=1");
+    expect(ownerMoves()).toEqual([]);
     const intro = await webTurn({ text: "Nickel, call me Victim, $5 buy-in", sender: "Victim" }, sid);
     if (intro instanceof Response) throw new Error("Chat was rejected");
     const pot = brain.getPot(intro.turn.card!.path.slice(3).split("?")[0]);
@@ -232,8 +246,10 @@ describe("web chat identity", () => {
   });
 
   it("does not let an anonymous result debit a claimed rival", () => {
+    const before = nickelsOf("Owner");
     const id = turn("Nickel, challenge Owner", "Guest").card!.path.slice(3);
     expect(brain.recordResult(id, { name: "Guest", won: true, score: "2-0", verified: false }).ok).toBe(false);
-    expect(wallet.walletBalance("Owner")).toBe(900);
+    expect(nickelsOf("Owner")).toBe(before);
+    expect(ownerMoves()).toEqual([]);
   });
 });

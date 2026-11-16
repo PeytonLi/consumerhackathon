@@ -35,6 +35,14 @@ describe("group chat turns", () => {
     expect(turn("nickel play krillion").url).toMatch(/\/r\/krill-/);
   });
 
+  it("attaches a Keiki Vault card so a direct chat opens the game inside Messages", () => {
+    const play = turn("@nickel play");
+    expect(play.presentation).toMatchObject({ type: "app", url: play.url, caption: play.card!.title });
+    expect(play.presentation!.id.length).toBeLessThanOrEqual(128);
+    expect(play.presentation!.subcaption.length).toBeLessThanOrEqual(80);
+    expect(brain.handleTurn({ text: "@nickel play", sender: "Sritej", baseUrl: "http://localhost:5173" }).presentation).toBeUndefined();
+  });
+
   it("runs a custom fantasy league on any topic: create, draft, write in, score", () => {
     const made = turn("Nickel, start a fantasy league for boba shops: Boba Guys, Teaspoon, Tpumps", "Maya");
     const id = made.card!.path.slice(3);
@@ -75,11 +83,15 @@ describe("group chat turns", () => {
     expect(made.url).toMatch(/\/p\/pot-[a-z0-9]+\?u=sritej$/);
     const id = made.card!.path.slice(3).split("?")[0];
     const joined = turn("nickel im in", "Maya");
-    expect(joined.line).toBe("Maya, your wallet is $5 short of the $5 buy-in. You have $0. Add money, then say you are in again.");
-    expect(joined.card!.path).toBe("/wallet?u=maya&add=500");
+    expect(joined.line).toBe("Maya is in. Tap the card to pay $5 from your Nickel balance. 2 in, $10 pot.");
+    expect(joined.card!.path).toBe("/p/" + id + "?u=maya");
+    expect(joined.pay).toBeUndefined();
+    expect(brain.getPot(id)!.members).toEqual({ Sritej: "in", Maya: "in" });
     expect(turn("nickel i'm in", "").line).toBe("Tell me your name first: Nickel, I'm Sritej. Then say you are in.");
     brain.joinPot(id, "Maya", "paid");
     brain.joinPot(id, "Maya", "in");
+    expect(brain.getPot(id)!.members).toEqual({ Sritej: "in", Maya: "paid" });
+    expect(turn("nickel im in", "Maya").line).toBe("Maya already paid. 2 in, $10 pot.");
     expect(brain.getPot(id)!.members).toEqual({ Sritej: "in", Maya: "paid" });
     expect(turn("nickel who paid", "Alex").line).toBe("$5 buy-in. 2 in, $5 of $10 paid. Still owed: Sritej.");
     expect(brain.potCard(brain.getPot(id)!).sub).toBe("2 in for a $10 pot. 1 paid.");
@@ -201,18 +213,11 @@ describe("group chat turns", () => {
     expect(brain.dueNudges()).toEqual([]);
   });
 
-  it("switches between demo and Stripe payments from the chat", () => {
-    delete process.env.STRIPE_SECRET_KEY;
-    expect(brain.payMode()).toBe("demo");
-    expect(turn("nickel real payments", "Maya").line).toBe("Stripe is not connected yet, so payments stay in demo mode. No card is charged.");
-    process.env.STRIPE_SECRET_KEY = "sk_test_x";
-    expect(turn("nickel test payments", "Maya").line).toBe("Payments run through Stripe in test mode. Use card 4242 4242 4242 4242, any future date, any CVC. No real money moves.");
-    expect(turn("nickel fake payments for the demo", "Maya").line).toBe("Payments are in demo mode. The pay button marks you paid and no card is charged.");
-    expect(brain.payMode()).toBe("demo");
-    process.env.STRIPE_SECRET_KEY = "sk_live_x";
-    expect(turn("nickel make payments real", "Maya").line).toMatch(/^Payments are live through Stripe/);
-    expect(brain.payMode()).toBe("live");
-    delete process.env.STRIPE_SECRET_KEY;
+  it("points payment questions at the prepaid wallet", () => {
+    const line = "Buy-ins come out of your Nickel balance. Add money in your wallet through Whop: https://nickel.test/wallet";
+    expect(turn("nickel real payments", "Maya").line).toBe(line);
+    expect(turn("nickel make payments real", "Maya").line).toBe(line);
+    expect(turn("nickel fake payments for the demo", "Maya").line).toBe(line);
   });
 
   it("answers a first text from an unknown number with their player card", () => {
