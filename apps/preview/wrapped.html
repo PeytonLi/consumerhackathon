@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>Nickel Wrapped</title>
+<!--WRAPPED-->
+<link rel="stylesheet" href="/nickel.css">
+<style>
+  .app { padding-left: 0; padding-right: 0; }
+  .ticks { display: flex; gap: 4px; padding: 10px var(--gutter) 0; flex: none; }
+  .ticks i { flex: 1; height: 3px; border-radius: 2px; background: var(--ink-3); opacity: .35; transition: opacity var(--t-lock), background var(--t-lock); }
+  .ticks i.on { opacity: 1; background: var(--ink); }
+  .bar { padding: 0 var(--gutter); }
+  .bar a { text-decoration: none; }
+  .stage { align-items: stretch; }
+  .reel { flex: 1; min-height: 0; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .reel::-webkit-scrollbar { display: none; }
+  .page {
+    flex: none; width: 100vw; scroll-snap-align: center; scroll-snap-stop: always; padding: 0 var(--s6);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s3); text-align: center;
+    transform: scale(calc(1 - var(--a, 0) * .08)); opacity: calc(1 - var(--a, 0) * .6);
+  }
+  .page > * { opacity: 0; }
+  .page.on > * { opacity: 1; animation: rise 420ms var(--ease) both; animation-delay: calc(var(--i, 0) * 80ms); }
+  .kicker { display: inline-flex; align-items: center; height: 30px; padding: 0 14px; border-radius: var(--r-pill); color: var(--hue); background: color-mix(in srgb, var(--hue) 16%, transparent); font: 700 13px/1 var(--font); letter-spacing: .06em; text-transform: uppercase; }
+  .who { width: 112px; height: 112px; border-radius: 50%; overflow: hidden; flex: none; display: grid; place-items: center; color: #fff; font: 700 46px/1 var(--round); background: linear-gradient(color-mix(in srgb, var(--hue) 78%, white), var(--hue)); box-shadow: 0 0 0 5px var(--bg), 0 0 0 8px color-mix(in srgb, var(--hue) 55%, transparent); translate: calc(var(--d, 0) * -36px) 0; }
+  .who img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .page.on .who { animation-name: pop; animation-timing-function: var(--spring); }
+  .hero { margin: 0; font: 700 104px/1 var(--round); letter-spacing: -0.04em; font-variant-numeric: tabular-nums; color: var(--hue); translate: calc(var(--d, 0) * 64px) 0; }
+  .hero small { display: block; margin-top: 6px; font: 600 17px/1 var(--font); letter-spacing: 0; color: var(--ink-2); }
+  .page .t-title { font-size: 34px; }
+  .page .t-body { color: var(--ink-2); max-width: 300px; text-wrap: balance; }
+  .dock { padding-left: var(--gutter); padding-right: var(--gutter); }
+  .dock a { text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="ticks" id="ticks"></div>
+  <header class="bar">
+    <div></div>
+    <div class="name"><b>Wrapped</b><span id="league"></span></div>
+    <div><a class="glass icon-btn" id="close" href="/l" aria-label="Open the leaderboard"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></a></div>
+  </header>
+  <main class="stage"><div class="reel" id="reel"></div></main>
+  <footer class="dock" id="dock"></footer>
+</div>
+<script src="/juice.js"></script>
+<script>
+const B = window.BOARD;
+const params = new URLSearchParams(location.search);
+if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
+const theme = params.get("theme") ? "?theme=" + params.get("theme") : "";
+const SHARE = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5v-11M8 7.5l4-4 4 4"/><path d="M7 10.5H6.5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H17"/></svg>';
+const reel = $("reel");
+let slides = [], active = -1, frame = 0;
+const counted = new Set();
+$("league").textContent = B.league;
+$("close").href = "/l" + theme;
+
+function go(i) {
+  const el = reel.children[Math.max(0, Math.min(slides.length - 1, i))];
+  reel.scrollTo({ left: el.offsetLeft, behavior: Juice.reduced() ? "auto" : "smooth" });
+}
+
+function enter(i) {
+  active = i;
+  const s = slides[i], last = i === slides.length - 1;
+  $("app").style.setProperty("--game", s.hue);
+  [...reel.children].forEach((el, j) => el.classList.toggle("on", j === i));
+  [...$("ticks").children].forEach((el, j) => el.classList.toggle("on", j <= i));
+  const num = reel.children[i].querySelector(".hero b"), value = parseInt(s.big.replace(/[^0-9]/g, ""), 10);
+  if (num && !counted.has(i) && value > 0) Juice.countUp(num, value, 700, (n) => s.big.replace(/[0-9]+/, n));
+  counted.add(i);
+  $("dock").innerHTML = last
+    ? '<button class="glass primary" id="act" type="button">' + SHARE + 'Share</button><a class="glass secondary" href="/l' + theme + '">Leaderboard</a>'
+    : '<button class="glass primary" id="act" type="button">Next</button><p class="t-caption">' + (i + 1) + " of " + slides.length + "</p>";
+  $("act").onclick = last
+    ? async () => {
+        const out = await Juice.share({ image: fetch(B.cards[B.cards.length - 1]).then((r) => r.blob()), name: "nickel-wrapped.png", title: B.league + " wrapped", text: slides.filter((x) => x.who).map((x) => x.kicker + ": " + x.who).join(". ") + ".", url: location.origin + "/w" });
+        if (out === "shared" || out === "copied") $("act").innerHTML = SHARE + (out === "shared" ? "Shared" : "Link copied");
+      }
+    : () => go(i + 1);
+  if (i > 0) Juice.buzz(last ? [14, 50, 30] : [8]);
+}
+
+function track() {
+  frame = 0;
+  const mid = reel.scrollLeft + reel.clientWidth / 2, calm = Juice.reduced();
+  let best = 0, dist = Infinity;
+  [...reel.children].forEach((el, i) => {
+    const d = (el.offsetLeft + el.offsetWidth / 2 - mid) / el.offsetWidth;
+    if (!calm) { el.style.setProperty("--d", Math.max(-1, Math.min(1, d)).toFixed(3)); el.style.setProperty("--a", Math.min(1, Math.abs(d)).toFixed(3)); }
+    if (Math.abs(d) < dist) { dist = Math.abs(d); best = i; }
+  });
+  if (best !== active && dist < 0.35) enter(best);
+}
+
+fetch("/api/hub").then((r) => r.json()).catch(() => null).then((hub) => {
+  slides = Juice.wrapped(B, hub);
+  const face = Object.fromEntries(B.people.map((p) => [p.name, p.face]));
+  reel.innerHTML = slides.map((s) => '<section class="page" style="--hue:' + s.hue + '">' +
+    ['<span class="kicker">' + esc(s.kicker) + "</span>",
+      s.who ? '<span class="who">' + (face[s.who] ? '<img src="' + esc(face[s.who]) + '" alt="">' : esc(s.who[0])) + "</span>" : "",
+      s.big ? '<p class="hero"><b>' + esc(s.big) + "</b>" + (s.unit ? "<small>" + esc(s.unit) + "</small>" : "") + "</p>" : "",
+      '<h2 class="t-title">' + esc(s.title) + "</h2>",
+      '<p class="t-body">' + esc(s.sub) + "</p>",
+    ].filter(Boolean).map((html, i) => html.replace(/^<(\w+) /, '<$1 style="--i:' + i + '" ')).join("") + "</section>").join("");
+  $("ticks").innerHTML = slides.map(() => "<i></i>").join("");
+  reel.onscroll = () => { frame ||= requestAnimationFrame(track); };
+  reel.onclick = (e) => go(active + (e.clientX < innerWidth * 0.3 ? -1 : 1));
+  track();
+});
+</script>
+</body>
+</html>

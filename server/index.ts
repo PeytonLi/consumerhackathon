@@ -131,6 +131,7 @@ Bun.serve({
     if (path === "/api/hub") return json(hub(me));
     if (path === "/og/l.png") return new Response((await cardPng(leaderboardCard())) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
     if (path === "/l") return page((await Bun.file(site + "leaderboard.html").text()).replace("<!--BOARD-->", headTags(leaderboardCard(), base, "") + "\n<script>window.BOARD = " + inline(board()) + ";</script>"));
+    if (path === "/w") return page((await Bun.file(site + "wrapped.html").text()).replace("<!--WRAPPED-->", headTags({ ...leaderboardCard(), kicker: "Wrapped", title: "Season recap", path: "/w" }, base, "").replace("/og/w.png", "/og/l.png") + "\n<script>window.BOARD = " + inline(board()) + ";</script>"));
 
     const potApi = path.match(/^\/api\/pot\/([a-z0-9-]+)$/);
     if (potApi) {
