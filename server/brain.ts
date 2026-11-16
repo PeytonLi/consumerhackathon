@@ -3,6 +3,7 @@ import { makeFunctionReference } from "convex/server";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { hubTurn, notePicks } from "./hub.js";
+import { scoreResult, type Points, type ResultPayload } from "./points.js";
 
 export interface Round {
   id: string;
@@ -646,38 +647,34 @@ function setPunishment(text: string): string {
   return store.punishment!;
 }
 
-export function recordResult(roundId: string, payload: { name?: string; opponent?: string; won?: boolean; score?: string; tries?: string; time?: string }): { ok: boolean; line?: string } {
+export function recordResult(roundId: string, payload: ResultPayload): { ok: boolean; line?: string; points?: Points } {
   const round = getRound(roundId);
   const name = person(payload.name);
   if (!round || !name) return { ok: false };
-  if (store.results.some((r) => r.roundId === roundId && r.name === name)) return { ok: true, line: store.results.find((r) => r.roundId === roundId && r.name === name)!.line };
-  const stake = typeof round.stake === "number" ? round.stake : 5;
+  const done: { line: string; points?: Points } | undefined = store.results.find((r) => r.roundId === roundId && r.name === name);
+  if (done) return { ok: true, line: done.line, points: done.points };
   const rival = person(payload.opponent ?? (typeof round.opponent === "string" ? round.opponent : ""));
   const bump = (who: string, delta: number) => { if (who) store.nickels[who] = (store.nickels[who] ?? 0) + delta; };
   const tally = (who: string, won: boolean) => { if (!who) return; const t = (store.stats[who] ??= { played: 0, wins: 0, losses: 0 }); t.played += 1; if (won) t.wins += 1; else t.losses += 1; };
-  let line: string;
+  const scored = scoreResult(round, payload, { name, rival }, store);
+  const line = scored.line;
   let loser = "";
   if (round.game === "rps") {
     loser = payload.won ? rival : name;
-    bump(name, payload.won ? stake : -stake);
-    bump(rival, payload.won ? -stake : stake);
+    bump(name, payload.won ? scored.total : -scored.moved);
+    bump(rival, payload.won ? -scored.moved : scored.total);
     tally(name, !!payload.won);
     tally(rival, !payload.won);
-    const score = String(payload.score ?? "").replace(/[^0-9]+/, "-");
-    line = (payload.won ? name + " beat " + rival : rival + " beat " + name) + " " + score + " at Rock Paper Scissors. " + stake + " Nickels moved.";
   } else {
     const solved = !/x/i.test(String(payload.tries ?? "X"));
-    bump(name, solved ? stake : 0);
+    bump(name, scored.total);
     tally(name, solved);
     if (!solved) loser = name;
-    line = round.game === "wordle"
-      ? name + (solved ? " solved " + round.title + " in " + String(payload.tries).split("/")[0] + (payload.time ? " (" + payload.time + ")" : "") + ". Plus " + stake + " Nickels." : " missed " + round.title + ". No Nickels today.")
-      : name + " locked in " + round.title + ". Plus " + stake + " Nickels.";
   }
   notePicks(name, payload);
-  store.results.push({ roundId, name, line, at: Date.now(), loser: loser || undefined });
+  store.results.push({ roundId, name, line, at: Date.now(), loser: loser || undefined, ...scored.record });
   save();
-  return { ok: true, line };
+  return { ok: true, line, points: scored.points };
 }
 
 export function nickelStandings(): string {

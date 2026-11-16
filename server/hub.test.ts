@@ -122,7 +122,7 @@ describe("GET /api/hub payload", () => {
     expect(hub.hub(null).me).toBeNull();
     expect(out.league).toEqual({ name: "Cupertino Day Ones", stakes: null, punishment: null });
     expect(Object.keys(out.people[0])).toEqual(["name", "rank", "nickels", "played", "wins", "losses", "title", "face", "last", "balanceCents", "memory"]);
-    expect(out.people[0]).toMatchObject({ name: "Maya", rank: 1, nickels: 20, played: 4, wins: 4, losses: 0, title: "Front runner", face: null, balanceCents: 2000 });
+    expect(out.people[0]).toMatchObject({ name: "Maya", rank: 1, nickels: 24, played: 4, wins: 4, losses: 0, title: "Front runner", face: null, balanceCents: 2000 });
     expect(out.people[0].memory).toContain("Maya calls every game rigged");
     expect(out.people[0].memory).toContain("Maya always picks rock");
     expect(out.people.map((p) => p.name)).toEqual(brain.leaderboard().people.map((p) => p.name));
