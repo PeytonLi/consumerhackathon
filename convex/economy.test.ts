@@ -34,12 +34,21 @@ async function setup(opts: { mode?: "cash" | "points"; house?: number; noConsent
   const play = (roundId: string, name: Name) => t.mutation(api.played, { chatId: CHAT, roundId, phone: PHONES[name], score: 10 });
   const close = (roundId: string) => t.mutation(api.roundClosed, { chatId: CHAT, roundId });
   const loose = (name: Name) => t.query(api.heists, { phone: PHONES[name] });
-  const attempt = (name: Name, stakeId: string, ms: number) => t.mutation(api.heistAttempt, { phone: PHONES[name], stakeId, ms });
+  const start = (name: Name, stakeId: string) => {
+    vi.advanceTimersByTime(1);
+    return t.mutation(api.heistStart, { phone: PHONES[name], stakeId });
+  };
+  const stop = (name: Name, stakeId: string, ms?: number) => t.mutation(api.heistAttempt, { phone: PHONES[name], stakeId, ms });
+  const attempt = async (name: Name, stakeId: string, ms: number) => {
+    await start(name, stakeId);
+    vi.advanceTimersByTime(ms);
+    return stop(name, stakeId, ms);
+  };
   const expire = async () => {
     vi.advanceTimersByTime(economy.HEIST_MS + 1000);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
   };
-  return { t, ...ids, cash, nickels, grant, open, play, close, loose, attempt, expire };
+  return { t, ...ids, cash, nickels, grant, open, play, close, loose, start, stop, attempt, expire };
 }
 
 const stakeOf = async (s: Awaited<ReturnType<typeof setup>>, thief: Name, victim: string) => (await s.loose(thief)).loose.find((l) => l.victim === victim)!;
@@ -95,14 +104,66 @@ describe("heists", () => {
     await expect(s.attempt("sritej", (await stakeOf(s, "maya", "Sritej")).id, 5000)).rejects.toThrow(/rob yourself/);
     const target = await stakeOf(s, "maya", "Sritej");
     expect(target).toMatchObject({ nickels: 1, cents: 5, ghostMs: null, peek: false });
-    expect(await s.attempt("peyton", target.id, 5400)).toEqual({ won: false, ghostMs: economy.DEFAULT_GHOST_MS, took: { nickels: 0, cents: 0 } });
+    expect(await s.attempt("peyton", target.id, 5400)).toEqual({ won: false, ghostMs: economy.DEFAULT_GHOST_MS, ms: 5400, took: { nickels: 0, cents: 0 } });
     await expect(s.attempt("peyton", target.id, 5000)).rejects.toThrow(/already tried/);
-    expect(await s.attempt("maya", target.id, 4900)).toEqual({ won: true, ghostMs: 300, took: { nickels: 1, cents: 5 } });
+    expect(await s.attempt("maya", target.id, 4900)).toEqual({ won: true, ghostMs: 300, ms: 4900, took: { nickels: 1, cents: 5 } });
     await expect(s.attempt("maya", target.id, 5000)).rejects.toThrow(/not loose/);
     expect(await s.cash("maya")).toBe(105);
     expect(await s.cash("sritej")).toBe(95);
     await expect(s.attempt("maya", "garbage", 5000)).rejects.toThrow(/not loose/);
     await expect(s.attempt("maya", target.id, Number.NaN)).rejects.toThrow();
+  });
+
+  it("times every attempt on the server clock from a single start and never shows an unpeeked ghost", async () => {
+    const s = await setup();
+    await s.grant("peyton", "peek", "g1");
+    await s.open("r1");
+    await s.play("r1", "maya");
+    await s.play("r1", "peyton");
+    await s.close("r1");
+    const sritej = (await stakeOf(s, "maya", "Sritej")).id;
+    expect((await s.loose("maya")).loose.map((l) => l.ghostMs)).toEqual([null]);
+    expect((await s.loose("peyton")).loose.map((l) => [l.victim, l.ghostMs])).toEqual([["Sritej", null]]);
+    expect(await s.stop("peyton", sritej, 5000)).toEqual({ won: false, ghostMs: 300, ms: null, took: { nickels: 0, cents: 0 } });
+    await expect(s.start("peyton", sritej)).rejects.toThrow(/already tried/);
+    expect(await s.start("maya", sritej)).toEqual({ ok: true, limitMs: economy.ATTEMPT_MS });
+    await expect(s.start("maya", sritej)).rejects.toThrow(/already tried/);
+    await expect(s.t.mutation(api.heistPeek, { phone: PHONES.maya, stakeId: sritej })).rejects.toThrow(/already tried/);
+    expect((await s.loose("maya")).loose).toEqual([]);
+    vi.advanceTimersByTime(economy.ATTEMPT_MS + 1);
+    expect(await s.stop("maya", sritej, 5000)).toEqual({ won: false, ghostMs: 300, ms: null, took: { nickels: 0, cents: 0 } });
+    await expect(s.stop("maya", sritej, 5000)).rejects.toThrow(/already tried/);
+    expect(await s.cash("sritej")).toBe(95);
+    vi.advanceTimersByTime(DAY);
+    await s.open("r2");
+    await s.close("r2");
+    const ghosts = (await s.t.run((ctx) => ctx.db.query("stakes").collect())).filter((g) => g.roundId === "r2").map((g) => g.ghostMs);
+    expect(ghosts).toEqual([300, 300, 300]);
+
+    const t2 = await setup();
+    await t2.open("r1");
+    await t2.play("r1", "maya");
+    await t2.close("r1");
+    const [fromPeyton, fromSritej] = [(await stakeOf(t2, "maya", "Peyton")).id, (await stakeOf(t2, "maya", "Sritej")).id];
+    await t2.start("maya", fromSritej);
+    vi.advanceTimersByTime(5700);
+    expect(await t2.stop("maya", fromSritej, 5000)).toMatchObject({ won: false, ms: 5700 });
+    await t2.start("maya", fromPeyton);
+    vi.advanceTimersByTime(5150);
+    expect(await t2.stop("maya", fromPeyton, 4900)).toMatchObject({ won: true, ms: 4900 });
+    const rows = await t2.t.run((ctx) => ctx.db.query("heistAttempts").collect());
+    expect(rows.map((a) => [a.ms, a.score, a.won])).toEqual([[5700, 700, false], [4900, 100, true]]);
+  });
+
+  it("caps the client's time at the server's elapsed time", async () => {
+    const s = await setup();
+    await s.open("r1");
+    await s.play("r1", "maya");
+    await s.close("r1");
+    const target = (await stakeOf(s, "maya", "Peyton")).id;
+    await s.start("maya", target);
+    vi.advanceTimersByTime(4000);
+    expect(await s.stop("maya", target, 5000)).toEqual({ won: false, ghostMs: 300, ms: 4000, took: { nickels: 0, cents: 0 } });
   });
 
   it("uses the victim's median heist score as the ghost, then the group median, then 300", async () => {
@@ -315,7 +376,7 @@ describe("a simulated week for three players", () => {
       if (d === 1) {
         const target = await stakeOf(s, "maya", "Sritej");
         await s.t.mutation(api.heistPeek, { phone: PHONES.maya, stakeId: target.id });
-        expect(await s.attempt("maya", target.id, 5000)).toEqual({ won: true, ghostMs: 300, took: { nickels: 2, cents: 5 } });
+        expect(await s.attempt("maya", target.id, 5000)).toEqual({ won: true, ghostMs: 300, ms: 5000, took: { nickels: 2, cents: 5 } });
       }
       if (d === 2) {
         const target = await stakeOf(s, "peyton", "Maya");

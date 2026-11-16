@@ -65,14 +65,27 @@ describe("economy routes", () => {
     expect(await onRoundClosed(CHAT, "r1")).toMatchObject({ loose: ["Dev"], locked: [] });
     const list = await (await get("/api/heist", MAYA))!.json();
     expect(list.loose).toEqual([expect.objectContaining({ victim: "Dev", nickels: 1, cents: 5, ghostMs: null, peek: false })]);
-    expect((await post("/api/heist/" + list.loose[0].id + "/attempt", MAYA, {}))!.status).toBe(400);
     expect((await post("/api/heist/" + list.loose[0].id + "/peek", MAYA))!.status).toBe(409);
-    const won = await (await post("/api/heist/" + list.loose[0].id + "/attempt", MAYA, { ms: 5050 }))!.json();
-    expect(won).toEqual({ won: true, ghostMs: 300, took: { nickels: 1, cents: 5 } });
+    vi.advanceTimersByTime(1);
+    expect(await (await post("/api/heist/" + list.loose[0].id + "/start", MAYA, { phone: DEV }))!.json()).toEqual({ ok: true, limitMs: 15000 });
+    const twice = await post("/api/heist/" + list.loose[0].id + "/start", MAYA);
+    expect([twice!.status, (await twice!.json()).error]).toEqual([409, "You already tried for this nickel"]);
+    vi.advanceTimersByTime(5050);
+    const won = await (await post("/api/heist/" + list.loose[0].id + "/attempt", MAYA, { ms: "5000" }))!.json();
+    expect(won).toEqual({ won: true, ghostMs: 300, ms: 5050, took: { nickels: 1, cents: 5 } });
     const again = await post("/api/heist/" + list.loose[0].id + "/attempt", MAYA, { ms: 5000 });
     expect([again!.status, (await again!.json()).error]).toEqual([409, "That nickel is not loose anymore"]);
     expect(await onHeadToHead(CHAT, MAYA, DEV)).toEqual({ nickels: 0, cents: 0 });
     expect(await onRoundOpened("unknown-chat", "r1")).toBeNull();
     expect((await seasonStats(CHAT))!.map((s) => [s.name, s.steals, s.timesRobbed])).toEqual([["Maya", 1, 0], ["Dev", 0, 1]]);
+  });
+
+  it("never passes an unpeeked ghost through, whatever the backend returns", async () => {
+    useBackend({ run: async () => ({ loose: [{ id: "a", peek: false, ghostMs: 212 }, { id: "b", peek: true, ghostMs: 148 }], perks: { peek: 0 } }) });
+    try {
+      expect((await (await get("/api/heist", MAYA))!.json()).loose).toEqual([{ id: "a", peek: false, ghostMs: null }, { id: "b", peek: true, ghostMs: 148 }]);
+    } finally {
+      useBackend({ run: (kind, name, args) => (kind === "query" ? t.query(makeFunctionReference<"query">(name), args) : t.mutation(makeFunctionReference<"mutation">(name), args)) });
+    }
   });
 });

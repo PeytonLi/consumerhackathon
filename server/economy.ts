@@ -42,7 +42,7 @@ export async function economyRoute(request: Request, sessionPhone: string | null
   const phone = trustedPhone(request, body && typeof body === "object" ? body : {}, url) ?? sessionPhone ?? null;
   if (!phone) return json({ ok: false, error: "Open this from your Nickel link." }, 401);
   if (post && limited("economy:" + phone, 30)) return json({ ok: false, error: "Slow down. Try again in a minute." }, 429);
-  const heist = path.match(/^\/api\/heist\/([A-Za-z0-9_-]+)\/(attempt|peek)$/);
+  const heist = path.match(/^\/api\/heist\/([A-Za-z0-9_-]+)\/(start|attempt|peek)$/);
   try {
     if (path === "/api/chest" && !post) return json(await call("query", "chest", { phone }));
     if (path === "/api/chest/open" && post) {
@@ -50,12 +50,15 @@ export async function economyRoute(request: Request, sessionPhone: string | null
       return json({ result: opened.result, line: opened.line });
     }
     if (path === "/api/chest/skip" && post) return json(await call("mutation", "chestSkip", { phone }));
-    if (path === "/api/heist" && !post) return json(await call("query", "heists", { phone }));
+    if (path === "/api/heist" && !post) {
+      const state = await call("query", "heists", { phone });
+      return json({ ...state, loose: state.loose.map((l: { peek: boolean; ghostMs: number | null }) => ({ ...l, ghostMs: l.peek ? l.ghostMs : null })) });
+    }
     if (heist && post && heist[2] === "peek") return json(await call("mutation", "heistPeek", { phone, stakeId: heist[1] }));
+    if (heist && post && heist[2] === "start") return json(await call("mutation", "heistStart", { phone, stakeId: heist[1] }));
     if (heist && post) {
-      const ms = Number(body.ms);
-      if (!Number.isFinite(ms)) return json({ ok: false, error: "Send the time you stopped the clock at." }, 400);
-      return json(await call("mutation", "heistAttempt", { phone, stakeId: heist[1], ms }));
+      const ms = typeof body.ms === "number" && Number.isFinite(body.ms) ? body.ms : undefined;
+      return json(await call("mutation", "heistAttempt", { phone, stakeId: heist[1], ...(ms === undefined ? {} : { ms }) }));
     }
   } catch (e) {
     return json({ ok: false, error: reason(e) }, backend ? 409 : 503);

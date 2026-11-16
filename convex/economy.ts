@@ -10,6 +10,8 @@ export const DAILY_CENTS = 5;
 export const HEIST_MS = 10 * 60 * 1000;
 export const TARGET_MS = 5000;
 export const DEFAULT_GHOST_MS = 300;
+export const ATTEMPT_MS = 15000;
+export const NETWORK_MS = 400;
 export const CHEST_WEEKLY_CENTS = 50;
 export const PERKS = ["lock", "double_steal", "peek", "shield"] as const;
 export type Perk = (typeof PERKS)[number];
@@ -99,10 +101,10 @@ async function canStake(ctx: QueryCtx, player: Doc<"players">, cents: number, no
 }
 
 async function ghostFor(ctx: QueryCtx, groupId: Id<"groups">, victimId: Id<"players">) {
-  const own = await ctx.db.query("heistAttempts").withIndex("by_player", (q) => q.eq("playerId", victimId)).order("desc").take(10);
-  if (own.length) return median(own.map((a) => a.score));
-  const group = await ctx.db.query("heistAttempts").withIndex("by_group", (q) => q.eq("groupId", groupId)).order("desc").take(50);
-  return group.length ? median(group.map((a) => a.score)) : DEFAULT_GHOST_MS;
+  const own = await ctx.db.query("heistAttempts").withIndex("by_player", (q) => q.eq("playerId", victimId)).order("desc").filter((q) => q.neq(q.field("score"), undefined)).take(10);
+  if (own.length) return median(own.map((a) => a.score!));
+  const group = await ctx.db.query("heistAttempts").withIndex("by_group", (q) => q.eq("groupId", groupId)).order("desc").filter((q) => q.neq(q.field("score"), undefined)).take(50);
+  return group.length ? median(group.map((a) => a.score!)) : DEFAULT_GHOST_MS;
 }
 
 export async function openRound(ctx: MutationCtx, group: Doc<"groups">, roundId: string, phones?: string[]) {
@@ -198,9 +200,14 @@ async function heistable(ctx: QueryCtx, player: Doc<"players">, stakeId: string,
   if (stake.playerId === player._id) throw new Error("You cannot rob yourself");
   const mine = await ctx.db.query("stakes").withIndex("by_round_player", (q) => q.eq("groupId", stake.groupId).eq("roundId", stake.roundId).eq("playerId", player._id)).unique();
   if (!mine?.playedAt) throw new Error("Only players who played this round can steal");
-  if (await ctx.db.query("heistAttempts").withIndex("by_stake_player", (q) => q.eq("stakeId", stake._id).eq("playerId", player._id)).first()) throw new Error("You already tried for this nickel");
-  return stake;
+  const attempt = await ctx.db.query("heistAttempts").withIndex("by_stake_player", (q) => q.eq("stakeId", stake._id).eq("playerId", player._id)).first();
+  return { stake, attempt };
 }
+
+const untried = ({ stake, attempt }: Awaited<ReturnType<typeof heistable>>) => {
+  if (attempt) throw new Error("You already tried for this nickel");
+  return stake;
+};
 
 const peekKey = (stakeId: Id<"stakes">, playerId: Id<"players">) => "peek:" + stakeId + ":" + playerId;
 
@@ -209,7 +216,7 @@ export async function looseFor(ctx: QueryCtx, player: Doc<"players">, now: numbe
   for (const m of await ctx.db.query("groupMembers").withIndex("by_player", (q) => q.eq("playerId", player._id)).collect()) {
     if (m.leftAt) continue;
     for (const stake of await ctx.db.query("stakes").withIndex("by_group_status", (q) => q.eq("groupId", m.groupId).eq("status", "loose")).collect()) {
-      const ok = await heistable(ctx, player, stake._id, now).then(() => true, () => false);
+      const ok = await heistable(ctx, player, stake._id, now).then(untried).then(() => true, () => false);
       if (!ok) continue;
       const peek = !!(await ctx.db.query("perkLog").withIndex("by_key", (q) => q.eq("key", peekKey(stake._id, player._id))).unique());
       const victim = await ctx.db.get(stake.playerId);
@@ -220,20 +227,34 @@ export async function looseFor(ctx: QueryCtx, player: Doc<"players">, now: numbe
 }
 
 export async function peekHeist(ctx: MutationCtx, player: Doc<"players">, stakeId: string) {
-  const stake = await heistable(ctx, player, stakeId, Date.now());
+  const stake = untried(await heistable(ctx, player, stakeId, Date.now()));
   if (!(await addPerk(ctx, player._id, "peek", -1, "peek", peekKey(stake._id, player._id)))) throw new Error("You have no Peek left");
   return { ghostMs: stake.ghostMs ?? DEFAULT_GHOST_MS };
 }
 
-export async function attemptHeist(ctx: MutationCtx, player: Doc<"players">, stakeId: string, ms: number) {
-  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0 || ms > 60000) throw new Error("That time does not count");
+export async function startHeist(ctx: MutationCtx, player: Doc<"players">, stakeId: string) {
   const now = Date.now();
-  const stake = await heistable(ctx, player, stakeId, now);
+  const stake = untried(await heistable(ctx, player, stakeId, now));
+  await ctx.db.insert("heistAttempts", { stakeId: stake._id, groupId: stake.groupId, playerId: player._id, victimId: stake.playerId, ghostMs: stake.ghostMs ?? DEFAULT_GHOST_MS, startedAt: now, createdAt: now });
+  return { ok: true, limitMs: ATTEMPT_MS };
+}
+
+export async function attemptHeist(ctx: MutationCtx, player: Doc<"players">, stakeId: string, ms?: number) {
+  const now = Date.now();
+  const { stake, attempt } = await heistable(ctx, player, stakeId, now);
+  if (attempt?.won !== undefined) throw new Error("You already tried for this nickel");
   const ghostMs = stake.ghostMs ?? DEFAULT_GHOST_MS;
-  const score = Math.round(Math.abs(ms - TARGET_MS));
+  if (!attempt?.startedAt || now - attempt.startedAt > ATTEMPT_MS) {
+    if (attempt) await ctx.db.patch(attempt._id, { won: false });
+    else await ctx.db.insert("heistAttempts", { stakeId: stake._id, groupId: stake.groupId, playerId: player._id, victimId: stake.playerId, ghostMs, won: false, createdAt: now });
+    return { won: false, ghostMs, ms: null, took: { nickels: 0, cents: 0 } };
+  }
+  const elapsed = now - attempt.startedAt;
+  const stopped = Math.round(typeof ms === "number" && ms >= elapsed - NETWORK_MS && ms <= elapsed ? ms : elapsed);
+  const score = Math.abs(stopped - TARGET_MS);
   const won = score < ghostMs;
-  await ctx.db.insert("heistAttempts", { stakeId: stake._id, groupId: stake.groupId, playerId: player._id, victimId: stake.playerId, ms: Math.round(ms), score, ghostMs, won, createdAt: now });
-  if (!won) return { won, ghostMs, took: { nickels: 0, cents: 0 } };
+  await ctx.db.patch(attempt._id, { ms: stopped, score, won });
+  if (!won) return { won, ghostMs, ms: stopped, took: { nickels: 0, cents: 0 } };
   await ctx.db.patch(stake._id, { status: "stolen", thiefId: player._id, settledAt: now });
   await giveBack(ctx, stake, player._id, "steal", "steal", "steal:" + stake._id);
   let nickels = stake.nickels;
@@ -242,7 +263,7 @@ export async function attemptHeist(ctx: MutationCtx, player: Doc<"players">, sta
     await postNickels(ctx, { from: playerWallet(stake.playerId), to: playerWallet(player._id), amount: 1, reason: "double_steal", key: double, groupId: stake.groupId, roundId: stake.roundId });
     nickels += 1;
   }
-  return { won, ghostMs, took: { nickels, cents: stake.cents } };
+  return { won, ghostMs, ms: stopped, took: { nickels, cents: stake.cents } };
 }
 
 export async function chestSeed(playerId: string, day: string): Promise<Uint8Array> {
@@ -361,7 +382,8 @@ export const chestOpen = mutation({ args: asPlayer, handler: async (ctx, { secre
 export const chestSkip = mutation({ args: asPlayer, handler: async (ctx, { secret, phone }) => (assertServer(secret), skipChest(ctx, await playerByPhone(ctx, phone))) });
 export const heists = query({ args: asPlayer, handler: async (ctx, { secret, phone }) => (assertServer(secret), looseFor(ctx, await playerByPhone(ctx, phone), Date.now())) });
 export const heistPeek = mutation({ args: { ...asPlayer, stakeId: v.string() }, handler: async (ctx, { secret, phone, stakeId }) => (assertServer(secret), peekHeist(ctx, await playerByPhone(ctx, phone), stakeId)) });
-export const heistAttempt = mutation({ args: { ...asPlayer, stakeId: v.string(), ms: v.number() }, handler: async (ctx, { secret, phone, stakeId, ms }) => (assertServer(secret), attemptHeist(ctx, await playerByPhone(ctx, phone), stakeId, ms)) });
+export const heistStart = mutation({ args: { ...asPlayer, stakeId: v.string() }, handler: async (ctx, { secret, phone, stakeId }) => (assertServer(secret), startHeist(ctx, await playerByPhone(ctx, phone), stakeId)) });
+export const heistAttempt = mutation({ args: { ...asPlayer, stakeId: v.string(), ms: v.optional(v.number()) }, handler: async (ctx, { secret, phone, stakeId, ms }) => (assertServer(secret), attemptHeist(ctx, await playerByPhone(ctx, phone), stakeId, ms)) });
 
 export const roundOpened = mutation({
   args: { ...asGroup, roundId: v.string(), members: v.optional(v.array(v.string())) },

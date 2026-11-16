@@ -67,10 +67,11 @@ export const economyTables = {
     groupId: v.id("groups"),
     playerId: v.id("players"),
     victimId: v.id("players"),
-    ms: v.number(),
-    score: v.number(),
+    ms: v.optional(v.number()),
+    score: v.optional(v.number()),
     ghostMs: v.number(),
-    won: v.boolean(),
+    won: v.optional(v.boolean()),
+    startedAt: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_stake_player", ["stakeId", "playerId"])

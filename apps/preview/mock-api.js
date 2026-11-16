@@ -42,6 +42,7 @@
   let db;
   try { db = JSON.parse(sessionStorage.getItem(key)) || seed(); } catch { db = seed(); }
   db.done ??= [];
+  db.heist.started ??= {};
   const save = () => sessionStorage.setItem(key, JSON.stringify(db));
   const credit = (amountCents, reason, note = "") => {
     db.wallet.balanceCents += amountCents;
@@ -85,14 +86,32 @@
       return { result };
     }],
     ["POST", /^\/api\/chest\/skip$/, () => { Object.assign(db.chest, { available: false, skipped: true }); return { ok: true }; }],
-    ["GET", /^\/api\/heist$/, () => ({ loose: db.heist.loose.filter((l) => l.endsAt > Date.now()), perks: db.heist.perks })],
+    ["GET", /^\/api\/heist$/, () => ({ loose: db.heist.loose.filter((l) => l.endsAt > Date.now() && !db.heist.started[l.id]).map((l) => ({ ...l, ghostMs: l.peek ? l.ghostMs : null })), perks: db.heist.perks })],
+    ["POST", /^\/api\/heist\/([\w-]+)\/peek$/, (b, id) => {
+      const target = db.heist.loose.find((l) => l.id === id);
+      if (!target) return [404, { error: "That nickel is gone" }];
+      if (db.heist.started[id]) return [409, { error: "You already tried for this nickel" }];
+      if (!target.peek && db.heist.perks.peek < 1) return [409, { error: "You have no Peek left" }];
+      if (!target.peek) db.heist.perks.peek -= 1;
+      target.peek = true;
+      return { ghostMs: target.ghostMs };
+    }],
+    ["POST", /^\/api\/heist\/([\w-]+)\/start$/, (b, id) => {
+      if (!db.heist.loose.some((l) => l.id === id)) return [404, { error: "That nickel is gone" }];
+      if (db.heist.started[id]) return [409, { error: "You already tried for this nickel" }];
+      db.heist.started[id] = Date.now();
+      return { ok: true, limitMs: 15000 };
+    }],
     ["POST", /^\/api\/heist\/([\w-]+)\/attempt$/, (b, id) => {
       const target = db.heist.loose.find((l) => l.id === id);
-      if (!target || !Number.isFinite(b.ms)) return [404, { error: "That nickel is gone" }];
+      if (!target) return [404, { error: "That nickel is gone" }];
       db.heist.loose = db.heist.loose.filter((l) => l !== target);
-      const won = Math.abs(b.ms - 5000) < target.ghostMs;
+      const elapsed = Date.now() - (db.heist.started[id] ?? -Infinity);
+      if (!(elapsed <= 15000)) return { won: false, ghostMs: target.ghostMs, ms: null, took: { nickels: 0, cents: 0 } };
+      const ms = Math.round(Number.isFinite(b.ms) && b.ms >= elapsed - 400 && b.ms <= elapsed ? b.ms : elapsed);
+      const won = Math.abs(ms - 5000) < target.ghostMs;
       if (won) credit(target.cents, "steal", target.victim);
-      return { won, ghostMs: target.ghostMs, took: won ? { nickels: target.nickels, cents: target.cents } : { nickels: 0, cents: 0 } };
+      return { won, ghostMs: target.ghostMs, ms, took: won ? { nickels: target.nickels, cents: target.cents } : { nickels: 0, cents: 0 } };
     }],
   ];
 
