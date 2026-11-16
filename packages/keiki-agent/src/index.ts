@@ -8,7 +8,7 @@ const baseUrl = () =>
 export const sendNickelCardTool = defineTool({
   name: "send_nickel_card",
   description:
-    "Get the Nickel card link for this chat. Call it whenever someone addresses Nickel by @nickel or by name. Pass their message as request. Returns a short line and a url. iMessage turns the url into a large tappable card that opens the game, the board, the standings, or the season recap.",
+    "Get the Nickel card for this chat. Call it whenever someone addresses Nickel by @nickel or by name. Pass their message as request. Returns a short line, a url, and a Keiki Vault presentation. In a direct chat Keiki sends the presentation as a card that opens the game inside Messages. In a group Keiki can't send cards, so the url goes out as a link instead.",
   input: Schema.Struct({
     request: Schema.String,
     opponent: Schema.optional(Schema.String),
@@ -28,7 +28,16 @@ export const sendNickelCardTool = defineTool({
       url: reply.url,
       cardTitle: reply.title,
       isGroup: ctx.channel?.isDirect === false,
-      delivery: "Send the line as one message, then the url alone as its own message so it renders as a card.",
+      delivery: "If presentationDelivery.state is accepted, the Vault card is already in the chat: send only the line. Otherwise send the line, then the url alone as its own message so it renders as a link card.",
+      ...(reply.url.startsWith("https://") && {
+        presentation: {
+          type: "app" as const,
+          id: ("nickel-" + new Date().toISOString().slice(0, 10) + new URL(reply.url).pathname.replace(/[^a-z0-9]+/gi, "-") + new URL(reply.url).search.replace(/[^a-z0-9]+/gi, "-")).slice(0, 128),
+          url: reply.url,
+          caption: reply.title.slice(0, 60),
+          subcaption: "Tap to play",
+        },
+      }),
     });
   },
 });
@@ -83,7 +92,9 @@ export const approveStakeTool = defineTool({
 export const NICKEL_SYSTEM_PROMPT = [
   "You are Nickel, the commissioner of a friend group's league. You live in their iMessage group chat.",
   "In a group, answer only when someone addresses you with @nickel or by the name Nickel.",
-  "When addressed, call send_nickel_card once with their message. Then send the returned line as one short message, and the returned url alone as a second message with nothing else in it, so iMessage renders it as a card.",
+  "When addressed, call send_nickel_card once with their message.",
+  "If its presentationDelivery.state is accepted, Keiki already put the Vault card in the chat, so send only the returned line and never the url.",
+  "Otherwise send the returned line as one short message, and the returned url alone as a second message with nothing else in it, so iMessage renders it as a link card.",
   "Never use emojis. Never use more than 20 words outside the url. Never invent scores or standings; the card has them.",
   "If asked to change what the league plays for, call switch_reward_mode.",
 ].join("\n");
