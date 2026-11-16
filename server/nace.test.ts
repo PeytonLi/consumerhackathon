@@ -145,7 +145,7 @@ describe("intent routing", () => {
     reply(drex({ intent: "invite" }));
     expect((await turn("nickel how do my roommates get in on this")).line).toMatch(/^Everyone: text /);
     reply(drex({ intent: "buy_in" }));
-    expect((await turn("nickel lets put 10 on it")).line).toBe("Sritej proposed a $10 buy-in. Say \"Nickel, I'm in\" to agree. Nobody pays until you tap the card.");
+    expect((await turn("nickel lets put 10 on it")).line).toBe("Sritej proposed a $10 buy-in. Say \"Nickel, I'm in\" to agree. The buy-in comes out of your wallet.");
     reply(drex({ intent: "payments" }));
     expect((await turn("nickel how much have i made")).line).toBe("Sritej, your balance is $0. It stays on the Nickel ledger.");
     reply(drex({ intent: "memory" }));
