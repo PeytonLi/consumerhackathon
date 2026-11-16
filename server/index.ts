@@ -1,5 +1,6 @@
 import { payMode, startCheckout, confirmCheckout, researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick } from "./brain.js";
 import { hub } from "./hub.js";
+import { authGate, claimStatus, turnTrusted } from "./auth.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -35,11 +36,15 @@ console.log("Nickel state: " + (await hydrate()));
 Bun.serve({
   port,
   hostname: "0.0.0.0",
-  async fetch(request) {
+  maxRequestBodySize: 1000000,
+  async fetch(incoming, server) {
+    const gate = await authGate(incoming, server.requestIP(incoming)?.address ?? "");
+    if (gate instanceof Response) return gate;
+    const { request, session } = gate;
     const url = new URL(request.url);
     const path = url.pathname;
     const base = origin(request);
-    const me = getProfile(request.headers.get("cookie")?.match(/(?:^|;\s*)nickel_me=([a-z0-9-]+)/)?.[1] ?? "");
+    const me = getProfile(session?.token ?? "");
     const page = (body: string) => html(body.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n<script>window.ME = ' + inline(me) + ";</script>"));
 
     if (request.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type" } });
@@ -61,7 +66,7 @@ Bun.serve({
         const found = await researchPunishment(text);
         if (found) text = "nickel punishment is " + found;
       }
-      const turn = handleTurn({ hasPhoto, text, sender: body.sender, senderPhone: body.senderPhone, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined });
+      const turn = handleTurn({ trusted: turnTrusted(request), hasPhoto, text, sender: body.sender, senderPhone: body.senderPhone, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined });
       if (turn.art) await Promise.race([generateArt(turn.art.token, turn.art.role), new Promise((r) => setTimeout(r, 40000))]);
       if (turn.addressed && turn.line && Number(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false })) >= 18) {
         const due = dueNudges();
@@ -111,8 +116,8 @@ Bun.serve({
     const mePage = path.match(/^\/me\/([a-z0-9-]+)\/?$/);
     if (mePage) {
       const profile = getProfile(mePage[1]);
-      const body = (await Bun.file(site + "profile.html").text()).replace("<!--PROFILE-->", (profile ? headTags(profileCard(profile), base, "") : "") + "\n<script>window.PROFILE = " + inline(profile) + ";</script>");
-      return new Response(body, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...(profile ? { "set-cookie": "nickel_me=" + profile.token + "; Path=/; Max-Age=31536000; SameSite=Lax" } : {}) } });
+      const body = (await Bun.file(site + "profile.html").text()).replace("<!--PROFILE-->", (profile ? headTags(profileCard(profile), base, "") : "") + "\n<script>window.PROFILE = " + inline(profile) + "; window.CLAIM = " + inline(claimStatus(session, mePage[1], url.searchParams.get("k"))) + ";</script>");
+      return page(body);
     }
 
     const board = () => { ensureArt(); const b = leaderboard(); return { ...b, cards: leaderboardImages(), order: [...b.people].reverse().map((p) => p.name) }; };

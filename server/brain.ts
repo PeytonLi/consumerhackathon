@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { hubTurn, notePicks } from "./hub.js";
 import { scoreResult, type Points, type ResultPayload } from "./points.js";
+import { attachAuth, claimPath } from "./auth.js";
 
 export interface Round {
   id: string;
@@ -66,6 +67,7 @@ store.quips ??= 0;
 store.art ??= {};
 store.nudged ??= {};
 store.profiles ??= {};
+attachAuth(() => store, save);
 
 function save() {
   mkdirSync(dataDir, { recursive: true });
@@ -647,7 +649,7 @@ function setPunishment(text: string): string {
   return store.punishment!;
 }
 
-export function recordResult(roundId: string, payload: ResultPayload): { ok: boolean; line?: string; points?: Points } {
+export function recordResult(roundId: string, payload: ResultPayload & { verified?: boolean }): { ok: boolean; line?: string; points?: Points } {
   const round = getRound(roundId);
   const name = person(payload.name);
   if (!round || !name) return { ok: false };
@@ -672,7 +674,7 @@ export function recordResult(roundId: string, payload: ResultPayload): { ok: boo
     if (!solved) loser = name;
   }
   notePicks(name, payload);
-  store.results.push({ roundId, name, line, at: Date.now(), loser: loser || undefined, ...scored.record });
+  store.results.push({ roundId, name, line, at: Date.now(), loser: loser || undefined, ...scored.record, ...(payload.verified === true ? {} : { unverified: true }) });
   save();
   return { ok: true, line, points: scored.points };
 }
@@ -682,7 +684,7 @@ export function nickelStandings(): string {
   return rows.length ? "Nickels: " + rows.slice(0, 6).map(([who, n]) => who + " " + (n > 0 ? "+" : "") + n).join(", ") + "." : "No Nickels have moved yet. First to finish a game takes the lead.";
 }
 
-export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string; hasPhoto?: boolean }): TurnReply {
+export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string; hasPhoto?: boolean; trusted?: boolean }): TurnReply {
   const text = input.text.trim();
   const lower = text.toLowerCase();
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
@@ -705,6 +707,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     card: { kicker: (card.kicker + " \u00b7 " + card.league).toUpperCase(), title: card.title, sub: card.sub, path: card.path },
   });
   const latest = store.latestFantasy ? store.fantasy[store.latestFantasy] : null;
+  const claimCard = (p: Profile) => (input.trusted ? { ...profileCard(p), path: claimPath(p.token) } : profileCard(p));
 
   if (!/challenge|fantasy|buy.?in|who won|standings|leaderboard|punish|\bplay\b|i'?m in\b|\$\d/.test(lower)) {
     if (/\b(you suck|u suck|sucks?|trash|garbage|stupid|dumb|idiot|shut up|stfu|fuck (you|u|off)|hate (you|u)|useless|the worst|clown|bozo|loser)\b/.test(lower)) {
@@ -720,7 +723,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   const wantsArt = /\b(image|picture|pic|photo|draw|show|generate|make)\b.*\b(me|i|myself|my)\b/.test(lower) && /\b(los\w*|last|cry\w*|win\w*|won|first|crown\w*|champ\w*|generate|draw)\b/.test(lower);
   if (input.hasPhoto || wantsArt) {
     const mine = profileFor(phone, sender);
-    if (!mine.photo) return reply("I need your face first. Text me a photo of yourself, or add one on your card.", profileCard(mine));
+    if (!mine.photo) return reply("I need your face first. Text me a photo of yourself, or add one on your card.", claimCard(mine));
     const role = input.hasPhoto || /\b(win\w*|won|first|crown\w*|champ\w*)\b/.test(lower) ? "winner" : "loser";
     const who = mine.name || "you";
     return { addressed: true, art: { token: mine.token, role }, images: [base + "/card/me/" + mine.token + "/" + role + ".png?v=" + Date.now().toString(36)], line: input.hasPhoto ? (mine.name ? "Got it, " + mine.name + ". That face is on the leaderboard now. Here is you with the crown." : "Got the photo. Now tell me your name: Nickel, I'm Sritej.") : role === "loser" ? "Here is " + who + " in last place." : "Here is " + who + " with the crown." };
@@ -738,7 +741,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
 
   if (/\b(profile|set ?me ?up|sign ?me ?up|sign ?up|add me|player card|my (photo|picture|pic|card|account))\b/.test(lower) && !/buy.?in/.test(lower)) {
     const mine = profileFor(phone, sender);
-    return reply((sender ? sender + ", your" : "Your") + " player card: name and photo. One time, then every link opens as you.", profileCard(mine));
+    return reply((sender ? sender + ", your" : "Your") + " player card: name and photo. One time, then every link opens as you.", claimCard(mine));
   }
 
   if (/\b(demo|fake|test|real|live|stripe)\b.*\bpay(ment)?s?\b|\bpay(ment)?s?\b.*\b(demo|fake|test|real|live|stripe)\b/.test(lower) && !/\$\s?\d/.test(lower)) {
@@ -825,8 +828,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     const round = game === "wordle" && !/new/.test(lower) ? getRound("wordle-212")! : createRound(game, sender, "");
     return reply(round.title + " is live. " + (round.seconds ? round.seconds + " seconds on the clock." : "Best of 3."), roundCard(round));
   }
-  if (introduced) return reply("Got it, " + introduced + ". Add your photo here, one time. After that every link opens as you.", profileCard(profileFor(phone, introduced)));
-  if (phone && !sender) return reply("Welcome to Nickel. Set up your player card: name and photo. One time, then every link opens as you.", profileCard(profileFor(phone, "")));
+  if (introduced) return reply("Got it, " + introduced + ". Add your photo here, one time. After that every link opens as you.", claimCard(profileFor(phone, introduced)));
+  if (phone && !sender) return reply("Welcome to Nickel. Set up your player card: name and photo. One time, then every link opens as you.", claimCard(profileFor(phone, "")));
   const n = store.quips;
   const line = quip(COMEBACKS) + " Try: challenge Maya, who won, punishment, or a fantasy league for anything.";
   save();

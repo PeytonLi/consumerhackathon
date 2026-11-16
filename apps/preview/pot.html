@@ -51,7 +51,7 @@ const hue = (name) => HUES[[...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 
 const avatar = (name, cls = "") => '<span class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + esc(name[0]) + "</span>";
 const money = (c) => "$" + (c % 100 ? (c / 100).toFixed(2) : c / 100);
 const meKey = "nickel.me." + (params.get("via") ?? "link");
-const me = () => (!params.get("via") && window.ME && window.ME.name) || sessionStorage.getItem(meKey);
+const me = () => (window.ME && window.ME.name) || sessionStorage.getItem(meKey);
 if (params.get("u")) sessionStorage.setItem(meKey, params.get("u").replace(/[^A-Za-z]/g, "").replace(/^./, (c) => c.toUpperCase()));
 
 function toast(text) { const t = $("toast"); t.textContent = text; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 1800); }
@@ -59,6 +59,7 @@ async function call(body) {
   const res = await fetch("/api/pot/" + P.id, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
   const data = await res.json();
   if (data.pot) P = data.pot;
+  if (!data.ok && data.error) toast(data.error);
   return data;
 }
 
