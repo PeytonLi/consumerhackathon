@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>Nickel Game</title>
+<!--GAME-->
+<link rel="stylesheet" href="/nickel.css">
+<style>
+  :root { --game: light-dark(#af52de, #bf5af2); }
+  .stage.list { justify-content: flex-start; align-items: stretch; overflow-y: auto; gap: var(--s3); padding: var(--s2) 0 var(--s3); -webkit-overflow-scrolling: touch; }
+  .stage .t-title, .stage .t-label, .stage .t-display, .stage .t-head { text-align: center; }
+  .head { display: flex; flex-direction: column; align-items: center; gap: var(--s2); flex: none; }
+  .answer {
+    width: 100%; height: 72px; border: 0; border-radius: var(--r-big); background: var(--surface); text-align: center; flex: none;
+    font: 600 24px/1 var(--round); color: var(--ink); -webkit-user-select: text; user-select: text; outline: none; padding: 0 var(--s4);
+    box-shadow: inset 0 0 0 2px transparent; transition: box-shadow var(--t-lock);
+  }
+  .answer.small { height: 56px; font: 500 17px/1 var(--font); }
+  .answer:focus { box-shadow: inset 0 0 0 2px var(--game); }
+  .answer::placeholder { color: var(--ink-3); font-weight: 500; }
+  .people { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px 12px; width: 100%; max-width: 320px; }
+  .person { display: flex; flex-direction: column; align-items: center; gap: 8px; font: 500 15px/1 var(--font); color: var(--ink-2); }
+  .person.on { color: var(--ink); font-weight: 600; }
+  .person.on .avatar { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5.5px var(--you); }
+  .people.picked .person:not(.on) { opacity: .45; }
+  .chips { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: center; flex: none; }
+  .chip { height: 36px; padding: 0 14px; border-radius: var(--r-pill); background: var(--surface); font: 600 14px/1 var(--font); color: var(--ink-2); display: inline-flex; align-items: center; gap: 5px; }
+  .chip .i { display: none; font-size: 14px; }
+  .chip.on { background: var(--you); color: var(--on-color); }
+  .chip.on .i { display: block; }
+  .chip:active { transform: scale(.95); }
+  .choices { display: grid; gap: 10px; width: 100%; }
+  .choices.two { grid-template-columns: repeat(2, 1fr); }
+  .choices.nine { grid-template-columns: repeat(3, 1fr); max-width: 320px; }
+  .choice {
+    height: 96px; border-radius: var(--r-big); background: var(--surface); font: 600 20px/1 var(--font);
+    transition: transform 350ms var(--spring), opacity var(--t-lock), box-shadow var(--t-lock);
+  }
+  .choices.nine .choice { height: 84px; font: 700 28px/1 var(--round); }
+  .choice:active { transform: scale(.94); transition-duration: var(--t-press); }
+  .choice.on { box-shadow: inset 0 0 0 3px var(--you); }
+  .choices.picked .choice:not(.on) { opacity: .45; }
+  .pad {
+    width: min(240px, 60vw); aspect-ratio: 1; border-radius: 50%; background: var(--surface); color: var(--ink-3);
+    font: 600 22px/1 var(--font); display: grid; place-items: center; box-shadow: inset 0 0 0 2px var(--hair);
+    transition: background var(--t-press) var(--ease), color var(--t-press) var(--ease);
+  }
+  .pad.go { background: var(--you); color: var(--on-color); box-shadow: none; }
+  .rowi { flex: none; }
+  .rowi.tall { height: auto; min-height: 64px; padding-top: 10px; padding-bottom: 10px; }
+  .rowi .who { flex: 1; min-width: 0; }
+  .rowi .who b { display: block; }
+  .rowi .who span { display: block; margin-top: 4px; font: 500 12px/1.3 var(--font); color: var(--ink-2); overflow-wrap: anywhere; }
+  .rowi .avatar { width: 30px; height: 30px; font-size: 13px; }
+  .rowi .i { font-size: 18px; color: var(--you); }
+  .rowi.line { height: auto; min-height: 52px; padding: 12px var(--s4); font: 500 16px/1.3 var(--font); text-align: left; width: 100%; }
+  .rowi.line span { flex: 1; overflow-wrap: anywhere; }
+  .rowi.line .i { visibility: hidden; }
+  .rowi.line.on { box-shadow: inset 0 0 0 2px var(--you); }
+  .rowi.line.on .i { visibility: visible; }
+  .seg { display: flex; flex: none; padding: 3px; border-radius: var(--r-pill); background: var(--surface-2); }
+  .seg button { flex: 1; height: 34px; border-radius: var(--r-pill); font: 600 14px/1 var(--font); color: var(--ink-2); transition: background var(--t-lock) var(--ease); }
+  .seg button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgb(0 0 0 / .12); }
+  .halo { display: grid; place-items: center; width: 96px; height: 96px; border-radius: 50%; color: var(--ink-3); background: var(--surface); font-size: 40px; }
+  .rule .t-head { text-align: left; font-weight: 500; font-size: 16px; }
+  a.primary, a.secondary { text-decoration: none; }
+  .secondary:disabled { color: var(--ink-3); }
+  .bar .name b, .bar .name span { overflow: hidden; text-overflow: ellipsis; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="bar">
+    <div id="me"></div>
+    <div class="name"><b id="title"></b><span id="league"></span></div>
+    <div><span class="glass pill" id="clock" hidden></span><button class="glass icon-btn" id="info" type="button" aria-label="How it scores" hidden></button></div>
+  </header>
+  <main class="stage" id="stage"></main>
+  <footer class="dock" id="dock"></footer>
+</div>
+<div class="glass toast" id="toast" role="status"></div>
+<div class="scrim" id="scrim"></div>
+<section class="glass sheet" id="sheet" aria-hidden="true"></section>
+<script>
+let G = window.GAME;
+const params = new URLSearchParams(location.search);
+if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
+const $ = (id) => document.getElementById(id);
+const stage = $("stage"), dock = $("dock"), clockEl = $("clock");
+const ICON = {
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6v.1"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+  hidden: '<path d="M3.5 3.5l17 17"/><path d="M10.5 5.1c.5-.1 1-.1 1.5-.1 5 0 9 5 9 7 0 .9-.8 2.4-2.2 3.8M6.7 6.7C4.6 8.1 3 10.4 3 12c0 2 4 7 9 7 1.6 0 3.1-.5 4.4-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  coin: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/>',
+  ended: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/><path d="M4 4l16 16"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+};
+const icon = (n) => '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">' + ICON[n] + "</svg>";
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
+const fmt = (s) => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", "#5e5ce6"];
+const hue = (name) => { const i = (G ? G.members : []).indexOf(name); return HUES[(i < 0 ? [...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) : i) % HUES.length]; };
+const avatar = (name, cls = "") => '<span class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + esc(name[0]) + "</span>";
+const meKey = "nickel.me." + (params.get("via") ?? "link");
+const me = () => (!params.get("via") && window.ME && window.ME.name) || sessionStorage.getItem(meKey);
+const TEMPLATES = [["", "Auto"], ["guess", "Closest guess"], ["take", "Hot take"], ["trivia", "Trivia"], ["caption", "Caption"], ["fastest", "Fastest finger"], ["unique", "Lowest unique"]];
+const HINTS = { "": "Guess Dev's steps today", guess: "How many steps did Dev walk today?", take: "A hot dog is a sandwich", trivia: "What is the capital of Australia?", caption: "Worst name for a startup", fastest: "Nothing to write. Just create it.", unique: "Nothing to write. Just create it." };
+let timer, poll, screen = "";
+
+const haptic = (() => {
+  const label = document.createElement("label");
+  label.style.cssText = "position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;overflow:hidden";
+  label.ariaHidden = "true";
+  label.innerHTML = '<input type="checkbox" switch tabindex="-1">';
+  document.body.append(label);
+  return (times = 1) => { for (let i = 0; i < times; i++) setTimeout(() => label.click(), i * 90); };
+})();
+
+function show(stageHtml, dockHtml = "", list = false) {
+  stage.className = list ? "stage list" : "stage";
+  stage.innerHTML = stageHtml;
+  dock.innerHTML = dockHtml;
+  dock.hidden = !dockHtml;
+}
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text;
+  t.classList.add("on");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove("on"), 1500);
+}
+function openSheet(html) {
+  $("sheet").innerHTML = html;
+  $("sheet").classList.add("on");
+  $("sheet").ariaHidden = "false";
+  $("scrim").classList.add("on");
+}
+function closeSheet() {
+  $("sheet").classList.remove("on");
+  $("sheet").ariaHidden = "true";
+  $("scrim").classList.remove("on");
+}
+$("scrim").onclick = closeSheet;
+$("sheet").addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeSheet(); });
+
+function setClock(html, warn = false) { clockEl.hidden = false; clockEl.innerHTML = html; clockEl.classList.toggle("warn", warn); }
+function countdown(seconds, onEnd) {
+  let left = seconds;
+  setClock(icon("clock") + fmt(left));
+  clearInterval(timer);
+  timer = setInterval(() => {
+    left = Math.max(0, left - 1);
+    setClock(icon("clock") + fmt(left), left <= 5);
+    if (left <= 3 && left > 0) haptic();
+    if (left === 0) { clearInterval(timer); onEnd(); }
+  }, 1000);
+  return () => seconds - left;
+}
+
+async function call(body) {
+  const res = await fetch("/api/games/" + G.id + (body ? "" : "?u=" + encodeURIComponent(me() ?? "")), body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, name: me() }) } : undefined);
+  const data = await res.json();
+  if (data.game) G = data.game;
+  if (!data.ok && data.error) toast(data.error);
+  return data;
+}
+
+function create() {
+  screen = "create";
+  $("title").textContent = "New game";
+  $("league").textContent = "Nickel";
+  let template = "", minutes = 60;
+  show(
+    '<div class="head"><p class="t-title">Make a game</p><p class="t-label">One move each. Under a minute.</p></div>' +
+    '<div class="chips" id="chips">' + TEMPLATES.map(([id, label]) => '<button class="chip' + (id === "" ? " on" : "") + '" type="button" data-t="' + id + '">' + icon("check") + label + "</button>").join("") + "</div>" +
+    '<input class="answer small" id="ask" maxlength="200" autocomplete="off" enterkeyhint="done" placeholder="' + esc(HINTS[""]) + '">' +
+    '<input class="answer small" id="real" maxlength="60" autocomplete="off" placeholder="Real answer, if you know it">' +
+    '<div class="seg" id="span">' + [[10, "10 minutes"], [60, "1 hour"], [1440, "1 day"]].map(([m, label]) => '<button type="button" data-m="' + m + '" class="' + (m === 60 ? "on" : "") + '">' + label + "</button>").join("") + "</div>",
+    '<button class="glass primary" id="make" type="button">' + icon("plus") + 'Create</button><p class="t-caption">Or text it: Nickel, make a game: ...</p>',
+    true
+  );
+  const sync = () => {
+    $("ask").placeholder = HINTS[template];
+    $("ask").hidden = template === "fastest" || template === "unique";
+    $("real").hidden = !["", "guess", "trivia"].includes(template);
+  };
+  stage.querySelectorAll("[data-t]").forEach((b) => b.onclick = () => {
+    template = b.dataset.t;
+    stage.querySelectorAll("[data-t]").forEach((x) => x.classList.toggle("on", x === b));
+    haptic();
+    sync();
+  });
+  stage.querySelectorAll("[data-m]").forEach((b) => b.onclick = () => {
+    minutes = Number(b.dataset.m);
+    stage.querySelectorAll("[data-m]").forEach((x) => x.classList.toggle("on", x === b));
+  });
+  $("make").onclick = async () => {
+    const request = $("ask").hidden ? "" : $("ask").value.trim();
+    if (!template && request.length < 3) { $("ask").classList.remove("shake"); void $("ask").offsetWidth; $("ask").classList.add("shake"); return toast("Describe the game"); }
+    $("make").disabled = true;
+    $("make").textContent = "Creating";
+    const res = await fetch("/api/games", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request, template, answer: $("real").hidden ? "" : $("real").value.trim(), minutes, name: me() ?? "" }) });
+    const data = await res.json();
+    if (!data.ok) { $("make").disabled = false; $("make").innerHTML = icon("plus") + "Create"; return toast(data.error ?? "Try again"); }
+    location.href = data.path + location.search;
+  };
+}
+
+function pickName() {
+  screen = "name";
+  show(
+    '<p class="t-title">Who\'s playing?</p><div class="people" id="people">' +
+      G.members.map((m) => '<button class="person" type="button" data-name="' + esc(m) + '">' + avatar(m, "lg") + esc(m) + "</button>").join("") +
+    '</div><input class="answer small" id="other" maxlength="14" autocomplete="off" placeholder="Or type your name" style="max-width:320px">',
+    '<button class="glass primary" id="confirm" type="button" disabled>Pick yourself</button>'
+  );
+  let picked;
+  $("other").oninput = () => {
+    picked = $("other").value.replace(/[^A-Za-z]/g, "");
+    picked = picked ? picked[0].toUpperCase() + picked.slice(1).toLowerCase() : "";
+    stage.querySelectorAll(".person").forEach((x) => x.classList.remove("on"));
+    $("people").classList.toggle("picked", !!picked);
+    $("confirm").disabled = !picked;
+    $("confirm").textContent = picked ? "I'm " + picked : "Pick yourself";
+  };
+  stage.querySelectorAll(".person").forEach((b) => b.onclick = () => {
+    picked = b.dataset.name;
+    $("other").value = "";
+    stage.querySelectorAll(".person").forEach((x) => x.classList.toggle("on", x === b));
+    $("people").classList.add("picked");
+    $("confirm").disabled = false;
+    $("confirm").textContent = "I'm " + picked;
+    haptic();
+  });
+  $("confirm").onclick = async () => { sessionStorage.setItem(meKey, picked); await call(); start(); };
+}
+
+function intro() {
+  screen = "intro";
+  const quick = G.template === "fastest";
+  show(
+    '<span class="tag">' + icon("target") + esc(G.label) + '</span><p class="t-title">' + esc(G.prompt) + '</p><p class="t-label">' + (G.answered.length ? G.answered.length + " locked in" : G.createdBy === "Someone" ? "Nobody has answered yet" : "From " + esc(G.createdBy)) + "</p>",
+    '<button class="glass primary" id="go" type="button">' + icon("clock") + "Start" + (quick ? "" : " · " + G.seconds + "s") + "</button>"
+  );
+  if (!quick) setClock(icon("clock") + fmt(G.seconds));
+  $("go").onclick = () => { haptic(); play(); };
+}
+
+async function lockIn(value, seconds) {
+  clearInterval(timer);
+  haptic(2);
+  await call({ action: "answer", value, seconds });
+  draw(true);
+}
+
+function play() {
+  screen = "play";
+  const head = '<p class="t-title">' + esc(G.prompt) + "</p>";
+  const lock = '<button class="glass primary" id="send" type="button" disabled>' + icon("lock") + "Lock in</button>";
+  let value = "";
+  let elapsed = () => 0;
+  const submit = () => { if (screen !== "play") return; screen = "sending"; lockIn(value, elapsed()); };
+  if (G.template === "fastest") {
+    show('<button class="pad" id="pad" type="button">Wait</button>', '<p class="t-caption">Tap the moment it turns blue</p>');
+    let since = 0, wait;
+    const arm = () => { since = 0; $("pad").classList.remove("go"); $("pad").textContent = "Wait"; clearTimeout(wait); wait = setTimeout(() => { since = performance.now(); $("pad").classList.add("go"); $("pad").textContent = "Tap"; }, 1500 + Math.random() * 2500); };
+    $("pad").onpointerdown = () => {
+      if (!since) { $("pad").classList.remove("shake"); void $("pad").offsetWidth; $("pad").classList.add("shake"); toast("Too soon"); return arm(); }
+      value = String(Math.max(80, Math.round(performance.now() - since)));
+      submit();
+    };
+    return arm();
+  }
+  if (G.template === "take" || G.template === "unique") {
+    const options = G.template === "take" ? [["agree", "Agree"], ["disagree", "Disagree"]] : [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [String(n), String(n)]);
+    show(head + '<div class="choices ' + (G.template === "take" ? "two" : "nine") + '" id="choices">' + options.map(([v, label]) => '<button class="choice" type="button" data-v="' + v + '">' + label + "</button>").join("") + "</div>", lock);
+    stage.querySelectorAll("[data-v]").forEach((b) => b.onclick = () => {
+      value = b.dataset.v;
+      stage.querySelectorAll("[data-v]").forEach((x) => x.classList.toggle("on", x === b));
+      $("choices").classList.add("picked");
+      $("send").disabled = false;
+      haptic();
+    });
+  } else {
+    const number = G.template === "guess";
+    show(head + '<input class="answer" id="ans" maxlength="80" placeholder="' + (number ? "Your guess" : G.template === "caption" ? "Your line" : "Your answer") + '"' + (number ? ' inputmode="decimal"' : "") + ' autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done">', lock);
+    const input = $("ans");
+    input.focus({ preventScroll: true });
+    input.oninput = () => { value = input.value.trim(); $("send").disabled = !value; };
+    input.onkeydown = (e) => { if (e.key === "Enter" && value) submit(); };
+  }
+  $("send").onclick = submit;
+  elapsed = countdown(G.seconds, submit);
+}
+
+function waiting() {
+  screen = "waiting";
+  const at = new Date(G.closesAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const mine = G.mine.value ? (G.template === "fastest" ? G.mine.value + " ms" : G.template === "guess" ? Number(G.mine.value).toLocaleString("en-US") : G.template === "take" ? G.mine.value[0].toUpperCase() + G.mine.value.slice(1) : G.mine.value) : "No answer";
+  const head = '<div class="head"><span class="tag">' + icon("lock") + 'Locked in</span><p class="' + (mine.length > 12 ? "t-head" : "t-display") + '">' + esc(mine) + "</p></div>";
+  const voting = G.template === "caption" && G.captions.length;
+  const body = voting
+    ? '<p class="t-label">Tap the best line</p><div class="rows">' + G.captions.map((c) => '<button class="rowi line' + (c.key === G.myVote ? " on" : "") + '" type="button" data-key="' + c.key + '"><span>' + esc(c.text) + "</span>" + icon("check") + "</button>").join("") + "</div>"
+    : '<div class="rows">' + G.members.map((m) => '<div class="rowi' + (G.answered.includes(m) ? (m === me() ? " me" : "") : " wait") + '">' + avatar(m, G.answered.includes(m) ? "" : "ghost") + "<b>" + esc(m) + "</b>" + (G.answered.includes(m) ? icon("check") : '<span class="num">Waiting</span>') + "</div>").join("") + "</div>";
+  const ready = G.answered.length >= 2;
+  show(
+    head + body,
+    (G.needsAnswer && ready ? '<input class="answer small" id="real" maxlength="60" autocomplete="off"' + (G.template === "guess" ? ' inputmode="decimal"' : "") + ' placeholder="The real answer">' : "") +
+    '<button class="glass secondary" id="reveal" type="button"' + (ready ? "" : " disabled") + ">" + icon("hidden") + 'Reveal</button><p class="t-caption">' + (ready ? "Reveal when the group is in. It closes itself at " + at : "Needs one more person. Closes at " + at) + "</p>",
+    true
+  );
+  setClock(icon("check") + G.answered.length + "/" + G.members.length);
+  stage.querySelectorAll("[data-key]").forEach((b) => b.onclick = async () => { haptic(); await call({ action: "vote", key: b.dataset.key }); draw(true); });
+  $("reveal").onclick = async () => {
+    const answer = $("real") ? $("real").value.trim() : "";
+    if ($("real") && !answer) return toast("Enter the real answer");
+    await call({ action: "reveal", answer });
+    draw(true);
+  };
+}
+
+function result() {
+  screen = "result";
+  const o = G.outcome;
+  const total = (name) => (G.standing.find((p) => p.name === name) ?? { nickels: 0 }).nickels;
+  const mine = o.rows.find((r) => r.name === me());
+  show(
+    '<div class="head"><p class="t-title pop">' + esc(o.headline || G.title) + "</p>" +
+    (o.answer ? '<span class="tag">' + icon("target") + "Real answer " + esc(o.answer) + (o.by ? " from " + esc(o.by) : "") + "</span>" : '<p class="t-label">' + esc(G.prompt) + "</p>") + "</div>" +
+    '<div class="rows">' + o.rows.map((r, i) =>
+      '<div class="rowi tall' + (r.name === me() ? " me" : "") + '"><span class="rk">' + (i + 1) + "</span>" + avatar(r.name) + '<span class="who"><b>' + esc(r.name) + "</b><span>" + esc(r.value || "No answer") + " · " + total(r.name) + (total(r.name) === 1 ? " Nickel" : " Nickels") + ' total</span></span><span class="num">+' + (r.points ? r.points.total : 0) + "</span></div>").join("") + "</div>" +
+    (mine && mine.points && mine.points.parts.length > 1 ? '<p class="t-caption" style="text-align:center">' + mine.points.parts.map((x, i) => (i ? (x.points < 0 ? " - " : " + ") : "") + Math.abs(x.points) + " " + esc(x.label)).join("") + "</p>" : ""),
+    '<a class="glass primary" href="/l' + location.search + '">' + icon("coin") + 'Leaderboard</a><a class="glass secondary" href="/g/new' + location.search + '">' + icon("plus") + "New game</a>",
+    true
+  );
+  clockEl.hidden = true;
+  if (mine && mine.won) haptic(2);
+}
+
+function draw(force) {
+  const next = G.state === "settled" ? "result" : G.mine ? "waiting" : "intro";
+  if (!force && (screen === "play" || screen === "sending" || (screen === next && next !== "waiting"))) return;
+  if (next === "result") { clearInterval(poll); return result(); }
+  if (next === "waiting") return waiting();
+  intro();
+}
+
+function start() {
+  if (!G) {
+    if (location.pathname.replace(/\/+$/, "") === "/g/new") return create();
+    screen = "missing";
+    $("title").textContent = "Nickel";
+    return show('<span class="halo">' + icon("ended") + '</span><p class="t-title">This game ended</p><p class="t-label">Make a new one in a few taps</p>', '<a class="glass primary" href="/g/new' + location.search + '">' + icon("plus") + "New game</a>");
+  }
+  $("title").textContent = G.title;
+  $("league").textContent = G.league;
+  if (!me()) return pickName();
+  $("me").innerHTML = avatar(me());
+  $("info").hidden = false;
+  $("info").innerHTML = icon("info");
+  $("info").onclick = () => {
+    const [rule, payout] = G.scoring.split(". ");
+    openSheet('<p class="t-title">How it scores</p>' + [["target", rule], ["coin", payout.replace(/\.$/, "")], ["hidden", "Answers stay hidden until the reveal"]].map(([i, line]) => '<div class="rule"><span class="ico">' + icon(i) + '</span><span class="t-head">' + esc(line) + "</span></div>").join("") + '<div class="dock"><button class="primary" type="button" data-close>Got it</button></div>');
+  };
+  draw(true);
+  clearInterval(poll);
+  poll = setInterval(async () => {
+    if (screen === "play" || screen === "sending" || $("sheet").classList.contains("on") || document.activeElement === $("real")) return;
+    const before = JSON.stringify(G);
+    await call();
+    if (JSON.stringify(G) !== before) draw(screen === "waiting");
+  }, 3000);
+}
+
+if (G && me()) call().then(start); else start();
+</script>
+</body>
+</html>

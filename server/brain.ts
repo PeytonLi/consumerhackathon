@@ -4,6 +4,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { hubTurn, notePicks } from "./hub.js";
 import { scoreResult, type Points, type ResultPayload } from "./points.js";
+import { customScore, customTurn, punishmentPool } from "./custom.js";
+import { ALL_PUNISHMENTS } from "./punishments.js";
 
 export interface Round {
   id: string;
@@ -303,24 +305,7 @@ function potTurn(text: string, lower: string, sender: string): { line: string; p
 }
 
 
-export const PUNISHMENTS = [
-  "runs a milk mile: four laps, a full glass of milk before each one",
-  "retakes the SAT and posts the score in the chat",
-  "spends 24 hours in a Waffle House, minus one hour per waffle eaten",
-  "does a five-minute open mic set and the group picks the topic",
-  "sets up a lemonade stand and cannot leave until it makes 20 dollars",
-  "wears a full suit to every class for a week and explains nothing",
-  "lets the group write their dating profile and keeps it up for a month",
-  "films a calendar shoot, one themed photo for each month, printed for everyone",
-  "makes a three-minute apology video to the league and pins it",
-  "takes the group's coffee order every morning for a week, by hand, on foot",
-  "holds a sign on the busiest corner on campus that says they finished last",
-  "gets the league trophy: a framed photo of the winner on their desk all season",
-  "performs karaoke of the winner's choice, sober, first song of the night",
-  "cooks dinner for the whole group in a costume the winner picks",
-  "sends a good morning text to the group chat every day until next season",
-  "runs a 5K in jeans and posts the splits",
-];
+export const PUNISHMENTS = ALL_PUNISHMENTS;
 
 const TITLES = ["Front runner", "Closing fast", "Mid-table merchant", "Vibes only", "Down bad", "Paying for dinner"];
 
@@ -640,7 +625,7 @@ function setPunishment(text: string): string {
   const custom = text.match(/punishment\s*(?:is|:|=)\s*(.{6,160})$/i)?.[1]?.trim().replace(/[.!]+$/, "");
   if (custom) store.punishment = custom.replace(/^(last place|loser)\s+/i, "");
   else {
-    const pool = PUNISHMENTS.filter((p) => p !== store.punishment);
+    const pool = punishmentPool().filter((p) => p !== store.punishment);
     store.punishment = pool[Math.floor(Math.random() * pool.length)];
   }
   save();
@@ -656,7 +641,7 @@ export function recordResult(roundId: string, payload: ResultPayload): { ok: boo
   const rival = person(payload.opponent ?? (typeof round.opponent === "string" ? round.opponent : ""));
   const bump = (who: string, delta: number) => { if (who) store.nickels[who] = (store.nickels[who] ?? 0) + delta; };
   const tally = (who: string, won: boolean) => { if (!who) return; const t = (store.stats[who] ??= { played: 0, wins: 0, losses: 0 }); t.played += 1; if (won) t.wins += 1; else t.losses += 1; };
-  const scored = scoreResult(round, payload, { name, rival }, store);
+  const scored = customScore(round, name) ?? scoreResult(round, payload, { name, rival }, store);
   const line = scored.line;
   let loser = "";
   if (round.game === "rps") {
@@ -688,6 +673,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
   const hubReply = hubTurn(input);
   if (hubReply) return hubReply;
+  const customReply = customTurn(input);
+  if (customReply) return customReply;
   const fantasyTalk = /fantasy/.test(lower) && !/punish/.test(lower);
   const phone = (input.senderPhone ?? "").replace(/[^+0-9]/g, "");
   const intro = person(text.match(/\b(?:i'?m|i am|this is|call me|my name is|it'?s)\s+([A-Za-z]{2,14})\b/i)?.[1]);
