@@ -3,6 +3,7 @@ import { hub, hubCard } from "./hub.js";
 import { confirmTopUp, payBuyIn, potView, startTopUp, sweepForfeits, topUp, walletCard, walletView, walletViewer, withForfeitNews, withdraw } from "./wallet.js";
 import { authGate, claimStatus, turnTrusted } from "./auth.js";
 import { assistTurn, gradeKrillion, gradedResult, naceStats, punishmentAllowed } from "./nace.js";
+import { artImage } from "./roster.js";
 
 const site = new URL("../apps/preview/", import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 5173);
@@ -154,7 +155,15 @@ Bun.serve({
     if (path === "/w") return page((await Bun.file(site + "wrapped.html").text()).replace("<!--WRAPPED-->", headTags({ ...leaderboardCard(), kicker: "Wrapped", title: "Season recap", path: "/w" }, base, "").replace("/og/w.png", "/og/l.png") + "\n<script>window.BOARD = " + inline(board()) + ";</script>"));
 
     if (path === "/og/h.png") return new Response((await cardPng(hubCard(leaderboard()))) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
-    if (path === "/h") return page((await Bun.file(site + "hub.html").text()).replace("<!--HUB-->", headTags(hubCard(leaderboard()), base, "") + "\n<script>window.HUB = " + inline(hub(me)) + ";</script>"));
+    const art = path.match(/^\/art\/([a-z0-9-]+)\/(loser|winner)\.jpg$/);
+    if (art) {
+      const jpg = artImage(art[1], art[2]);
+      return jpg ? new Response(jpg as unknown as BodyInit, { headers: { "content-type": "image/jpeg", "cache-control": "public, max-age=3600" } }) : new Response("Not found", { status: 404 });
+    }
+    if (path === "/h") {
+      const data = hub(me);
+      return page((await Bun.file(site + "hub.html").text()).replace("<!--HUB-->", headTags(hubCard(leaderboard()), base, "") + "\n<script>window.HUB = " + inline(data) + ";</script>"));
+    }
 
     const potApi = path.match(/^\/api\/pot\/([a-z0-9-]+)$/);
     if (potApi) {
