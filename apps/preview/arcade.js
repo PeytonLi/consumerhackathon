@@ -28,7 +28,7 @@
     freethrow: { title: "Free Throw", seconds: 20, hue: "var(--them)", kicker: "Five shots", instruction: "Stop it in the middle.", caption: "Tap Shoot when the marker reaches the target" },
     memory: { title: "Memory", seconds: 25, hue: "light-dark(#5856d6, #5e5ce6)", kicker: "Watch. Remember. Repeat.", instruction: "The pattern grows by one.", caption: "Tap the numbered pads in order. One miss ends it." },
     math: { title: "Math Sprint", seconds: 20, hue: "var(--you)", kicker: "Twenty seconds", instruction: "Find the answer. Keep moving.", caption: "Three choices. Up to 20 questions." },
-    higherlower: { title: "Higher or Lower", seconds: 20, hue: "light-dark(#5856d6, #5e5ce6)", kicker: "Trust your next move", instruction: "Will the next card be higher?", caption: "Call the next card. One miss ends it." },
+    higherlower: { title: "Higher or Lower", seconds: 20, hue: "light-dark(#5856d6, #5e5ce6)", kicker: "Trust your next move", instruction: "Will the next card be higher?", caption: "Cards 2–13. No ties. One miss ends it." },
   };
   const game = games[R.game];
   const challenge = R.arcade ?? {};
@@ -75,6 +75,7 @@
   let serverOffset = 0;
   let lastClock = "";
   let boardBefore = null;
+  let finishReason = "";
   const stateKey = () => "nickel.arcade." + R.id + "." + name;
   const timeNow = () => Date.now() + (practice ? 0 : serverOffset);
   const elapsed = () => Math.max(0, Math.round(timeNow() - attempt.startedAt));
@@ -179,7 +180,7 @@
   }
 
   function paintIdentity() {
-    $("me").innerHTML = '<span class="avatar">' + esc(Array.from(name)[0]?.toUpperCase() || "N") + (window.ME?.name ? '<span class="seal">' + icon("check") + "</span>" : "") + "</span>";
+    $("me").innerHTML = '<a class="avatar" href="/h' + (theme ? '?theme=' + encodeURIComponent(theme) : '') + '" aria-label="Back to games">' + esc(Array.from(name)[0]?.toUpperCase() || "N") + (window.ME?.name ? '<span class="seal">' + icon("check") + "</span>" : "") + "</a>";
     $("me").setAttribute("aria-label", name || "Guest");
   }
 
@@ -262,7 +263,7 @@
       '<path class="net" d="M197 88l8 31h30l8-31M201 101h38M205 112h31M206 89l9 30M219 89l7 30M233 89l-9 30M215 89l-7 30"/><path class="hoop" d="M192 86h56"/>' +
       '<ellipse class="ball-shadow" id="ball-shadow" cx="170" cy="248" rx="25" ry="5"/>' +
       '<g id="ball" transform="translate(170 222)"><circle class="ball" r="19"/><path class="seam" d="M-19 0h38M0-19v38M-13-14c16 6 16 22 0 28M13-14C-3-8-3 8 13 14"/></g></svg>' +
-      '<div><div class="shot-meter"><span class="sweet-spot"></span><span class="meter-center"></span><div class="meter-lane"><span class="meter-position" id="meter-position"><span class="meter-pin"></span></span></div></div>' +
+      '<div><div class="shot-meter"><span class="sweet-spot"></span><span class="meter-center"></span><div class="meter-lane"><span class="meter-position" id="meter-position" style="transform:translateX(' + (challenge.qualityVersion ? 0 : 50) + '%)"><span class="meter-pin"></span></span></div></div>' +
       '<div class="meter-labels"><span>Too far</span><span>Perfect</span><span>Too far</span></div></div></div>';
   }
 
@@ -274,12 +275,28 @@
     stopFrame();
     mode = "ready";
     setClock(seconds);
+    if (practice) {
+      challenge.sequence = Array.from({ length: 20 }, () => Math.floor(Math.random() * 4));
+      challenge.reactionWaits = Array.from({ length: 3 }, () => 2800 + Math.floor(Math.random() * 1000));
+      if (challenge.questions) {
+        for (let i = challenge.questions.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [challenge.questions[i], challenge.questions[j]] = [challenge.questions[j], challenge.questions[i]];
+        }
+      }
+      challenge.deck = [2 + Math.floor(Math.random() * 12)];
+      for (let i = 0; i < 20; i++) {
+        let next = 2 + Math.floor(Math.random() * 11);
+        if (next >= challenge.deck[i]) next++;
+        challenge.deck.push(next);
+      }
+    }
     let board = "";
     if (R.game === "reaction") board = '<div class="signal"><svg class="signal-symbol i" viewBox="0 0 24 24" aria-hidden="true">' + icons.bolt + "</svg></div>" + pips(3);
     if (R.game === "freethrow") board = court() + pips(5);
     if (R.game === "memory") board = '<div class="pad-board" aria-hidden="true">' + [1, 2, 3, 4].map((n) => '<div class="pad' + (n === 1 ? " lit" : "") + '" style="display:grid;place-items:center">' + n + "</div>").join("") + "</div>";
     if (R.game === "math") board = '<div class="math-board"><p class="math-equation">7 + 8</p><div class="math-rule"></div><div class="answer-slots" aria-hidden="true"><span></span><span></span></div></div>';
-    if (R.game === "higherlower") board = '<div class="card-table">' + card(challenge.deck?.[0] ?? 7) + '</div><div class="card-range">Low to high</div>';
+    if (R.game === "higherlower") board = '<div class="card-table">' + card(challenge.deck?.[0] ?? 7) + '</div><div class="card-range">2 low · 13 high · no ties</div>';
     show('<div class="game-copy"><p class="eyebrow">' + (practice ? "Practice · " : "") + game.kicker + '</p><h1 class="t-title">' + esc(game.instruction) + '</h1></div>' + board,
       '<button class="glass primary play-control" id="start" type="button">Start' + (practice ? " practice" : "") + '</button><p class="t-caption">' + esc(game.caption) + (practice ? "<br>Practice never changes your league points." : "<br>One official run. Leaving ends it.") + "</p>");
     bind("start", start);
@@ -337,11 +354,11 @@
     runFrame(() => {});
   }
 
-  function addEvent(value, at = elapsed()) {
+  function addEvent(value, at = elapsed(), extra = {}) {
     if (mode !== "playing") return false;
     if (timeNow() >= attempt.deadline) { finish(); return false; }
     if (events.length && at - events.at(-1).at < 80) return false;
-    events.push({ at: Math.floor(at), value });
+    events.push({ at: Math.floor(at), value, ...extra });
     remember();
     return true;
   }
@@ -354,10 +371,11 @@
 
   function reactionGame() {
     show('<div class="live-meta"><p class="t-label" id="trial-label"></p><p class="t-label">Fastest thumb wins</p></div>' +
-      '<div class="signal" id="signal"><svg class="signal-symbol i" viewBox="0 0 24 24" aria-hidden="true">' + icons.bolt + '</svg></div>' +
+      '<button class="signal play-control" id="signal" type="button" aria-label="Reaction target"><svg class="signal-symbol i" viewBox="0 0 24 24" aria-hidden="true">' + icons.bolt + '</svg></button>' +
       '<div class="game-copy"><h1 class="t-title" id="signal-title">Wait for blue</h1><p class="t-label" id="signal-caption">Not yet. Hold your nerve.</p></div><div id="trials"></div>',
       '<button class="glass secondary play-control" id="react" type="button">Wait…</button><p class="t-caption">An early tap counts as a miss</p>');
     let view = "";
+    let cueAt = null;
     const state = (at) => {
       const index = events.length;
       const trialStart = index ? events[index - 1].at + 250 : 0;
@@ -370,12 +388,15 @@
       const nextView = s.index + ":" + phase;
       if (view === nextView) return;
       view = nextView;
+      if (phase !== "go") cueAt = null;
+      else cueAt = at;
       const signal = $("signal");
       const button = $("react");
       $("trial-label").textContent = "Trial " + Math.min(3, s.index + 1) + " of 3";
       $("trials").innerHTML = pips(3, s.index, events.map((event) => event.value > 0));
       signal.className = "signal" + (phase === "go" ? " go" : "");
       button.disabled = phase === "feedback";
+      signal.disabled = phase === "feedback";
       button.className = "glass " + (phase === "go" ? "primary" : "secondary") + " play-control";
       if (phase === "feedback") {
         const value = events.at(-1).value;
@@ -392,15 +413,18 @@
         if (phase === "go") haptic();
       }
     };
-    bind("react", () => {
+    const react = () => {
       const at = elapsed();
       const s = state(at);
       if (s.cooling || s.index >= 3) return;
-      if (at >= s.signalAt && at - s.signalAt < 120) return toast("Too quick. Tap again.");
-      if (!addEvent(at >= s.signalAt ? Math.max(1, Math.round(at - s.signalAt)) : 0, at)) return;
+      if (cueAt === null && at >= s.signalAt) { paint(at); return; }
+      if (cueAt !== null && at - cueAt < 120) return toast("Get set. Tap on blue.");
+      if (!addEvent(cueAt === null ? 0 : at - cueAt, at, cueAt === null ? {} : { cueAt })) return;
       view = "";
       paint(at);
-    });
+    };
+    bind("react", react);
+    bind("signal", react);
     paint(elapsed());
     if (mode === "playing") runFrame(paint);
   }
@@ -412,7 +436,8 @@
     let previousCount = -1;
     const position = (at) => {
       const shotStarted = events.length ? events.at(-1).at + 500 : 0;
-      return Math.round((Math.sin((at - shotStarted) / 1000 * challenge.speeds[events.length]) + 1) * 500);
+      const phase = Math.max(0, at - shotStarted) / 1000 * challenge.speeds[events.length];
+      return Math.round((challenge.qualityVersion ? 1 - Math.cos(phase / 2) : Math.sin(phase) + 1) * 500);
     };
     const made = (value) => Math.abs(value - 500) <= 110;
     const paint = (at) => {
@@ -452,8 +477,8 @@
     if (mode === "playing") runFrame(paint);
   }
 
-  function memoryProgress() {
-    let length = 3, cursor = 0, correct = 0, displayAt = 0, wrong = false;
+  function memoryProgress(displayAt = 450) {
+    let length = 3, cursor = 0, correct = 0, wrong = false;
     for (const event of events) {
       if (event.value !== challenge.sequence[cursor]) { wrong = true; break; }
       correct++;
@@ -468,6 +493,7 @@
   }
 
   function memoryGame() {
+    const firstDisplayAt = elapsed() + 450;
     show('<div class="live-meta"><p class="t-label" id="memory-level"></p><p class="t-label" id="memory-best"></p></div>' +
       '<div class="game-copy"><h1 class="t-title" id="memory-message">Watch the pattern</h1><p class="t-label" id="memory-caption">Your turn comes next.</p></div>' +
       '<div class="pad-board">' + [0, 1, 2, 3].map((value) => '<button class="pad play-control" id="pad-' + value + '" type="button" aria-label="Pad ' + (value + 1) + '" disabled>' + (value + 1) + "</button>").join("") + '</div><div class="dots sequence-dots" id="memory-dots"></div>',
@@ -475,7 +501,7 @@
     let view = "";
     let lit = -1;
     const paint = (at) => {
-      const s = memoryProgress();
+      const s = memoryProgress(firstDisplayAt);
       const last = events.at(-1);
       if (s.wrong) {
         if (at >= last.at + 350) return finish();
@@ -502,6 +528,7 @@
         if (nextLit >= 0) haptic();
         lit = nextLit;
       }
+      if (watching) $("memory-caption").textContent = at < s.displayAt ? "Get ready…" : "Watch " + Math.min(s.length, step + 1) + " of " + s.length;
       [0, 1, 2, 3].forEach((value) => {
         const button = $("pad-" + value);
         button.disabled = watching;
@@ -510,7 +537,7 @@
       });
     };
     [0, 1, 2, 3].forEach((value) => bind("pad-" + value, () => {
-      const s = memoryProgress();
+      const s = memoryProgress(firstDisplayAt);
       const at = elapsed();
       if (s.wrong || at < s.displayAt + s.length * 550) return;
       if (!addEvent(value, at)) return;
@@ -528,7 +555,7 @@
     let view = "";
     const paint = (at) => {
       const last = events.at(-1);
-      const feedback = !!last && at - last.at < 170;
+      const feedback = !!last && at - last.at < (last.value === challenge.questions[events.length - 1].answer ? 220 : 650);
       if (events.length >= 20 && !feedback) return finish();
       const index = Math.min(19, events.length - (feedback ? 1 : 0));
       const nextView = index + ":" + feedback;
@@ -550,7 +577,7 @@
     };
     [0, 1, 2].forEach((index) => bind("answer-" + index, () => {
       const at = elapsed();
-      if (events.length >= 20 || (events.length && at - events.at(-1).at < 170)) return;
+      if (events.length >= 20 || $("answer-" + index).disabled) return;
       if (!addEvent(challenge.questions[events.length].choices[index], at)) return;
       paint(at);
     }));
@@ -565,13 +592,13 @@
   function higherlowerGame() {
     show('<div class="live-meta"><p class="t-label" id="card-progress"></p><p class="t-label" id="card-score"></p></div>' +
       '<div class="game-copy"><p class="eyebrow">Next card</p><h1 class="t-title" id="card-message">Higher or lower?</h1></div>' +
-      '<div class="card-table" id="card-table"></div><div class="card-range">Low to high</div>',
+      '<div class="card-table" id="card-table"></div><div class="card-range">2 low · 13 high · no ties</div>',
       '<div class="action-row"><button class="glass secondary predict play-control" id="lower" type="button">' + icon("down") + 'Lower</button><button class="glass primary predict play-control" id="higher" type="button">' + icon("up") + 'Higher</button></div><p class="t-caption">One wrong call ends the run</p>');
     let view = "";
     const paint = (at) => {
       const last = events.at(-1);
       const correct = !last || predictionCorrect(last, events.length - 1);
-      const feedback = !!last && at - last.at < 350;
+      const feedback = !!last && at - last.at < (correct ? 650 : 1100);
       if ((!correct || events.length >= 20) && !feedback) return finish();
       const nextView = events.length + ":" + feedback;
       if (nextView === view) return;
@@ -582,10 +609,13 @@
       $("card-message").textContent = !correct ? "The deck had other plans" : feedback ? "Good call" : "Higher or lower?";
       $("lower").disabled = feedback || !correct;
       $("higher").disabled = feedback || !correct;
+      const current = challenge.deck[events.length];
+      $("lower").innerHTML = icon("down") + '<span>Lower <small>' + (current - 2) + ' of 11</small></span>';
+      $("higher").innerHTML = icon("up") + '<span>Higher <small>' + (13 - current) + ' of 11</small></span>';
     };
     const predict = (value) => {
       const at = elapsed();
-      if (events.length >= 20 || (events.length && (at - events.at(-1).at < 350 || !predictionCorrect(events.at(-1), events.length - 1)))) return;
+      if (events.length >= 20 || $(value === 1 ? "higher" : "lower").disabled) return;
       if (!addEvent(value, at)) return;
       paint(at);
     };
@@ -625,6 +655,10 @@
   function finish(abandoned = false) {
     if (mode === "result" && !finishPayload) return;
     stopFrame();
+    finishReason = abandoned ? "Round left early" : timeNow() >= attempt.deadline ? "Time’s up"
+      : R.game === "memory" && memoryProgress().wrong ? "Pattern broken"
+      : R.game === "higherlower" && events.length && !predictionCorrect(events.at(-1), events.length - 1) ? "The deck wins"
+      : "That’s a round";
     setClock(0);
     mode = "result";
     finishPayload ??= { events: events.map((event) => ({ ...event })), ...(abandoned ? { abandoned: true } : {}) };
@@ -658,7 +692,7 @@
 
   function renderResult(saved) {
     const result = savedResult;
-    show('<div class="result-summary"><p class="eyebrow">' + (practice ? "Practice complete" : saved ? "Official result" : "Your result") + '</p><h1 class="t-title">' + (result.won ? "Nicely done" : "That’s a round") + '</h1><p class="result-score" id="result-score">' + esc(result.score) + '</p><p class="result-label" id="result-label">' + esc(resultCaption(result)) + '</p></div>' +
+    show('<div class="result-summary"><p class="eyebrow">' + (practice ? "Practice complete" : saved ? "Official result" : "Your result") + '</p><h1 class="t-title">' + (result.won ? "Nicely done" : finishReason || "That’s a round") + '</h1><p class="result-score" id="result-score">' + esc(result.score) + '</p><p class="result-label" id="result-label">' + esc(resultCaption(result)) + '</p></div>' +
       '<div class="result-points" id="points"></div><p class="save-state" id="save-state" role="status">' + (practice ? "Practice only · no points recorded" : saved ? "Saved to your league" : "Saving official result…") + '</p><div class="round-board" id="round-board"></div>',
       '<button class="glass primary play-control" id="share" type="button">' + icon("share") + 'Share</button><div class="result-links"><button class="secondary fill play-control" id="practice" type="button">' + icon("again") + (practice ? "Play again" : "Practice") + '</button><a class="quiet-link" id="league-link" href="/l' + (theme ? "?theme=" + encodeURIComponent(theme) : "") + '">Leaderboard</a></div>');
     stage.classList.add("result-stage");
@@ -702,7 +736,7 @@
       $("result-score").textContent = savedResult.score;
       $("result-label").textContent = resultCaption(savedResult);
       stage.querySelector(".eyebrow").textContent = "Official result";
-      stage.querySelector("h1").textContent = savedResult.won ? "Nicely done" : "That’s a round";
+      stage.querySelector("h1").textContent = savedResult.won ? "Nicely done" : finishReason || "That’s a round";
       $("save-state").textContent = "Saved to your league";
       $("practice").disabled = false;
       $("practice").removeAttribute("aria-label");
@@ -758,6 +792,7 @@
       savedBoard = [];
       celebrated = false;
       rejectedFinish = false;
+      finishReason = "";
       return intro();
     }
     const url = new URL(location.href);
@@ -768,6 +803,17 @@
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) { remember(); return; }
     if ((mode === "playing" || mode === "abandoned") && timeNow() >= attempt.deadline) finish(mode === "abandoned");
+  });
+  document.addEventListener("keydown", (event) => {
+    if (mode !== "playing" || event.repeat || event.altKey || event.ctrlKey || event.metaKey || /INPUT|TEXTAREA|BUTTON|A/.test(event.target.tagName)) return;
+    const key = event.key.toLowerCase();
+    const id = R.game === "reaction" && (key === " " || key === "enter") ? "react"
+      : R.game === "freethrow" && (key === " " || key === "enter") ? "shoot"
+      : R.game === "memory" && /^[1-4]$/.test(key) ? "pad-" + (Number(key) - 1)
+      : R.game === "math" && /^[1-3]$/.test(key) ? "answer-" + (Number(key) - 1)
+      : R.game === "higherlower" && key === "arrowup" ? "higher"
+      : R.game === "higherlower" && key === "arrowdown" ? "lower" : null;
+    if (id) { event.preventDefault(); $(id)?.click(); }
   });
   window.addEventListener("pagehide", () => {
     if (!practice && mode === "playing") {
