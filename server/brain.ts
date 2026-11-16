@@ -698,6 +698,25 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
   const contact = (input.senderPhone ?? "").replace(/[^+0-9]/g, "");
   if (contact) profileFor(contact, store.names[contact] ?? "");
+  const roast = [...text.matchAll(/\b(?:roast|make fun of|mock|clown|drag|trash[- ]?talk)\s+([a-z]+)/gi)].at(-1);
+  if (roast && !/\b(?:don'?t|do not|stop|quit|never)\b[^.!?]{0,25}\b(?:roast|make fun of|mock|clown|drag|trash[- ]?talk)\b/i.test(text)) {
+    const requested = person(roast[1]);
+    const pronouns = new Set(["Him", "Her", "Them", "Us", "Everyone", "Everybody", "Me", "Myself", "You", "Yourself", "Nickel"]);
+    const named = [...new Set([...rosterNames(), ...Object.values(store.names), ...Object.values(store.profiles).map((p) => p.name)])].find((name) => name && !pronouns.has(name) && new RegExp("\\b" + name + "\\b", "i").test(text));
+    const target = /^(Me|Myself)$/.test(requested) ? person(input.sender) || store.names[contact] : /^(You|Yourself|Nickel)$/.test(requested) ? "Nickel" : pronouns.has(requested) ? named : requested;
+    if (!target) return { addressed: true, line: "Who am I roasting? Give me a name. No game required." };
+    const lines = [
+      "NAME talks a lot of shit for someone whose strongest move is opening the chat.",
+      "NAME has main-character confidence and loading-screen energy.",
+      "NAME treats losing like a software bug. The bug is not in the software.",
+      "NAME brought a press conference to a group chat. Nobody asked for the postgame analysis.",
+      "NAME is putting up historic numbers in excuses per minute.",
+      "NAME has the confidence of someone who has never read the instructions. Or the room.",
+    ];
+    const line = quip(lines).replace("NAME", target);
+    save();
+    return { addressed: true, line };
+  }
   const current = liveTurn(text, input.baseUrl);
   if (current) return current;
   const walletReply = walletTurn(input);
@@ -848,7 +867,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   const skip = new Set(["between", "me", "and", "to", "a", "an", "the", "with", "my", "us", "him", "her", "them", "pls", "please", "plz", "thanks", "gc", "chat", "here", "now", "today", "tonight", "rn", "nickel", "for", "in", "at", "wordle", "krillion", "rps", "rock", "game"]);
   const afterVerb = text.match(/(?:challenge|vs\.?|versus|against|between|and)\s+(.+)$/i)?.[1] ?? "";
   const opponent = person(input.opponent) || person(afterVerb.split(/\s+/).map((w) => w.replace(/[^A-Za-z]/g, "")).find((w) => w && !skip.has(w.toLowerCase())));
-  if (opponent && opponent !== sender && /challenge|\bvs\b|versus|against|1v1|between/.test(lower + (input.opponent ? " challenge" : ""))) {
+  const wantsChallenge = /\b(challenge|vs|versus|against|1v1|between)\b|\bcall\b.*\bout\b/.test(lower) || (!!input.opponent && /\b(play|game|run it|deal|set up)\b/.test(lower));
+  if (opponent && opponent !== sender && wantsChallenge) {
     const round = createRound(game, sender, opponent);
     const terms = isArcadeGame(round.game) ? round.seconds + " seconds each. High score wins; Nickels for every run." : round.game === "rps" ? "Best of 3, 5 Nickels on it." : round.seconds + " seconds, 5 Nickels on it.";
     return reply((sender ? sender + " just called out " + opponent + ". " : opponent + ", you just got called out. ") + round.title + ". " + terms, roundCard(round));
