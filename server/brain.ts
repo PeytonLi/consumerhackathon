@@ -729,6 +729,10 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     return { addressed: true, line: idle.length ? idle.map((n) => n.name).join(" and ") + (idle.length > 1 ? " have" : " has") + " money in the pot and has not played today. It is up for grabs at midnight.".replace(idle.length > 1 ? "has not" : "have not", "have not") : "Everyone with money in the pot has played today." };
   }
 
+  if (/\b(invite|onboard|join code|connect|how (do|can|does) (we|i|they|you|everyone|people) (join|sign|get|connect|set)|add (everyone|everybody|the others|them|the rest))\b/.test(lower) && !/buy.?in/.test(lower)) {
+    return { addressed: true, line: "Everyone: text " + (process.env.NICKEL_JOIN_CODE ?? "K-HQF6D6") + " to " + (process.env.NICKEL_LINE ?? "+1 (779) 625-1378") + ". That connects your number, and I will send your player card back. One time." };
+  }
+
   if (/\b(profile|set ?me ?up|sign ?me ?up|sign ?up|add me|player card|my (photo|picture|pic|card|account))\b/.test(lower) && !/buy.?in/.test(lower)) {
     const mine = profileFor(phone, sender);
     return reply((sender ? sender + ", your" : "Your") + " player card: name and photo. One time, then every link opens as you.", profileCard(mine));

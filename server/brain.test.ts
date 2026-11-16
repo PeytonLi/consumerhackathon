@@ -223,4 +223,10 @@ describe("group chat turns", () => {
     const loose = turn("nickel can u set up a wordle game between us pls", "Sritej");
     expect(loose.line).not.toContain("Pls");
   });
+
+  it("posts the number and join code when asked to invite the group", () => {
+    const line = "Everyone: text K-HQF6D6 to +1 (779) 625-1378. That connects your number, and I will send your player card back. One time.";
+    expect(turn("nickel invite everyone", "Sritej")).toEqual({ addressed: true, line });
+    expect(turn("nickel how do we join", "Maya").line).toBe(line);
+  });
 });
