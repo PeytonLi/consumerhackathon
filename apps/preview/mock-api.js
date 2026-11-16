@@ -73,7 +73,7 @@
     ["POST", /^\/api\/wallet\/cashout$/, (b) => {
       if (!Number.isInteger(b.amountCents) || b.amountCents < 1 || b.amountCents > db.wallet.balanceCents) return [400, { error: "Not enough balance" }];
       if (db.wallet.kyc !== "verified") return { url: back({ onboarded: 1 }) };
-      credit(-b.amountCents, "payout");
+      credit(-b.amountCents, "cashout");
       return { ok: true, status: "pending" };
     }],
     ["GET", /^\/api\/chest$/, () => ({ available: db.chest.available, opened: db.chest.opened, odds: db.chest.odds })],

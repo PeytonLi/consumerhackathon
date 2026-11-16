@@ -46,8 +46,8 @@ describe("agent money routes", () => {
   });
 
   it("builds same-origin page links and checks the top-up minimum", async () => {
-    expect((await post("/api/agent/link", { phone: ME, page: "wallet", amountCents: 500 })).data).toEqual({ url: BASE + "/w?add=500" });
-    expect((await post("/api/agent/link", { phone: ME, page: "cashout" })).data).toEqual({ url: BASE + "/w?cashout=1" });
+    expect((await post("/api/agent/link", { phone: ME, page: "wallet", amountCents: 500 })).data).toEqual({ url: BASE + "/wallet?add=500" });
+    expect((await post("/api/agent/link", { phone: ME, page: "cashout" })).data).toEqual({ url: BASE + "/wallet?cashout=1" });
     expect((await post("/api/agent/link", { phone: ME, page: "chest" })).data).toEqual({ url: BASE + "/chest" });
     expect((await post("/api/agent/link", { phone: ME, page: "heist" })).data).toEqual({ url: BASE + "/heist" });
     expect((await post("/api/agent/link", { phone: ME, page: "wallet", amountCents: 50 })).status).toBe(400);

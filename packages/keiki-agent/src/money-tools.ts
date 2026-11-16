@@ -39,7 +39,7 @@ function money<I, O>(run: (input: I, who: Caller & { phone: string }, api: Api, 
     );
 }
 
-const PATHS: Record<MoneyPage, string> = { wallet: "/w", cashout: "/w", chest: "/chest", heist: "/heist" };
+const PATHS: Record<MoneyPage, string> = { wallet: "/wallet", cashout: "/wallet", chest: "/chest", heist: "/heist" };
 
 async function pageCard(api: Api, who: Caller & { phone: string }, ctx: ToolContext, page: MoneyPage, card: { line: string; caption: string; subcaption?: string; amountCents?: number }) {
   const { url } = await api.link({ phone: who.phone, page, ...(card.amountCents !== undefined && { amountCents: card.amountCents }) });

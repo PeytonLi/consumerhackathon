@@ -27,8 +27,8 @@ const cleanText = (raw: unknown, max: number) => (typeof raw === "string" ? raw.
 const cents = (raw: unknown, min: number) => (typeof raw === "number" && Number.isInteger(raw) && raw >= min && raw <= 100000 ? raw : null);
 
 const PAGES: Record<MoneyPage, (amountCents: number | null) => string> = {
-  wallet: (amount) => "/w" + (amount ? "?add=" + amount : ""),
-  cashout: () => "/w?cashout=1",
+  wallet: (amount) => "/wallet" + (amount ? "?add=" + amount : ""),
+  cashout: () => "/wallet?cashout=1",
   chest: () => "/chest",
   heist: () => "/heist",
 };

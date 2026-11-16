@@ -33,10 +33,10 @@ describe("memory", () => {
   });
 
   it("strips emojis and markup and files strangers under the group", () => {
-    expect(turn("Nickel, remember that Zed brings <b>snacks</b> \u{1F355}\u{1F525}", "Maya").line).toBe("Noted for the group: Zed brings bsnacks/b.");
-    expect(turn("Nickel, what do you know about Zed").line).toBe("Zed: Zed brings bsnacks/b.");
-    expect(hub.groupMemory()).toContain("Zed brings bsnacks/b");
-    expect(hub.memoryOf("Zed")).toEqual(["Zed brings bsnacks/b"]);
+    expect(turn("Nickel, remember that Zed brings <b>snacks</b> \u{1F355}\u{1F525}", "Maya").line).toBe("Noted for the group: Zed brings snacks.");
+    expect(turn("Nickel, what do you know about Zed").line).toBe("Zed: Zed brings snacks.");
+    expect(hub.groupMemory()).toContain("Zed brings snacks");
+    expect(hub.memoryOf("Zed")).toEqual(["Zed brings snacks"]);
     expect(hub.forget("zed brings", "Maya").ok).toBe(true);
   });
 
@@ -117,7 +117,7 @@ describe("GET /api/hub payload", () => {
   it("matches the contract shape", () => {
     hub.remember("Maya calls every game rigged", "Dev");
     const out = hub.hub({ token: "me-abc", name: "Maya", face: null, account: "x" } as Parameters<typeof hub.hub>[0]);
-    expect(Object.keys(out)).toEqual(["me", "league", "people", "group", "pots", "payouts", "recent"]);
+    expect(Object.keys(out)).toEqual(["me", "league", "people", "group", "pots", "payouts", "recent", "walletLedger", "roster"]);
     expect(out.me).toEqual({ token: "me-abc", name: "Maya", face: null });
     expect(hub.hub(null).me).toBeNull();
     expect(out.league).toEqual({ name: "Cupertino Day Ones", stakes: null, punishment: null });

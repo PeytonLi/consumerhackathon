@@ -2,13 +2,20 @@ import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
-import { hubCard, hubLine, hubTurn, notePicks, wantsHub } from "./hub.js";
+import { hubCard, hubLine, hubTurn, notePicks, renamePlayer, wantsHub } from "./hub.js";
 import { scoreResult, type Points, type ResultPayload } from "./points.js";
-import { attachAuth, claimPath } from "./auth.js";
+import { customScore, customTurn, leagueIsClosed, punishmentPool, type PreparedTurn } from "./custom.js";
+import { ALL_PUNISHMENTS } from "./punishments.js";
+import { attachAuth, claimPath, nameClaimed, type AuthStore } from "./auth.js";
+import { renameWallet, walletTurn } from "./wallet.js";
+import { demoMode, roster, rosterNames } from "./roster.js";
+import { ARCADE, arcadeGame, arcadeSubmission, arcadeView, createArcade, isArcadeGame, type ArcadeGame, type ArcadeReply } from "./arcade.js";
+import { renderChatCard, renderPersonCard } from "./card-art.js";
+import { attachLive, liveTopicRefusal, liveTurn, openLiveLeague, type LiveData, type LivePick, type LiveAward } from "./live.js";
 
 export interface Round {
   id: string;
-  game: "wordle" | "krillion" | "rps";
+  game: "wordle" | "krillion" | "rps" | "custom" | ArcadeGame;
   title: string;
   league: string;
   members: string[];
@@ -21,9 +28,10 @@ export interface FantasyLeague {
   league: string;
   members: string[];
   rosterSize: number;
-  pool: { name: string; points: number; owner: string | null }[];
-  log: { pick: string; delta: number; by: string; at: number }[];
+  pool: ({ name: string; points: number; owner: string | null } & LivePick)[];
+  log: ({ pick: string; delta: number; by: string; at: number } & LiveAward)[];
   createdBy: string;
+  live?: LiveData;
 }
 
 export interface TurnReply {
@@ -68,7 +76,14 @@ store.quips ??= 0;
 store.art ??= {};
 store.nudged ??= {};
 store.profiles ??= {};
-attachAuth(() => store, save);
+attachAuth(() => store, () => {
+  for (const session of Object.values((store as typeof store & AuthStore).auth?.sessions ?? {})) {
+    const profile = store.profiles[session.token];
+    if (profile) profile.claimedAt ??= session.at;
+  }
+  save();
+});
+attachLive(() => store.fantasy, save);
 
 function save() {
   mkdirSync(dataDir, { recursive: true });
@@ -80,17 +95,22 @@ function save() {
 }
 
 const newId = (prefix: string) => prefix + "-" + Math.random().toString(36).slice(2, 7);
-const cap = (s: string) => s.trim().replace(/\s+/g, " ").replace(/^./, (c) => c.toUpperCase());
-const person = (raw: string | undefined) => {
-  const clean = (raw ?? "").replace(/[^A-Za-z]/g, "").slice(0, 14);
+const cap = (s: string) => (typeof s === "string" ? s : "").trim().replace(/\s+/g, " ").replace(/^./, (c) => c.toUpperCase());
+const person = (raw: unknown) => {
+  const clean = (typeof raw === "string" ? raw : "").replace(/[^A-Za-z]/g, "").slice(0, 14);
   return clean ? clean[0].toUpperCase() + clean.slice(1).toLowerCase() : "";
 };
-const withMember = (name: string) => (name && !MEMBERS.includes(name) ? [...MEMBERS, name] : MEMBERS);
+const group = () => (demoMode() ? MEMBERS : rosterNames());
+const withMember = (name: string, base = group()) => (name && !base.includes(name) ? [...base, name] : base);
 export const internals = { store, save, person };
 
 export function getRound(id: string): Round | null {
   if (store.rounds[id]) return store.rounds[id];
-  return seedRounds[id] ? ({ id, ...seedRounds[id] } as Round) : null;
+  if (!seedRounds[id]) return null;
+  const seed = seedRounds[id];
+  if (demoMode()) return { id, ...seed } as Round;
+  const { mine, ...round } = seed;
+  return { id, ...round, members: rosterNames(), ...(seed.opponent ? { opponent: "Nickel" } : {}), ...(seed.board ? { played: [], board: [] } : {}) } as Round;
 }
 
 export function getFantasy(id: string): FantasyLeague | null {
@@ -111,6 +131,8 @@ export function draftPick(id: string, member: string, pickName: string): { ok: b
   const who = person(member);
   const name = cap(pickName).slice(0, 40);
   if (!league || !who || !name) return { ok: false, error: "Not found" };
+  if (leagueIsClosed(league)) return { ok: false, error: "This league's season has ended" };
+  if (league.live?.status === "refused") return { ok: false, error: league.live.lastMessage };
   if (!league.members.includes(who)) league.members.push(who);
   if (league.pool.filter((p) => p.owner === who).length >= league.rosterSize) return { ok: false, error: "Your roster is full" };
   let pick = league.pool.find((p) => p.name.toLowerCase() === name.toLowerCase());
@@ -126,15 +148,17 @@ export function draftPick(id: string, member: string, pickName: string): { ok: b
 
 export function scorePick(id: string, pickName: string, delta: number, by: string): { ok: boolean; error?: string; league?: FantasyLeague } {
   const league = store.fantasy[id];
-  const pick = league?.pool.find((p) => p.name.toLowerCase() === pickName.trim().toLowerCase());
+  const pick = typeof pickName === "string" ? league?.pool.find((p) => p.name.toLowerCase() === pickName.trim().toLowerCase()) : undefined;
   if (!league || !pick || !Number.isFinite(delta) || Math.abs(delta) > 100) return { ok: false, error: "Not found" };
+  if (leagueIsClosed(league)) return { ok: false, error: "This league's season has ended" };
+  if (league.live?.status === "refused") return { ok: false, error: league.live.lastMessage };
   pick.points += Math.round(delta);
   league.log.push({ pick: pick.name, delta: Math.round(delta), by: person(by) || "Someone", at: Date.now() });
   save();
   return { ok: true, league };
 }
 
-function createFantasy(topic: string, picks: string[], sender: string): FantasyLeague {
+export function createFantasy(topic: string, picks: string[], sender: string): FantasyLeague {
   const names = picks.length ? picks : (POOLS.find(([re]) => re.test(topic))?.[1] ?? []);
   const unique = [...new Map(names.map((n) => [cap(n).toLowerCase(), cap(n).slice(0, 40)])).values()].filter(Boolean).slice(0, 24);
   const league: FantasyLeague = {
@@ -150,6 +174,7 @@ function createFantasy(topic: string, picks: string[], sender: string): FantasyL
   store.fantasy[league.id] = league;
   store.latestFantasy = league.id;
   save();
+  void openLiveLeague(league);
   return league;
 }
 
@@ -157,11 +182,13 @@ function createRound(game: Round["game"], sender: string, opponent: string): Rou
   const members = withMember(opponent).concat(sender && !withMember(opponent).includes(sender) ? [sender] : []);
   const base = { league: LEAGUE_NAME, members, closes: "9:00 PM", challenger: sender || undefined };
   let round: Round;
-  if (game === "rps") {
+  if (isArcadeGame(game)) {
+    round = { id: newId(game), game, ...createArcade(game), opponent: opponent || undefined, ...base };
+  } else if (game === "rps") {
     const hands = ["rock", "paper", "scissors"];
-    round = { id: newId("rps"), game, title: "Rock Paper Scissors", opponent: opponent || "Dev", bestOf: 3, stake: 5, devMoves: Array.from({ length: 5 }, () => hands[Math.floor(Math.random() * 3)]), ...base };
+    round = { id: newId("rps"), game, title: "Rock Paper Scissors", opponent: opponent || (demoMode() ? "Dev" : "Nickel"), bestOf: 3, stake: 5, devMoves: Array.from({ length: 5 }, () => hands[Math.floor(Math.random() * 3)]), ...base };
   } else if (game === "krillion") {
-    round = { id: newId("krill"), game, title: "One in a Krillion", number: 88 + Object.keys(store.rounds).length, prompt: PROMPTS[Math.floor(Math.random() * PROMPTS.length)], seconds: 25, opponent: opponent || undefined, ...base };
+    round = { id: newId("krill"), game, title: "One in a Krillion", number: 88 + Object.keys(store.rounds).length, prompt: PROMPTS[Math.floor(Math.random() * (process.env.NACE_API_KEY ? PROMPTS.length : 1))], seconds: 25, opponent: opponent || undefined, ...base };
   } else {
     round = { id: newId("wordle"), game, title: "Wordle Blitz", number: 213 + Object.keys(store.rounds).length, seconds: 45, answer: WORDS[Math.floor(Math.random() * WORDS.length)], played: [], board: [], opponent: opponent || undefined, ...base };
   }
@@ -179,7 +206,7 @@ export function roundCard(round: Round) {
     sub: opponent ? title + (round.stake ? " for " + round.stake + " Nickels" : "") : round.seconds ? round.seconds + " seconds. Closes " + (round.closes ?? "tonight") + "." : "Tap to play",
     league: round.league,
     members: round.members,
-    hue: round.game === "wordle" ? "#ff9500" : round.game === "krillion" ? "#0f9fbf" : "#5856d6",
+    hue: isArcadeGame(round.game) ? ARCADE[round.game].hue : round.game === "wordle" ? "#ff9500" : round.game === "krillion" ? "#0f9fbf" : "#5856d6",
     path: "/r/" + round.id,
   };
 }
@@ -238,7 +265,7 @@ export function potCard(pot: Pot) {
     title: dollars(pot.amountCents) + " buy-in",
     sub: s.names.length + " in for a " + dollars(s.committedCents) + " pot. " + s.paid.length + " paid.",
     league: pot.league,
-    members: s.names.length ? s.names : MEMBERS,
+    members: s.names.length ? s.names : group(),
     hue: "#34c759",
     path: "/p/" + pot.id,
   };
@@ -254,14 +281,16 @@ function potTurn(text: string, lower: string, sender: string): { line: string; p
     store.pots[pot.id] = pot;
     store.latestPot = pot.id;
     save();
-    return { line: (sender || "Someone") + " proposed a " + dollars(cents) + " buy-in. Say \"Nickel, I'm in\" to agree. Nobody pays until you tap the card.", pot };
+    return { line: (sender || "Someone") + " proposed a " + dollars(cents) + " buy-in. Say \"Nickel, I'm in\" to agree. The buy-in comes out of your wallet.", pot };
   }
-  if (!open) return /buy.?in|\bpot\b|pay ?out|payout/.test(lower) ? { line: "No buy-in yet. Say: Nickel, $5 buy-in.", pot: null } : null;
+  if (!open) return /buy.?in|\bpot\b|pay ?out|payout|who'?s in|who paid|\b(i'?m in|im in|count me in)\b/.test(lower) ? { line: "No buy-in yet. Say: Nickel, $5 buy-in.", pot: null } : null;
   if (/\b(i'?m in|im in|count me in|i agree|agreed|i'?m down|im down|deal me in|lock me in)\b/.test(lower)) {
     if (!sender) return { line: "Tell me your name first: Nickel, I'm Sritej. Then say you are in.", pot: open };
-    joinPot(open.id, sender, "in");
+    const was = open.members[sender];
+    const joined = joinPot(open.id, sender, "in");
+    if (!joined.ok) return { line: "That pot is closed. Say: Nickel, $5 buy-in.", pot: null };
     const s = potSummary(open);
-    return { line: sender + " is in. " + s.names.length + " in, " + dollars(s.committedCents) + " pot. Tap the card to pay your " + dollars(open.amountCents) + ".", pot: open, pay: { amountCents: open.amountCents, memo: "Nickel buy-in, " + open.league } };
+    return { line: was === "paid" ? sender + " already paid. " + s.names.length + " in, " + dollars(s.committedCents) + " pot." : sender + " is in. Tap the card to pay " + dollars(open.amountCents) + " from your Nickel balance. " + s.names.length + " in, " + dollars(s.committedCents) + " pot.", pot: open };
   }
   if (/buy.?in|\bpot\b|who'?s in|who paid|pay ?out|payout/.test(lower)) {
     const s = potSummary(open);
@@ -272,24 +301,7 @@ function potTurn(text: string, lower: string, sender: string): { line: string; p
 }
 
 
-export const PUNISHMENTS = [
-  "runs a milk mile: four laps, a full glass of milk before each one",
-  "retakes the SAT and posts the score in the chat",
-  "spends 24 hours in a Waffle House, minus one hour per waffle eaten",
-  "does a five-minute open mic set and the group picks the topic",
-  "sets up a lemonade stand and cannot leave until it makes 20 dollars",
-  "wears a full suit to every class for a week and explains nothing",
-  "lets the group write their dating profile and keeps it up for a month",
-  "films a calendar shoot, one themed photo for each month, printed for everyone",
-  "makes a three-minute apology video to the league and pins it",
-  "takes the group's coffee order every morning for a week, by hand, on foot",
-  "holds a sign on the busiest corner on campus that says they finished last",
-  "gets the league trophy: a framed photo of the winner on their desk all season",
-  "performs karaoke of the winner's choice, sober, first song of the night",
-  "cooks dinner for the whole group in a costume the winner picks",
-  "sends a good morning text to the group chat every day until next season",
-  "runs a 5K in jeans and posts the splits",
-];
+export const PUNISHMENTS = ALL_PUNISHMENTS;
 
 const TITLES = ["Front runner", "Closing fast", "Mid-table merchant", "Vibes only", "Down bad", "Paying for dinner"];
 
@@ -324,7 +336,7 @@ export const ROASTS = [
 const quip = (list: string[]) => list[store.quips++ % list.length];
 
 
-export interface Profile { token: string; phone?: string; name: string; account?: string; photo?: string; createdAt: number }
+export interface Profile { token: string; phone?: string; name: string; account?: string; photo?: string; createdAt: number; claimedAt?: number }
 const publicProfile = (p: Profile) => ({ token: p.token, name: p.name, account: p.account ?? "", face: p.photo ? "/face/" + p.token + "?v=" + p.photo.length : null });
 
 export function profileFor(phone: string, name: string): Profile {
@@ -347,7 +359,45 @@ export function saveProfile(token: string, body: { name?: string; account?: stri
   const name = person(body.name);
   if (!name) return { ok: false, error: "Add your first name." };
   if (body.photo !== undefined && !(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(body.photo) && body.photo.length < 300000)) return { ok: false, error: "That photo did not work. Try another." };
+  const old = profile.name;
   profile.name = name;
+  if (old && old !== name && !Object.values(store.profiles).some((p) => p.name === old)) {
+    if (old in store.nickels) store.nickels[name] = (store.nickels[name] ?? 0) + store.nickels[old];
+    const was = store.stats[old];
+    const now = was ? (store.stats[name] ??= { played: 0, wins: 0, losses: 0 }) : null;
+    if (was && now) for (const key of ["played", "wins", "losses"] as const) now[key] += was[key];
+    delete store.nickels[old];
+    delete store.stats[old];
+    renameWallet(old, name);
+    renamePlayer(old, name);
+    const replace = (text: string) => text.replace(new RegExp("\\b" + old + "\\b", "g"), name);
+    for (const result of store.results) {
+      if (result.name === old) result.name = name;
+      if (result.loser === old) result.loser = name;
+      result.line = replace(result.line);
+      const players = (result as typeof result & { players?: string[] }).players;
+      if (players) players.splice(0, players.length, ...players.map((p) => p === old ? name : p));
+    }
+    for (const round of Object.values(store.rounds)) {
+      round.members = [...new Set(round.members.map((p) => p === old ? name : p))];
+      if (round.challenger === old) round.challenger = name;
+      if (round.opponent === old) round.opponent = name;
+    }
+    for (const league of Object.values(store.fantasy)) {
+      league.members = [...new Set(league.members.map((p) => p === old ? name : p))];
+      if (league.createdBy === old) league.createdBy = name;
+      for (const pick of league.pool) if (pick.owner === old) pick.owner = name;
+      for (const entry of league.log) if (entry.by === old) entry.by = name;
+    }
+    for (const pot of Object.values(store.pots)) {
+      if (pot.proposer === old) pot.proposer = name;
+      if (pot.members[old]) { pot.members[name] = pot.members[old]; delete pot.members[old]; }
+      const saved = pot as Pot & { winner?: string; paidAt?: Record<string, number> };
+      if (saved.winner === old) saved.winner = name;
+      if (saved.paidAt?.[old]) { saved.paidAt[name] = saved.paidAt[old]; delete saved.paidAt[old]; }
+    }
+    if (store.nudged[old]) { store.nudged[name] = store.nudged[old]; delete store.nudged[old]; }
+  }
   profile.account = String(body.account ?? profile.account ?? "").trim().slice(0, 40);
   if (body.photo) profile.photo = body.photo;
   if (profile.phone) store.names[profile.phone] = name;
@@ -392,12 +442,13 @@ export async function hydrate(): Promise<"convex" | "file"> {
   return "convex";
 }
 
-export function leaderboard() {
-  const names = [...new Set([...Object.keys(store.nickels), ...Object.values(store.names), ...Object.keys(store.stats), ...Object.values(store.profiles).map((p) => p.name).filter(Boolean)])];
-  const people = (names.length ? names : MEMBERS).map((name) => {
+export function leaderboard(only?: string[]) {
+  const signed = roster();
+  const names = signed.demo ? [...new Set([...Object.keys(store.nickels), ...Object.values(store.names), ...Object.keys(store.stats), ...Object.values(store.profiles).map((p) => p.name).filter(Boolean)])] : signed.members.map((m) => m.name);
+  const people = (only ?? (names.length ? names : group())).map((name) => {
     const stats = store.stats[name] ?? { played: 0, wins: 0, losses: 0 };
-    const last = [...store.results].reverse().find((r) => r.name === name || r.line.includes(name));
-    return { name, nickels: store.nickels[name] ?? 0, ...stats, last: last?.line ?? "", face: faceOf(name) };
+    const last = [...store.results].reverse().find((r) => r.name === name || new RegExp("\\b" + name + "\\b").test(r.line));
+    return { name, nickels: store.nickels[name] ?? 0, ...stats, last: last?.line ?? "", face: signed.members.find((m) => m.name === name)?.face ?? (signed.demo ? faceOf(name) : null) };
   }).sort((a, b) => b.nickels - a.nickels || b.wins - a.wins || a.name.localeCompare(b.name));
   const pot = store.latestPot ? store.pots[store.latestPot] : null;
   const stakes = pot && Object.values(pot.members).filter((m) => m === "paid").length >= 2 ? "$" + pot.amountCents / 100 + " buy-in" : null;
@@ -414,7 +465,7 @@ const artDir = dataDir + "/art";
 const artPending = new Set<string>();
 const stock: Record<string, string> = {};
 const stockArt = (role: string) => (stock[role] ??= "data:image/jpeg;base64," + readFileSync(new URL("../apps/preview/art/" + role + ".jpg", import.meta.url)).toString("base64"));
-const tokenOf = (name: string) => Object.values(store.profiles).find((x) => x.name === name && x.photo)?.token ?? "";
+const tokenOf = (name: string) => (demoMode() ? Object.values(store.profiles).find((x) => x.name === name && x.photo)?.token : roster().members.find((m) => m.name === name && m.face)?.token) ?? "";
 const ascending = () => {
   const board = leaderboard();
   const n = board.people.length;
@@ -457,6 +508,7 @@ export async function generateArt(token: string, role: string) {
       if (!out.images?.[0]?.url) throw new Error("fal returned no image, status " + res.status);
       bytes = new Uint8Array(await (await fetch(out.images[0].url)).arrayBuffer());
     }
+    if (store.profiles[token]?.photo !== photo) return;
     const flat = spawnSync("ffmpeg", ["-loglevel", "error", "-f", "lavfi", "-i", "color=white:s=640x640", "-i", "pipe:0", "-filter_complex", "[1]scale=640:640[a];[0][a]overlay", "-frames:v", "1", "-q:v", "5", "-f", "mjpeg", "pipe:1"], { input: bytes, maxBuffer: 20000000 });
     if (flat.status !== 0 || flat.stdout.length < 500) throw new Error("Portrait resize failed: " + flat.stderr);
     mkdirSync(artDir, { recursive: true });
@@ -533,7 +585,6 @@ export function ensureArt() {
   }
 }
 
-const ordinal = (n: number) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th");
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "\u2026" : s);
 
 export function leaderboardImages(): string[] {
@@ -553,34 +604,10 @@ export function personCardSvg(index: number, as?: { token: string; role: string 
   const ai = p.role && token && existsSync(aiFile) ? "data:image/jpeg;base64," + readFileSync(aiFile).toString("base64") : "";
   const photo = token ? store.profiles[token].photo! : "";
   const src = ai || photo || (p.role ? stockArt(p.role) : "");
-  const tint = p.role === "loser" ? "#ff3b30" : p.role === "winner" ? "#ffcc00" : HUES[[...p.name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % HUES.length];
-  const h = [...p.name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0;
-  const eyes = ['<circle cx="36" cy="42" r="9" fill="#fff"/><circle cx="64" cy="40" r="13" fill="#fff"/><circle cx="38" cy="45" r="4"/><circle cx="60" cy="37" r="4"/>', '<path d="M27 44q9-11 18 0M55 44q9-11 18 0" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>', '<circle cx="36" cy="42" r="11" fill="#fff"/><circle cx="64" cy="42" r="11" fill="#fff"/><circle cx="41" cy="43" r="4"/><circle cx="59" cy="43" r="4"/>', '<rect x="20" y="34" width="60" height="15" rx="6"/>'];
-  const mouths = ['<path d="M33 62q17 18 34 0z"/><path d="M44 69q6 13 12 0z" fill="#ff6b81"/>', '<path d="M36 72q14-11 28 0" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>', '<ellipse cx="50" cy="69" rx="7" ry="9"/>', '<path d="M32 65h36" stroke="#000" stroke-width="4" stroke-linecap="round"/>'];
-  const art = src
-    ? '<image x="290" y="170" width="500" height="500" preserveAspectRatio="xMidYMid slice" clip-path="url(#a)" href="' + src + '"/>'
-    : '<rect x="290" y="170" width="500" height="500" rx="60" fill="' + tint + '"/><g transform="translate(290 170) scale(5)">' + eyes[h % 4] + mouths[(h >> 3) % 4] + "</g>";
-  const props = ai || (!photo && p.role) ? "" : p.role === "winner"
-    ? '<g transform="translate(385 40) scale(5.2) rotate(-6 30 20)"><path d="M4 36L2 10l14 12L30 2l14 20 14-12-2 26z" fill="#ffd60a" stroke="#b8860b" stroke-width="2" stroke-linejoin="round"/><circle cx="30" cy="27" r="3.5" fill="#ff375f"/></g>'
-    : p.role === "loser"
-      ? '<g transform="translate(520 -20) rotate(14 120 120) scale(4)"><path d="M30 2L52 56H8z" fill="#fff" stroke="#1c1c1e" stroke-width="2.5" stroke-linejoin="round"/><text x="30" y="46" text-anchor="middle" font-family="Inter" font-weight="600" font-size="20" fill="#ff3b30">L</text></g><path d="M430 470q-26 90 0 150q26-60 0-150zM650 470q-26 90 0 150q26-60 0-150z" fill="#40c8ff" stroke="#0a84ff" stroke-width="4"/>'
-      : "";
   const foot = p.role === "loser"
     ? board.stakes ? "Last place. Out " + board.stakes + "." : board.punishment ? "Last place " + clip(board.punishment.split(":")[0], 44) + "." : "Last place. Punishment pending."
     : clip(p.last || p.title, 52);
-  return (
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080"><defs>' +
-    '<linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + tint + '" stop-opacity="0.34"/><stop offset="1" stop-color="' + tint + '" stop-opacity="0"/></linearGradient>' +
-    '<clipPath id="a"><rect x="290" y="170" width="500" height="500" rx="60"/></clipPath><clipPath id="c"><rect x="40" y="40" width="1000" height="1000" rx="56"/></clipPath></defs>' +
-    '<rect width="1080" height="1080" fill="#f2f2f7"/><rect x="40" y="40" width="1000" height="1000" rx="56" fill="#ffffff"/><rect x="40" y="40" width="1000" height="460" fill="url(#t)" clip-path="url(#c)"/>' +
-    '<text x="96" y="124" font-family="Inter" font-weight="600" font-size="26" letter-spacing="2.5" fill="#6c6c70">' + esc(("Leaderboard \u00b7 " + board.league).toUpperCase()) + "</text>" +
-    '<text x="984" y="124" text-anchor="end" font-family="Inter" font-weight="600" font-size="30" fill="#1c1c1e">' + ordinal(p.rank) + " of " + p.n + "</text>" +
-    art + props +
-    '<text x="540" y="770" text-anchor="middle" font-family="Inter" font-weight="600" font-size="88" letter-spacing="-2.5" fill="#1c1c1e">' + esc(p.name) + "</text>" +
-    '<text x="540" y="826" text-anchor="middle" font-family="Inter" font-size="34" fill="#6c6c70">' + esc(p.title) + "</text>" +
-    '<text x="540" y="916" text-anchor="middle" font-family="Inter" font-weight="600" font-size="68" letter-spacing="-1.5" fill="#1c1c1e">' + (p.nickels > 0 ? "+" : "") + p.nickels + " Nickels</text>" +
-    '<text x="540" y="980" text-anchor="middle" font-family="Inter" font-weight="' + (p.role === "loser" ? "600" : "400") + '" font-size="30" fill="' + (p.role === "loser" ? "#ff3b30" : "#6c6c70") + '">' + esc(foot) + "</text></svg>"
-  );
+  return renderPersonCard({ ...p, league: board.league, foot, image: src });
 }
 
 export async function personCardPng(index: number, as?: { token: string; role: string }): Promise<Uint8Array | null> {
@@ -596,8 +623,8 @@ export function leaderboardCard() {
   const last = board.people[board.people.length - 1];
   return {
     kicker: "Leaderboard",
-    title: top.nickels > 0 ? top.name + " leads" : "Leaderboard",
-    sub: store.punishment ? "Last place " + store.punishment.split(":")[0] + ". Right now: " + last.name + "." : top.nickels > 0 ? top.name + " is up " + top.nickels + " Nickels." : "Nobody has scored yet.",
+    title: top && top.nickels > 0 ? top.name + " leads" : "Leaderboard",
+    sub: !top ? "Nobody has joined yet." : store.punishment ? "Last place " + store.punishment.split(":")[0] + ". Right now: " + last.name + "." : top.nickels > 0 ? top.name + " is up " + top.nickels + " Nickels." : "Nobody has scored yet.",
     league: LEAGUE_NAME,
     members: board.people.map((p) => p.name),
     hue: "#ff9500",
@@ -609,23 +636,33 @@ function setPunishment(text: string): string {
   const custom = text.match(/punishment\s*(?:is|:|=)\s*(.{6,160})$/i)?.[1]?.trim().replace(/[.!]+$/, "");
   if (custom) store.punishment = custom.replace(/^(last place|loser)\s+/i, "");
   else {
-    const pool = PUNISHMENTS.filter((p) => p !== store.punishment);
+    const pool = punishmentPool().filter((p) => p !== store.punishment);
     store.punishment = pool[Math.floor(Math.random() * pool.length)];
   }
   save();
   return store.punishment!;
 }
 
-export function recordResult(roundId: string, payload: ResultPayload & { verified?: boolean }): { ok: boolean; line?: string; points?: Points } {
+export function recordResult(roundId: string, payload: ResultPayload & { verified?: boolean }): ArcadeReply {
   const round = getRound(roundId);
   const name = person(payload.name);
   if (!round || !name) return { ok: false };
-  const done: { line: string; points?: Points } | undefined = store.results.find((r) => r.roundId === roundId && r.name === name);
+  if (isArcadeGame(round.game)) {
+    const checked = arcadeSubmission(round, name, payload, store.results, save);
+    if ("reply" in checked) return checked.reply;
+    payload = { ...payload, arcadeOutcome: checked.outcome, seconds: checked.seconds, tries: checked.outcome.won ? "1/1" : "X/1" };
+  }
+  const done: { line: string; points?: Points } | undefined = store.results.find((r) => r.roundId === roundId && (r.name === name || (round.game === "rps" && (r as typeof r & { players?: string[] }).players?.includes(name))));
   if (done) return { ok: true, line: done.line, points: done.points };
-  const rival = person(payload.opponent ?? (typeof round.opponent === "string" ? round.opponent : ""));
+  if (round.closed || (round.game === "wordle" && !/^(?:[1-6]|X)\/6$/i.test(String(payload.tries ?? "X/6"))) || (payload.seconds !== undefined && (!Number.isFinite(payload.seconds) || payload.seconds < 0)) || (payload.rarity !== undefined && (!Number.isInteger(payload.rarity) || payload.rarity < 0 || payload.rarity > 5))) return { ok: false };
+  const foe = typeof round.opponent === "string" ? round.opponent : payload.opponent;
+  const rival = person(foe === name ? (typeof round.challenger === "string" ? round.challenger : "") : foe);
+  if (round.game === "rps" && (!rival || rival === name || (round.challenger && name !== round.challenger && name !== round.opponent) || (payload.verified === false && nameClaimed(rival)))) return { ok: false };
   const bump = (who: string, delta: number) => { if (who) store.nickels[who] = (store.nickels[who] ?? 0) + delta; };
   const tally = (who: string, won: boolean) => { if (!who) return; const t = (store.stats[who] ??= { played: 0, wins: 0, losses: 0 }); t.played += 1; if (won) t.wins += 1; else t.losses += 1; };
-  const scored = scoreResult(round, payload, { name, rival }, store);
+  const custom = customScore(round, name);
+  if (round.game === "custom" && !custom) return { ok: false };
+  const scored = custom ?? scoreResult(round, payload, { name, rival }, store);
   const line = scored.line;
   let loser = "";
   if (round.game === "rps") {
@@ -643,7 +680,7 @@ export function recordResult(roundId: string, payload: ResultPayload & { verifie
   notePicks(name, payload);
   store.results.push({ roundId, name, line, at: Date.now(), loser: loser || undefined, ...scored.record, ...(payload.verified === true ? {} : { unverified: true }) });
   save();
-  return { ok: true, line, points: scored.points };
+  return { ok: true, line, points: scored.points, ...(isArcadeGame(round.game) ? arcadeView(round, name, store.results) : {}) };
 }
 
 export function nickelStandings(): string {
@@ -651,21 +688,30 @@ export function nickelStandings(): string {
   return rows.length ? "Nickels: " + rows.slice(0, 6).map(([who, n]) => who + " " + (n > 0 ? "+" : "") + n).join(", ") + "." : "No Nickels have moved yet. First to finish a game takes the lead.";
 }
 
-export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string; hasPhoto?: boolean; trusted?: boolean }): TurnReply {
+export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string; hasPhoto?: boolean; trusted?: boolean; customPrepared?: PreparedTurn }): TurnReply {
   const text = input.text.trim();
   const lower = text.toLowerCase();
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
+  const contact = (input.senderPhone ?? "").replace(/[^+0-9]/g, "");
+  if (contact) profileFor(contact, store.names[contact] ?? "");
+  const current = liveTurn(text, input.baseUrl);
+  if (current) return current;
+  const walletReply = walletTurn(input);
+  if (walletReply) return walletReply;
   const hubReply = hubTurn(input);
   if (hubReply) return hubReply;
+  const customReply = customTurn(input);
+  if (customReply) return customReply;
   const fantasyTalk = /fantasy/.test(lower) && !/punish/.test(lower);
   const phone = (input.senderPhone ?? "").replace(/[^+0-9]/g, "");
   const intro = person(text.match(/\b(?:i'?m|i am|this is|call me|my name is|it'?s)\s+([A-Za-z]{2,14})\b/i)?.[1]);
-  const introduced = intro && !["Down", "In", "Ready", "Up", "Here", "Back", "Game", "Not", "So", "Good", "The", "A"].includes(intro) ? intro : "";
+  const known = person(input.sender) || (phone ? store.names[phone] ?? "" : "");
+  const introduced = input.trusted !== false && intro && (!known || /\b(call me|my name is)\b/i.test(text)) && !["Down", "In", "Ready", "Up", "Here", "Back", "Game", "Not", "So", "Good", "The", "A", "Done", "Out", "Sorry", "Over", "Rigged", "Bullshit", "Unfair", "Winning", "Losing", "Bored", "Broke", "Tired", "Busy", "Late", "Next", "Sure", "Fine", "Ok", "Okay", "Just", "Still", "Going", "Gonna", "Playing", "Paying", "Joking", "Kidding", "Confused", "On", "Off", "Too", "Really", "Very", "That", "This", "What", "Your", "You", "Me", "Nickel"].includes(intro) ? intro : "";
   if (introduced && phone) {
     store.names[phone] = introduced;
     save();
   }
-  const sender = introduced || person(input.sender) || (phone ? store.names[phone] ?? "" : "");
+  const sender = introduced || (phone ? store.names[phone] ?? "" : "") || person(input.sender);
   const base = input.baseUrl.replace(/\/+$/, "");
   const reply = (line: string, card: ReturnType<typeof roundCard> | ReturnType<typeof fantasyCard> | ReturnType<typeof potCard> | ReturnType<typeof leaderboardCard> | ReturnType<typeof profileCard>): TurnReply => ({
     addressed: true,
@@ -685,7 +731,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   const latest = store.latestFantasy ? store.fantasy[store.latestFantasy] : null;
   const claimCard = (p: Profile) => (input.trusted ? { ...profileCard(p), path: claimPath(p.token) } : profileCard(p));
 
-  if (!/challenge|fantasy|buy.?in|who won|standings|leaderboard|punish|\bplay\b|i'?m in\b|\$\d/.test(lower)) {
+  const wantsArt = /\b(image|picture|pic|photo|draw|show|generate|make)\b.*\b(me|i|myself|my)\b/.test(lower) && /\b(los\w*|last|cry\w*|win\w*|won|first|crown\w*|champ\w*|generate|draw)\b/.test(lower) && !/\bwho\b|standings|leaderboard/.test(lower);
+  if (!wantsArt && !/challenge|fantasy|buy.?in|who won|standings|leaderboard|punish|loser has to|last place|\bplay\b|i'?m in\b|\$\d/.test(lower)) {
     if (/\b(you suck|u suck|sucks?|trash|garbage|stupid|dumb|idiot|shut up|stfu|fuck (you|u|off)|hate (you|u)|useless|the worst|clown|bozo|loser)\b/.test(lower)) {
       save();
       return { addressed: true, react: { emoji: "\u{1F595}", tapback: "dislike" }, line: quip(CLAPBACKS) };
@@ -696,7 +743,6 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     }
   }
 
-  const wantsArt = /\b(image|picture|pic|photo|draw|show|generate|make)\b.*\b(me|i|myself|my)\b/.test(lower) && /\b(los\w*|last|cry\w*|win\w*|won|first|crown\w*|champ\w*|generate|draw)\b/.test(lower);
   if (input.hasPhoto || wantsArt) {
     const mine = profileFor(phone, sender);
     if (!mine.photo) return reply("I need your face first. Text me a photo of yourself, or add one on your card.", claimCard(mine));
@@ -721,7 +767,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   }
 
   if (/\b(demo|fake|test|real|live|stripe)\b.*\bpay(ment)?s?\b|\bpay(ment)?s?\b.*\b(demo|fake|test|real|live|stripe)\b/.test(lower) && !/\$\s?\d/.test(lower)) {
-    return { addressed: true, line: "Buy-ins come out of your Nickel balance. Add money in your wallet through Whop: " + base + "/wallet.html" };
+    return { addressed: true, line: "Buy-ins come out of your Nickel balance. Add money in your wallet through Whop: " + base + "/wallet" };
   }
 
   const money = fantasyTalk ? null : potTurn(text, lower, sender);
@@ -731,14 +777,16 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     return { ...reply(money.line, { ...card, path: card.path + (sender ? "?u=" + sender.toLowerCase() : "") }), pay: money.pay };
   }
 
-  if (fantasyTalk && (input.fantasyTopic || /(start|create|make|new|set ?up|run|open|draft|do)\b/.test(lower))) {
+  if (fantasyTalk && (input.fantasyTopic || /(start|create|make|new|set ?up|run|open|draft|do)\b|fantasy (league )?(for|about|of|on)\b/.test(lower))) {
     const [head, list] = text.split(/:\s*/, 2);
     const topic = input.fantasyTopic ?? head.match(/\b(?:for|about|of|on)\s+(.+)$/i)?.[1] ?? head.replace(/.*fantasy\s*(league)?/i, "");
     const cleanTopic = topic.replace(/\b(league|draft|please)\b/gi, "").replace(/[.!?]+$/, "").trim() || "anything";
+    const refused = liveTopicRefusal(cleanTopic);
+    if (refused) return { addressed: true, line: refused };
     const picks = input.fantasyPicks?.length ? input.fantasyPicks : list ? list.split(/,|\n|\band\b/).map((s) => s.trim()).filter(Boolean) : [];
     const league = createFantasy(cleanTopic, picks, sender);
     const board = league.pool.length ? league.pool.length + " on the board, draft " + league.rosterSize + " each." : "Write in your own picks, " + league.rosterSize + " each.";
-    return reply("Fantasy " + league.topic + " is open. " + board, fantasyCard(league));
+    return reply("Fantasy " + league.topic + " is open. " + board + (process.env.OPENAI_API_KEY ? " Current picks and sources are loading on the page." : ""), fantasyCard(league));
   }
 
   if (latest) {
@@ -746,7 +794,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     const pick = score && latest.pool.find((p) => lower.includes(p.name.toLowerCase()));
     if (score && pick) {
       const delta = Number(score[1].replace(/\s/g, ""));
-      scorePick(latest.id, pick.name, delta, sender);
+      const scored = scorePick(latest.id, pick.name, delta, sender);
+      if (!scored.ok) return reply(scored.error === "Not found" ? "Scores move 100 points at a time at most. " + pick.name + " stays at " + pick.points + "." : scored.error ?? "Could not score that pick.", fantasyCard(latest));
       const top = fantasyStandings(latest)[0];
       const tail = !pick.owner ? "Nobody owns " + pick.name + " yet, so it is still up for grabs." : top.points > 0 ? top.member + " leads Fantasy " + latest.topic + " with " + top.points + "." : "Fantasy " + latest.topic + " is still wide open.";
       return reply(pick.name + " " + (delta > 0 ? "+" : "") + delta + ". " + tail, fantasyCard(latest));
@@ -770,6 +819,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     const board = leaderboard();
     const last = board.people[board.people.length - 1];
     const card = leaderboardCard();
+    if (!last) return reply("Last place " + what + ". Nobody is on the board yet.", card);
     return reply("Last place " + what + ". Right now that is " + last.name + ".", { ...card, path: card.path + "?u=" + last.name.toLowerCase() });
   }
 
@@ -791,16 +841,18 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   }
 
   const asked = (input.game ?? "").toLowerCase();
-  const game: Round["game"] = asked === "wordle" || asked === "krillion" || asked === "rps" ? asked : /word/.test(lower) ? "wordle" : /krill/.test(lower) ? "krillion" : /rock|paper|scissors|rps/.test(lower) ? "rps" : /challenge|\bvs\b|versus|against|1v1/.test(lower) ? "rps" : "wordle";
+  if (/^@?nickel[,\s]+(?:games|arcade)[.!?\s]*$/i.test(text)) return { addressed: true, line: "Wordle Blitz, One in a Krillion, Rock Paper Scissors, Reaction, Free Throw, Memory, Math Sprint, Higher or Lower. Say: Nickel, play reaction." };
+  const arcade = arcadeGame(asked) ?? arcadeGame(lower);
+  const game: Round["game"] = arcade ?? (asked === "wordle" || asked === "krillion" || asked === "rps" ? asked : /word/.test(lower) ? "wordle" : /krill/.test(lower) ? "krillion" : /rock|paper|scissors|rps/.test(lower) ? "rps" : /challenge|\bvs\b|versus|against|1v1/.test(lower) ? "rps" : "wordle");
   const skip = new Set(["between", "me", "and", "to", "a", "an", "the", "with", "my", "us", "him", "her", "them", "pls", "please", "plz", "thanks", "gc", "chat", "here", "now", "today", "tonight", "rn", "nickel", "for", "in", "at", "wordle", "krillion", "rps", "rock", "game"]);
   const afterVerb = text.match(/(?:challenge|vs\.?|versus|against|between|and)\s+(.+)$/i)?.[1] ?? "";
   const opponent = person(input.opponent) || person(afterVerb.split(/\s+/).map((w) => w.replace(/[^A-Za-z]/g, "")).find((w) => w && !skip.has(w.toLowerCase())));
   if (opponent && opponent !== sender && /challenge|\bvs\b|versus|against|1v1|between/.test(lower + (input.opponent ? " challenge" : ""))) {
     const round = createRound(game, sender, opponent);
-    const terms = round.game === "rps" ? "Best of 3, 5 Nickels on it." : round.seconds + " seconds, 5 Nickels on it.";
+    const terms = isArcadeGame(round.game) ? round.seconds + " seconds each. High score wins; Nickels for every run." : round.game === "rps" ? "Best of 3, 5 Nickels on it." : round.seconds + " seconds, 5 Nickels on it.";
     return reply((sender ? sender + " just called out " + opponent + ". " : opponent + ", you just got called out. ") + round.title + ". " + terms, roundCard(round));
   }
-  if (/play|today|game|word|krill|rock|rps|deal|start/.test(lower)) {
+  if (arcade || /play|today|game|word|krill|rock|rps|deal|start/.test(lower)) {
     const round = game === "wordle" && !/new/.test(lower) ? getRound("wordle-212")! : createRound(game, sender, "");
     return reply(round.title + " is live. " + (round.seconds ? round.seconds + " seconds on the clock." : "Best of 3."), roundCard(round));
   }
@@ -812,29 +864,9 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   return n % 2 === 0 ? { addressed: true, line, react: { emoji: "\u2753", tapback: "question" } } : { addressed: true, line };
 }
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", "#5e5ce6"];
-
 export function cardSvg(card: { kicker: string; title: string; sub: string; league: string; members: string[]; hue: string }): string {
-  const size = card.title.length > 22 ? 76 : card.title.length > 15 ? 96 : 120;
-  const faces = card.members.slice(0, 6).map((m, i) => {
-    const cx = 132 + i * 68;
-    return '<circle cx="' + cx + '" cy="470" r="30" fill="' + HUES[i % HUES.length] + '" stroke="#ffffff" stroke-width="4"/><text x="' + cx + '" y="480" text-anchor="middle" font-family="Inter" font-weight="600" font-size="26" fill="#ffffff">' + esc(m[0]) + "</text>";
-  }).join("");
-  return (
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630"><defs>' +
-    '<radialGradient id="g" cx="50%" cy="-10%" r="90%"><stop offset="0" stop-color="' + card.hue + '" stop-opacity="0.38"/><stop offset="0.7" stop-color="' + card.hue + '" stop-opacity="0"/></radialGradient>' +
-    '<linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3395ff"/><stop offset="1" stop-color="#007aff"/></linearGradient></defs>' +
-    '<rect width="1200" height="630" fill="#f2f2f7"/><rect width="1200" height="630" fill="url(#g)"/>' +
-    '<rect x="56" y="56" width="1088" height="518" rx="44" fill="#ffffff"/>' +
-    '<text x="104" y="136" font-family="Inter" font-weight="600" font-size="24" letter-spacing="2.5" fill="#6c6c70">' + esc((card.kicker + " \u00b7 " + card.league).toUpperCase()) + "</text>" +
-    '<rect x="104" y="164" width="72" height="8" rx="4" fill="' + card.hue + '"/>' +
-    '<text x="100" y="' + (220 + size * 0.86) + '" font-family="Inter" font-weight="600" font-size="' + size + '" letter-spacing="-3" fill="#1c1c1e">' + esc(card.title) + "</text>" +
-    '<text x="104" y="392" font-family="Inter" font-size="32" fill="#6c6c70">' + esc(card.sub) + "</text>" +
-    faces +
-    '<rect x="884" y="434" width="212" height="76" rx="38" fill="url(#b)"/><text x="990" y="483" text-anchor="middle" font-family="Inter" font-weight="600" font-size="30" fill="#ffffff">Open</text>' +
-    "</svg>"
-  );
+  const photos = Object.fromEntries(Object.values(store.profiles).filter((p) => p.name && p.photo).map((p) => [p.name, p.photo!]));
+  return renderChatCard(card, photos);
 }
 
 let render: ((svg: string) => Uint8Array) | null = null;

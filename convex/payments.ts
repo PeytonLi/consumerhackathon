@@ -56,7 +56,7 @@ async function addMember(ctx: MutationCtx, groupId: Id<"groups">, playerId: Id<"
 async function spentToday(ctx: QueryCtx, playerId: Id<"players">, now = Date.now()) {
   const start = laDayStart(now);
   let total = 0;
-  for await (const row of ctx.db.query("ledger").withIndex("by_from", (q) => q.eq("from", playerWallet(playerId)))) if (row.reason === "stake" && row.createdAt >= start) total += row.amountCents;
+  for await (const row of ctx.db.query("ledger").withIndex("by_from", (q) => q.eq("from", playerWallet(playerId)))) if ((row.reason === "stake" || row.reason === "buy_in") && row.createdAt >= start) total += row.amountCents;
   return total;
 }
 
@@ -163,8 +163,8 @@ export const setLimit = mutation({
 });
 
 export const takeStake = mutation({
-  args: { secret, playerId: v.id("players"), groupId: v.id("groups"), amountCents: v.number(), roundId: v.optional(v.string()), key: v.string() },
-  handler: async (ctx, { secret, playerId, groupId, amountCents, roundId, key }) => {
+  args: { secret, playerId: v.id("players"), groupId: v.id("groups"), amountCents: v.number(), roundId: v.optional(v.string()), key: v.string(), buyIn: v.optional(v.boolean()), note: v.optional(v.string()) },
+  handler: async (ctx, { secret, playerId, groupId, amountCents, roundId, key, buyIn, note }) => {
     assertServer(secret);
     const wallet = playerWallet(playerId);
     if (await ctx.db.query("ledger").withIndex("by_key", (q) => q.eq("key", key)).unique()) return { ok: true as const, duplicate: true, balanceCents: await balanceOf(ctx, wallet) };
@@ -175,8 +175,8 @@ export const takeStake = mutation({
     if (!player.consentAt) return { ok: false as const, reason: "consent" as const };
     if ((await spentToday(ctx, playerId)) + amountCents > player.dailyLimitCents) return { ok: false as const, reason: "limit" as const };
     const balanceCents = await balanceOf(ctx, wallet);
-    if (balanceCents < amountCents) return { ok: false as const, reason: "balance" as const };
-    await postMove(ctx, { from: wallet, to: potWallet(groupId), amountCents, reason: "stake", key, actor: "agent", actorPlayerId: playerId, groupId, roundId, note: "Stake" });
+    if (balanceCents < amountCents) return { ok: false as const, reason: "balance" as const, balanceCents };
+    await postMove(ctx, { from: wallet, to: potWallet(groupId), amountCents, reason: buyIn ? "buy_in" : "stake", key, actor: "agent", actorPlayerId: playerId, groupId, roundId, note: note ?? "Stake" });
     return { ok: true as const, duplicate: false, balanceCents: balanceCents - amountCents };
   },
 });
@@ -198,6 +198,24 @@ export const settlePot = mutation({
     if (paidCents > (await balanceOf(ctx, pot))) throw new Error("Shares add up to more than the pot holds");
     for (const share of pending) await postMove(ctx, { from: pot, to: playerWallet(share.playerId), amountCents: share.cents, reason: "payout", key: share.key, actor: "agent", groupId, note: "Pot win" });
     return { ok: true, paidCents };
+  },
+});
+
+export const potMove = mutation({
+  args: { secret, chatId: v.string(), playerId: v.id("players"), amountCents: v.optional(v.number()), refundOf: v.optional(v.string()), key: v.string(), note: v.string() },
+  handler: async (ctx, { secret, chatId, playerId, amountCents, refundOf, key, note }) => {
+    assertServer(secret);
+    if (await ctx.db.query("ledger").withIndex("by_key", (q) => q.eq("key", key)).unique()) return { ok: true as const, duplicate: true };
+    await mustPlayer(ctx, playerId);
+    const group = await ctx.db.query("groups").withIndex("by_chat", (q) => q.eq("chatId", chatId)).unique();
+    if (!group) return { ok: false as const, reason: "pot" as const };
+    const stake = refundOf ? await ctx.db.query("ledger").withIndex("by_key", (q) => q.eq("key", refundOf)).unique() : null;
+    if (refundOf && (!stake || stake.from !== playerWallet(playerId) || stake.to !== potWallet(group._id))) return { ok: false as const, reason: "stake" as const };
+    const cents = stake ? stake.amountCents : amountCents ?? 0;
+    if (!wholeCents(cents)) throw new Error("Amount must be a positive whole number of cents");
+    if ((await balanceOf(ctx, potWallet(group._id))) < cents) return { ok: false as const, reason: "pot" as const };
+    await postMove(ctx, { from: potWallet(group._id), to: playerWallet(playerId), amountCents: cents, reason: refundOf ? "refund" : "payout", key, actor: "agent", groupId: group._id, note });
+    return { ok: true as const, duplicate: false, amountCents: cents };
   },
 });
 
@@ -282,7 +300,7 @@ export const wallet = query({
     const activity = rows
       .sort((a, b) => b.createdAt - a.createdAt || b._creationTime - a._creationTime)
       .slice(0, 20)
-      .map((r) => ({ at: r.createdAt, amountCents: r.to === me ? r.amountCents : -r.amountCents, reason: r.reason, note: r.note ?? "" }));
+      .map((r) => ({ at: r.createdAt, amountCents: r.to === me ? r.amountCents : -r.amountCents, reason: r.reason === "top_up" ? "topup" : r.reason === "buy_in" ? "buyin" : r.reason === "payout" ? (r.to === me ? "win" : "cashout") : r.reason, note: r.note ?? "" }));
     return { balanceCents: await balanceOf(ctx, me), dailyLimitCents: player.dailyLimitCents, spentTodayCents: await spentToday(ctx, playerId), consent: !!player.consentAt, kyc: player.kyc, activity };
   },
 });

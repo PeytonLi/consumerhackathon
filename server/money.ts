@@ -1,7 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { limited, turnTrusted, type Session } from "./auth.js";
-import { getPot, internals, joinPot } from "./brain.js";
+import { getPot, internals, joinPot, type Pot } from "./brain.js";
 
 type Args = Record<string, unknown>;
 export interface MoneyBackend {
@@ -25,6 +25,13 @@ let backend: MoneyBackend | null | undefined;
 export function useMoneyBackend(next: MoneyBackend | null) {
   backend = next;
   players.clear();
+}
+export const moneyApi = () => (backend === undefined ? (backend = convexBackend()) : backend);
+export const potChat = (league: string) => "league:" + league;
+
+export function playerKey(name: string): string {
+  const found = Object.entries(internals.store.profiles).find(([, p]) => p.name === name);
+  return found ? found[1].phone || "profile:" + found[0] : "";
 }
 
 const players = new Map<string, string>();
@@ -86,7 +93,7 @@ export async function walletRoute(request: Request, session: Session | null, bas
   const path = new URL(request.url).pathname;
   const pot = path.match(/^\/api\/pot\/([a-z0-9-]+)$/);
   if (!path.startsWith("/api/wallet") && !(pot && request.method === "POST")) return null;
-  const api = backend === undefined ? (backend = convexBackend()) : backend;
+  const api = moneyApi();
   const body = await readBody(request);
   if (pot && body.action !== "pay") return null;
   if (body.tooLarge) return fail(413, "That is too much data.");
@@ -108,7 +115,7 @@ export async function walletRoute(request: Request, session: Session | null, bas
     if (path === "/api/wallet/topup") {
       const amountCents = cents(body.amountCents);
       if (!(amountCents >= 100 && amountCents <= 50000)) return fail(400, "Top-ups run from $1 to $500.");
-      return json(await api.action("payments:createTopUp", { playerId: me, amountCents, redirectUrl: base + "/wallet.html" }));
+      return json(await api.action("payments:createTopUp", { playerId: me, amountCents, redirectUrl: base + "/wallet?paid=1" }));
     }
     if (path === "/api/wallet/limit") {
       const dailyLimitCents = cents(body.dailyLimitCents);
@@ -118,7 +125,7 @@ export async function walletRoute(request: Request, session: Session | null, bas
     }
     if (path === "/api/wallet/cashout") {
       const email = typeof body.email === "string" ? body.email.trim().slice(0, 200) : undefined;
-      const out = await api.action<{ ok: boolean; url?: string; status?: string; reason?: string }>("payments:cashOut", { playerId: me, amountCents: cents(body.amountCents) || 0, email, returnUrl: base + "/wallet.html" });
+      const out = await api.action<{ ok: boolean; url?: string; status?: string; reason?: string }>("payments:cashOut", { playerId: me, amountCents: cents(body.amountCents) || 0, email, returnUrl: base + "/wallet" });
       if (out.url) return json({ url: out.url });
       return out.ok ? json({ ok: true, status: out.status }) : fail(out.reason === "transfer" ? 502 : 400, WHY[out.reason ?? ""] ?? "Cash out failed.", { reason: out.reason });
     }
@@ -134,10 +141,15 @@ async function payPot(api: MoneyBackend, me: string, who: { key: string; name: s
   if (!pot) return fail(404, "Not found");
   const name = who.name;
   if (!name) return fail(400, "Set your name on your player card first.");
-  const groupId = await api.mutation<string>("payments:ensureGroup", { chatId: "league:" + pot.league, name: pot.league, commissionerId: me });
+  if ((pot as Pot & { settled?: boolean }).settled) return fail(409, "That pot is closed.", { pot });
+  const groupId = await api.mutation<string>("payments:ensureGroup", { chatId: potChat(pot.league), name: pot.league, commissionerId: me });
   await api.mutation("payments:joinGroup", { groupId, playerId: me });
-  const out = await api.mutation<{ ok: boolean; reason?: string }>("payments:takeStake", { playerId: me, groupId, amountCents: pot.amountCents, roundId: "pot:" + pot.id, key: "pot:" + pot.id + ":" + me });
-  if (!out.ok) return fail(402, WHY[out.reason ?? ""] ?? "That did not go through.", { reason: out.reason, pot, wallet: "/wallet.html" });
+  const out = await api.mutation<{ ok: boolean; reason?: string; balanceCents?: number }>("payments:takeStake", { playerId: me, groupId, amountCents: pot.amountCents, roundId: "pot:" + pot.id, key: "pot:" + pot.id + ":" + me, buyIn: true, note: pot.league });
+  if (!out.ok) return fail(402, WHY[out.reason ?? ""] ?? "That did not go through.", { reason: out.reason, pot, shortCents: out.reason === "balance" ? pot.amountCents - (out.balanceCents ?? 0) : undefined });
   const joined = joinPot(pot.id, name, "paid");
+  if (joined.ok) {
+    ((pot as Pot & { paidAt?: Record<string, number> }).paidAt ??= {})[name] = Date.now();
+    internals.save();
+  }
   return json({ ok: joined.ok, pot: getPot(pot.id) });
 }

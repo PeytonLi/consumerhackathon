@@ -1,8 +1,13 @@
-import { researchPunishment, setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick, internals } from "./brain.js";
+import { setPhoto, generateArt, dueNudges, idleStakes, ensureArt, leaderboardImages, personCardPng, getProfile, saveProfile, facePhoto, profileCard, hydrate, cardPng, leaderboard, leaderboardCard, getPot, joinPot, potCard, recordResult, draftPick, fantasyCard, fantasyStandings, getFantasy, getRound, handleTurn, roundCard, scorePick, internals } from "./brain.js";
 import { hub, hubCard } from "./hub.js";
 import { economyRoute } from "./economy.js";
+import { flushPotMoves, potView, sweepForfeits, walletCard, withForfeitNews } from "./wallet.js";
 import { authGate, claimStatus, turnTrusted } from "./auth.js";
-import { assistTurn, gradeKrillion, gradedResult, naceStats, punishmentAllowed } from "./nace.js";
+import { assistTurn, gradeKrillion, gradedResult, naceStats } from "./nace.js";
+import { customRoute, prepareTurn } from "./custom.js";
+import { artImage } from "./roster.js";
+import { isArcadeGame } from "./arcade.js";
+import { finishLiveTurn, tickLiveLeagues } from "./live.js";
 import { walletRoute } from "./money.js";
 import { agentMoney } from "./agent-money.js";
 
@@ -36,6 +41,14 @@ function headTags(card: { kicker: string; title: string; sub: string; league: st
 }
 
 console.log("Nickel state: " + (await hydrate()));
+sweepForfeits(Date.now());
+void flushPotMoves();
+setInterval(() => {
+  sweepForfeits(Date.now());
+  void flushPotMoves();
+}, 60000);
+void tickLiveLeagues();
+setInterval(() => { void tickLiveLeagues(); }, 4 * 60 * 60 * 1000);
 
 Bun.serve({
   port,
@@ -61,10 +74,11 @@ Bun.serve({
     if (path.startsWith("/api/agent/")) return agentMoney(request, base);
 
     if (path === "/api/turn" && request.method === "POST") {
+      sweepForfeits(Date.now());
       const body = (await request.json().catch(() => ({}))) as { text?: string; sender?: string; senderPhone?: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string };
       let hasPhoto = false;
       const photoUrl = (body as { photoUrl?: string }).photoUrl;
-      if (photoUrl && /^https:\/\//.test(photoUrl)) {
+      if (turnTrusted(request) && photoUrl && /^https:\/\//.test(photoUrl)) {
         const proc = Bun.spawn(["ffmpeg", "-loglevel", "error", "-i", photoUrl, "-vf", "scale=384:384:force_original_aspect_ratio=increase,crop=384:384", "-frames:v", "1", "-q:v", "5", "-f", "mjpeg", "pipe:1"], { stdout: "pipe", stderr: "pipe" });
         const bytes = Buffer.from(await new Response(proc.stdout).arrayBuffer());
         if ((await proc.exited) === 0 && bytes.length > 500 && bytes.length < 220000) {
@@ -73,19 +87,23 @@ Bun.serve({
         } else console.error("Photo import failed", await new Response(proc.stderr).text());
       }
       let text = String(body.text ?? "");
-      if (/punish/i.test(text) && /research|look.?up|\bfind\b|search|google|internet|online|ideas?\b|suggest|come up|what do (people|leagues)/i.test(text)) {
-        const found = await researchPunishment(text);
-        if (found && (await punishmentAllowed(found))) text = "nickel punishment is " + found;
-      }
+      const customPrepared = await prepareTurn(text);
       const trusted = turnTrusted(request);
-      const turn = await assistTurn((text) => handleTurn({ trusted, hasPhoto, text, sender: body.sender, senderPhone: body.senderPhone, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined }), text, body.sender);
+      const turn = await assistTurn((text) => handleTurn({ customPrepared, trusted, hasPhoto, text, sender: body.sender, senderPhone: body.senderPhone, baseUrl: base, opponent: body.opponent, game: body.game, fantasyTopic: body.fantasyTopic, fantasyPicks: Array.isArray(body.fantasyPicks) ? body.fantasyPicks.map(String) : undefined }), text, body.sender);
+      await finishLiveTurn(turn);
       if (turn.art) await Promise.race([generateArt(turn.art.token, turn.art.role), new Promise((r) => setTimeout(r, 40000))]);
-      if (turn.addressed && turn.line && Number(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false })) >= 18) {
+      const leagueReply = turn.card?.path.startsWith("/f/");
+      if (!leagueReply && turn.addressed && turn.line && Number(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false })) >= 18) {
         const due = dueNudges();
         if (due.length) turn.line += " " + due.map((n) => n.text).join(" ");
       }
-      return json(turn);
+      return json(leagueReply ? turn : withForfeitNews(turn));
     }
+
+    const custom = await customRoute(request.method, url, () => request.json().catch(() => ({})), me?.name);
+    if (custom?.kind === "json") return json(custom.data, custom.status);
+    if (custom?.kind === "card") return new Response((await cardPng(custom.card)) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
+    if (custom) return page((await Bun.file(site + "custom.html").text()).replace("<!--GAME-->", (custom.card ? headTags(custom.card, base, "") : "") + "\n<script>window.GAME = " + inline(custom.game) + "; window.CUSTOM_LEAGUE = " + inline(custom.league ?? null) + ";</script>"));
 
     const resultApi = path.match(/^\/api\/rounds\/([a-z0-9-]+)\/result$/);
     if (resultApi && request.method === "POST") return json(recordResult(resultApi[1], await gradedResult(getRound(resultApi[1]), (await request.json().catch(() => ({}))) as Parameters<typeof recordResult>[1])));
@@ -119,9 +137,10 @@ Bun.serve({
     const round = path.match(/^\/r\/([a-z0-9-]+)\/?$/);
     if (round) {
       const found = getRound(round[1]);
+      if (found?.game === "custom") return Response.redirect(base + "/g/" + found.id, 302);
       const data = found ?? { id: round[1], game: "missing", title: "Nickel" };
       const tags = found ? headTags(roundCard(found), base, "") : "";
-      return page((await Bun.file(site + "play.html").text()).replace("<!--ROUND-->", tags + "\n<script>window.ROUND = " + inline(data) + ";</script>"));
+      return page((await Bun.file(site + (found && isArcadeGame(found.game) ? "arcade.html" : "play.html")).text()).replace("<!--ROUND-->", tags + "\n<script>window.ROUND = " + inline(data) + ";</script>"));
     }
 
     const meApi = path.match(/^\/api\/me\/([a-z0-9-]+)$/);
@@ -157,26 +176,39 @@ Bun.serve({
     if (path === "/api/hub") return json(hub(me));
     if (path === "/og/l.png") return new Response((await cardPng(leaderboardCard())) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
     if (path === "/l") return page((await Bun.file(site + "leaderboard.html").text()).replace("<!--BOARD-->", headTags(leaderboardCard(), base, "") + "\n<script>window.BOARD = " + inline(board()) + ";</script>"));
+    if (path === "/w") return page((await Bun.file(site + "wrapped.html").text()).replace("<!--WRAPPED-->", headTags({ ...leaderboardCard(), kicker: "Wrapped", title: "Season recap", path: "/w" }, base, "").replace("/og/w.png", "/og/l.png") + "\n<script>window.BOARD = " + inline(board()) + ";</script>"));
 
     if (path === "/og/h.png") return new Response((await cardPng(hubCard(leaderboard()))) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
-    if (path === "/h") return page((await Bun.file(site + "hub.html").text()).replace("<!--HUB-->", headTags(hubCard(leaderboard()), base, "") + "\n<script>window.HUB = " + inline(hub(me)) + ";</script>"));
+    const art = path.match(/^\/art\/([a-z0-9-]+)\/(loser|winner)\.jpg$/);
+    if (art) {
+      const jpg = artImage(art[1], art[2]);
+      return jpg ? new Response(jpg as unknown as BodyInit, { headers: { "content-type": "image/jpeg", "cache-control": "public, max-age=3600" } }) : new Response("Not found", { status: 404 });
+    }
+    if (path === "/h") {
+      const data = hub(me);
+      return page((await Bun.file(site + "hub.html").text()).replace("<!--HUB-->", headTags(hubCard(leaderboard()), base, "") + "\n<script>window.HUB = " + inline(data) + ";</script>"));
+    }
 
     const potApi = path.match(/^\/api\/pot\/([a-z0-9-]+)$/);
     if (potApi) {
       if (request.method === "POST") {
         const body = (await request.json().catch(() => ({}))) as { member?: string };
-        joinPot(potApi[1], body.member ?? "", "in");
+        const joined = joinPot(potApi[1], body.member ?? "", "in");
+        if (!joined.ok) return json(joined, getPot(potApi[1]) ? 409 : 404);
       }
-      const pot = getPot(potApi[1]);
+      const pot = potView(potApi[1]);
       return pot ? json({ ok: true, pot }) : json({ ok: false }, 404);
     }
 
     const potPage = path.match(/^\/p\/([a-z0-9-]+)\/?$/);
     if (potPage) {
-      const pot = getPot(potPage[1]);
+      const pot = potView(potPage[1]);
       const tags = pot ? headTags(potCard(pot), base, "") : "";
       return page((await Bun.file(site + "pot.html").text()).replace("<!--POT-->", tags + "\n<script>window.POT = " + inline(pot) + ";</script>"));
     }
+
+    if (path === "/og/wallet.png") return new Response((await cardPng(walletCard())) as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=30" } });
+    if (path === "/wallet") return page((await Bun.file(site + "wallet.html").text()).replace("<!--WALLET-->", headTags(walletCard(), base, "")));
 
     const fantasy = path.match(/^\/f\/([a-z0-9-]+)\/?$/);
     if (fantasy) {
@@ -185,7 +217,6 @@ Bun.serve({
       return page((await Bun.file(site + "fantasy.html").text()).replace("<!--LEAGUE-->", tags + "\n<script>window.LEAGUE = " + inline(league) + ";</script>"));
     }
 
-    if (path === "/w") return page(await Bun.file(site + "wallet.html").text());
     if (path === "/chest") return page(await Bun.file(site + "chest.html").text());
     if (path === "/heist") return page(await Bun.file(site + "heist.html").text());
 
@@ -193,6 +224,7 @@ Bun.serve({
     if (!/^[\w.-]+$/.test(name)) return new Response("Not found", { status: 404 });
     const file = Bun.file(site + name);
     if (!(await file.exists())) return new Response("Not found", { status: 404 });
+    if (name === "messages.html") return page(await file.text());
     return new Response(file, { headers: { "cache-control": "no-store" } });
   },
 });

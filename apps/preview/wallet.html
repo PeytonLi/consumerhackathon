@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <title>Nickel wallet</title>
+<!--WALLET-->
 <link rel="stylesheet" href="/nickel.css">
 <script src="/mock-api.js"></script>
 <style>
@@ -71,6 +72,14 @@ const AMOUNTS = [100, 500, 1000];
 const LIMITS = [100, 200, 500];
 const LOW = 100;
 let W, amount = 500;
+const asked = Number(params.get("add"));
+if (Number.isInteger(asked) && asked >= 100 && asked <= 50000) {
+  amount = asked;
+  if (!AMOUNTS.includes(asked)) AMOUNTS.splice(AMOUNTS.findIndex((c) => c > asked) >>> 0, 0, asked);
+}
+const back = params.get("back");
+if (back && /^\/[a-z0-9/-]*$/i.test(back)) sessionStorage.setItem("nickel.back", back);
+let cashoutAsked = params.has("cashout");
 
 const dollars = (c) => "$" + (c / 100).toFixed(2);
 const ago = (at) => {
@@ -86,7 +95,8 @@ const LABELS = {
   steal: (n, c) => (c > 0 ? "Steal from " : "Stolen by ") + (n || "someone"),
   chest: () => "Chest",
   buyin: () => "Buy-in",
-  payout: () => "Cash out",
+  cashout: () => "Cash out",
+  win: (n) => n || "Pot win",
   refund: () => "Refund",
   round: (n) => n || "Game",
   bet: (n) => (n ? "Bet on " + n : "Bet"),
@@ -100,6 +110,8 @@ const sub = (a) => ago(a.at) + (a.reason === "buyin" && a.note ? " \u00b7 " + a.
 async function load() {
   try { W = await api("/api/wallet"); } catch { stage.className = "stage center"; return nowhere("Wallet not found", "Open it from your Nickel link"); }
   draw();
+  if (cashoutAsked && W.balanceCents) cashoutSheet();
+  cashoutAsked = false;
 }
 
 function draw() {
@@ -208,7 +220,13 @@ setMe();
 load();
 if (params.has("paid")) {
   toast("Payment sent");
-  setTimeout(load, 3000);
+  setTimeout(async () => {
+    await load();
+    const to = sessionStorage.getItem("nickel.back");
+    if (!to) return;
+    sessionStorage.removeItem("nickel.back");
+    location.assign(to);
+  }, 3000);
 }
 </script>
 </body>

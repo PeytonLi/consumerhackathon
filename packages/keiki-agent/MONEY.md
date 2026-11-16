@@ -4,9 +4,9 @@ The bot never moves money itself. Each tool calls the Bun server at `NICKEL_BASE
 
 | Tool | Direct chat | Group |
 | --- | --- | --- |
-| `add_money { amountDollars? }` | Vault card for `/w?add=<cents>`, caption "Add money", `live: false` | Plain `/w` link |
+| `add_money { amountDollars? }` | Vault card for `/wallet?add=<cents>`, caption "Add money", `live: false` | Plain `/wallet` link |
 | `balance` | Balance numbers | Server texts the balance to their DM; the tool returns `privateOnly`, `sentPrivately` and no numbers |
-| `cash_out` | Vault card for `/w?cashout=1` | `privateOnly` line, no server call |
+| `cash_out` | Vault card for `/wallet?cashout=1` | `privateOnly` line, no server call |
 | `open_chest` | Vault card for `/chest` | `/chest` link |
 | `heist` | Vault card for `/heist` | `/heist` link |
 | `propose_adjustment { player, amountDollars, reason }` | Works | Works |

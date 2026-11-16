@@ -37,9 +37,9 @@ const group = ctx({ direct: false, phone: GROUP });
 const run = <I, O>(tool: { execute: (input: I, ctx: ToolContext) => Effect.Effect<O> }, input: I, context: ToolContext) =>
   Effect.runPromise(tool.execute(input, context)) as Promise<Record<string, any>>;
 
-const pages: Record<string, string> = { wallet: "/w", cashout: "/w?cashout=1", chest: "/chest", heist: "/heist" };
+const pages: Record<string, string> = { wallet: "/wallet", cashout: "/wallet?cashout=1", chest: "/chest", heist: "/heist" };
 const linkServer = (path: string, body: Record<string, unknown>) =>
-  path === "/api/agent/link" ? { data: { url: "https://nickel.test" + (body.page === "wallet" && body.amountCents ? "/w?add=" + body.amountCents : pages[String(body.page)]) } } : { status: 404, data: { ok: false, error: "Not found." } };
+  path === "/api/agent/link" ? { data: { url: "https://nickel.test" + (body.page === "wallet" && body.amountCents ? "/wallet?add=" + body.amountCents : pages[String(body.page)]) } } : { status: 404, data: { ok: false, error: "Not found." } };
 
 describe("identity", () => {
   it("takes the caller's phone from the signed context, never from tool input", async () => {
@@ -70,8 +70,8 @@ describe("add_money", () => {
     reply = linkServer;
     const out = await run(addMoneyTool, { amountDollars: 5 }, dm);
     expect(seen[0].url).toBe("https://nickel.test/api/agent/link");
-    expect(out).toMatchObject({ ok: true, line: "Add $5.00 here.", url: "https://nickel.test/w?add=500" });
-    expect(out.presentation).toMatchObject({ type: "app", url: "https://nickel.test/w?add=500", live: false, caption: "Add money", subcaption: "$5.00" });
+    expect(out).toMatchObject({ ok: true, line: "Add $5.00 here.", url: "https://nickel.test/wallet?add=500" });
+    expect(out.presentation).toMatchObject({ type: "app", url: "https://nickel.test/wallet?add=500", live: false, caption: "Add money", subcaption: "$5.00" });
     expect(out.presentation.id).toMatch(/^nickel-wallet-msg-1$/);
   });
 
@@ -127,7 +127,7 @@ describe("cash_out, open_chest, heist", () => {
     expect(seen).toHaveLength(0);
     const out = await run(cashOutTool, {}, dm);
     expect(seen[0].body).toEqual({ phone: ME, page: "cashout" });
-    expect(out.presentation).toMatchObject({ type: "app", url: "https://nickel.test/w?cashout=1", live: false, caption: "Cash out" });
+    expect(out.presentation).toMatchObject({ type: "app", url: "https://nickel.test/wallet?cashout=1", live: false, caption: "Cash out" });
   });
 
   it("opens the chest and the heist as cards in a direct chat and links in a group", async () => {

@@ -106,7 +106,8 @@ describe("krillion grading", () => {
     reply(drex({ valid: 0.95, rarity: 0 }));
     const made = plain("nickel play krillion", "Maya");
     const round = brain.getRound(made.card!.path.slice(3))!;
-    const graded = await nace.gradedResult(round, { name: "Maya", tries: "1/1", seconds: 25, rarity: 5, answer: "the obvious one" } as never);
+    round.prompt = "Pizza toppings";
+    const graded = await nace.gradedResult(round, { name: "Maya", tries: "1/1", seconds: 25, rarity: 5, answer: "pepperoni" } as never);
     expect(graded).toMatchObject({ tries: "1/1", rarity: 1 });
     expect(brain.recordResult(round.id, graded).line).not.toContain("One in a Krillion answer");
     reply(drex({ valid: 0.1 }));
@@ -145,7 +146,7 @@ describe("intent routing", () => {
     reply(drex({ intent: "invite" }));
     expect((await turn("nickel how do my roommates get in on this")).line).toMatch(/^Everyone: text /);
     reply(drex({ intent: "buy_in" }));
-    expect((await turn("nickel lets put 10 on it")).line).toBe("Sritej proposed a $10 buy-in. Say \"Nickel, I'm in\" to agree. Nobody pays until you tap the card.");
+    expect((await turn("nickel lets put 10 on it")).line).toBe("Sritej proposed a $10 buy-in. Say \"Nickel, I'm in\" to agree. The buy-in comes out of your wallet.");
     reply(drex({ intent: "payments" }));
     expect((await turn("nickel how much have i made")).line).toBe("Sritej, your balance is $0. It stays on the Nickel ledger.");
     reply(drex({ intent: "memory" }));

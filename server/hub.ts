@@ -1,4 +1,6 @@
 import { getRound, internals, leaderboard, potSummary, type Pot, type TurnReply } from "./brain.js";
+import { creditWin } from "./wallet.js";
+import { roster, standing } from "./roster.js";
 
 export interface Fact {
   text: string;
@@ -15,12 +17,11 @@ export interface Payout {
   potId: string;
 }
 
-type SettledPot = Pot & { settled?: boolean; winner?: string; settledAt?: number };
+type SettledPot = Pot & { settled?: boolean; winner?: string; settledAt?: number; forfeitCents?: number };
 
 interface HubState {
   memory: { people: Record<string, Fact[]>; group: Fact[] };
   payouts: Payout[];
-  balances: Record<string, number>;
   picks: Record<string, Record<string, number>>;
   pots: Record<string, SettledPot>;
 }
@@ -38,7 +39,6 @@ function state() {
   s.memory.people ??= {};
   s.memory.group ??= [];
   s.payouts ??= [];
-  s.balances ??= {};
   s.picks ??= {};
   return s as typeof internals.store & HubState;
 }
@@ -49,7 +49,7 @@ const boardNames = () => leaderboard().people.map((p) => p.name);
 const top = (counts: Record<string, number>) => Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
 
 function clean(raw: string) {
-  const text = raw.replace(/\p{Extended_Pictographic}|\uFE0F|\u200D|[<>]/gu, "").replace(/\s+/g, " ").trim().replace(/[.!]+$/, "").slice(0, FACT_LENGTH).trim();
+  const text = raw.replace(/<\/?[a-z][^>]*>/gi, "").replace(/\p{Extended_Pictographic}|\uFE0F|\u200D|[<>]/gu, "").replace(/\s+/g, " ").trim().replace(/[.!]+$/, "").slice(0, FACT_LENGTH).trim();
   return text.replace(/^./, (c) => c.toUpperCase());
 }
 
@@ -57,7 +57,8 @@ function events() {
   return state().results.map((r) => {
     const duel = r.line.match(/^([A-Za-z]+) beat ([A-Za-z]+) /);
     const game = getRound(r.roundId)?.title ?? "";
-    return duel ? { winner: duel[1], loser: duel[2], game, at: r.at } : { winner: r.loser ? "" : r.name, loser: r.loser ?? "", game, at: r.at };
+    const loser = r.loser || ((r as typeof r & { solved?: boolean }).solved === false || r.line.startsWith(r.name + " missed ") || r.line.startsWith(r.name + " wiped out on ") ? r.name : "");
+    return duel ? { winner: duel[1], loser: duel[2], game, at: r.at } : { winner: loser ? "" : r.name, loser, game, at: r.at };
   });
 }
 
@@ -162,17 +163,33 @@ export function notePicks(name: string, payload: object) {
   }
 }
 
-export const balanceOf = (name: string) => state().balances[name] ?? 0;
+export const winningsOf = (name: string) => state().payouts.filter((p) => p.name === name).reduce((sum, p) => sum + p.amountCents, 0);
 
-export function settlePot(potId: string): { ok: boolean; error?: string; payout?: Payout; balanceCents?: number } {
+export function renamePlayer(old: string, name: string) {
+  const s = state();
+  if (s.picks[old]) {
+    const counts = (s.picks[name] ??= {});
+    for (const [pick, count] of Object.entries(s.picks[old])) counts[pick] = (counts[pick] ?? 0) + count;
+    delete s.picks[old];
+  }
+  if (s.memory.people[old]) {
+    s.memory.people[name] = [...(s.memory.people[name] ?? []), ...s.memory.people[old]].slice(-PERSON_FACTS);
+    delete s.memory.people[old];
+  }
+  for (const fact of [...Object.values(s.memory.people).flat(), ...s.memory.group]) if (fact.by === old) fact.by = name;
+  for (const payout of s.payouts) if (payout.name === old) payout.name = name;
+}
+
+export function settlePot(potId: string): { ok: boolean; error?: string; payout?: Payout } {
   const s = state();
   const pot = s.pots[potId];
   if (!pot) return { ok: false, error: "Not found" };
   if (pot.settled) return { ok: false, error: "Already settled" };
-  const amountCents = potSummary(pot).paidCents;
+  const amountCents = potSummary(pot).paidCents + (pot.forfeitCents ?? 0);
   if (!amountCents) return { ok: false, error: "Nobody has paid in yet" };
   if (!s.results.length) return { ok: false, error: "No games played yet" };
-  const winner = leaderboard().people[0].name;
+  const winner = leaderboard().people[0]?.name;
+  if (!winner) return { ok: false, error: "No games played yet" };
   const payout: Payout = { id: "pay-" + Math.random().toString(36).slice(2, 7), name: winner, amountCents, reason: "Won the " + dollars(amountCents) + " pot", at: Date.now(), potId };
   pot.settled = true;
   pot.winner = winner;
@@ -180,16 +197,16 @@ export function settlePot(potId: string): { ok: boolean; error?: string; payout?
   if (s.latestPot === potId) s.latestPot = null;
   s.payouts.push(payout);
   s.payouts.splice(0, s.payouts.length - PAYOUTS_KEPT);
-  s.balances[winner] = (s.balances[winner] ?? 0) + amountCents;
   internals.save();
-  return { ok: true, payout, balanceCents: s.balances[winner] };
+  creditWin(winner, amountCents, payout.reason, potId);
+  return { ok: true, payout };
 }
 
 export function hubTurn(input: { text: string; sender?: string; senderPhone?: string }): TurnReply | null {
   const s = state();
   const text = input.text.trim().replace(/[,\s]*@?nickel[.!?\s]*$/i, "");
   const lower = text.toLowerCase();
-  const sender = internals.person(input.sender) || s.names[(input.senderPhone ?? "").replace(/[^+0-9]/g, "")] || "";
+  const sender = s.names[(input.senderPhone ?? "").replace(/[^+0-9]/g, "")] || internals.person(input.sender) || "";
   const say = (line: string): TurnReply => ({ addressed: true, line });
 
   const asked = lower.match(/\b(?:what do (?:you|u)|do (?:you|u)|what'?s|anything)\b.*\b(?:know|remember|got)\b.*\babout\s+(.+?)[?.!\s]*$/)?.[1];
@@ -204,7 +221,7 @@ export function hubTurn(input: { text: string; sender?: string; senderPhone?: st
     return say(facts.length ? who + ": " + facts.slice(0, 5).join(". ") + "." : "Nothing on " + who + " yet. Tell me: Nickel, remember that " + who + " always picks rock.");
   }
 
-  const told = /\b(do|did|don'?t|can|will) (you|u|i|we) remember\b/.test(lower) ? undefined : text.match(/\bremember\s+(?:that\s+)?(.+)$/i)?.[1];
+  const told = /\b(do|did|don'?t|can|will) (you|u|i|we) remember\b|\b(can'?t|cannot|don'?t|didn'?t|do not|never|won'?t) remember\b/.test(lower) ? undefined : text.match(/\bremember\b(?:\s+that\b)?\s*(.*)$/i)?.[1];
   if (told !== undefined) {
     const out = remember(told, sender);
     if (out.error === "Duplicate") return say("Already have that one.");
@@ -220,20 +237,20 @@ export function hubTurn(input: { text: string; sender?: string; senderPhone?: st
   }
 
   if (/\bsettle\b.*\b(pot|buy.?in|up)\b|\bpay ?out the pot\b/.test(lower)) {
-    const last = Object.values(s.pots).filter((p) => p.settled).sort((a, b) => (b.settledAt ?? 0) - (a.settledAt ?? 0))[0];
+    const last = Object.values(s.pots).filter((p) => p.settled && p.winner).sort((a, b) => (b.settledAt ?? 0) - (a.settledAt ?? 0))[0];
     if (!s.latestPot) return say(last ? "That pot is already settled. " + last.winner + " took it." : "No buy-in to settle. Say: Nickel, $5 buy-in.");
     const out = settlePot(s.latestPot);
     if (!out.ok) return say(out.error === "Nobody has paid in yet" ? "Nobody has paid into the pot yet, so there is nothing to settle." : out.error === "No games played yet" ? "Nobody has played yet, so there is no leader to pay. Finish a game first." : "That pot is already settled.");
-    return say(out.payout!.name + " leads the board and takes the " + dollars(out.payout!.amountCents) + " pot. " + out.payout!.name + "'s balance is " + dollars(out.balanceCents!) + ". It stays on the Nickel ledger.");
+    return say(out.payout!.name + " leads the board and takes the " + dollars(out.payout!.amountCents) + " pot. It goes into " + out.payout!.name + "'s Nickel wallet.");
   }
 
   if (/\bbalances?\b|\bwinnings\b/.test(lower)) {
     if (/\bbalances\b|\beveryone|\ball\b|\bour\b/.test(lower)) {
-      const rows = Object.entries(s.balances).filter(([, cents]) => cents > 0).sort((a, b) => b[1] - a[1]);
-      return say(rows.length ? "Balances: " + rows.map(([who, cents]) => who + " " + dollars(cents)).join(", ") + "." : "Every balance is $0. Settle a pot to move one.");
+      const rows = [...new Set(s.payouts.map((p) => p.name))].map((who) => [who, winningsOf(who)] as const).sort((a, b) => b[1] - a[1]);
+      return say((rows.length ? "Pot winnings: " + rows.map(([who, cents]) => who + " " + dollars(cents)).join(", ") + ". " : "Nobody has won a pot yet. ") + "Balances stay private in each wallet.");
     }
     if (!sender) return say("Tell me your name first: Nickel, I'm Sritej.");
-    return say(sender + ", your balance is " + dollars(balanceOf(sender)) + ". It stays on the Nickel ledger.");
+    return say(sender + ", you have won " + dollars(winningsOf(sender)) + " from pots. Your balance is private, so check it in your wallet: say \"Nickel, wallet\".");
   }
 
   return null;
@@ -241,7 +258,8 @@ export function hubTurn(input: { text: string; sender?: string; senderPhone?: st
 
 export function hub(me: { token: string; name: string; face: string | null } | null) {
   const s = state();
-  const board = leaderboard();
+  const signed = roster();
+  const board = leaderboard(signed.demo ? undefined : signed.members.map((m) => m.name));
   const all = events();
   return {
     me: me ? { token: me.token, name: me.name, face: me.face } : null,
@@ -256,13 +274,14 @@ export function hub(me: { token: string; name: string; face: string | null } | n
       title: p.title,
       face: p.face,
       last: p.last,
-      balanceCents: s.balances[p.name] ?? 0,
+      wonCents: winningsOf(p.name),
       memory: [...derivedFor(p.name, all), ...toldAbout(p.name)],
     })),
     group: { memory: [...derivedForGroup(all), ...toldGroup(board.people.map((p) => p.name))] },
     pots: Object.values(s.pots).sort((a, b) => b.createdAt - a.createdAt).map((p) => ({ id: p.id, amountCents: p.amountCents, members: p.members, settled: !!p.settled, winner: p.winner ?? null })),
     payouts: [...s.payouts].reverse().map((p) => ({ id: p.id, name: p.name, amountCents: p.amountCents, reason: p.reason, at: p.at })),
     recent: [...s.results.map((r) => ({ line: r.line, at: r.at })), ...s.payouts.map((p) => ({ line: p.name + " took the " + dollars(p.amountCents) + " pot.", at: p.at }))].sort((a, b) => b.at - a.at).slice(0, 12),
+    roster: standing(signed, board.people, all),
   };
 }
 
