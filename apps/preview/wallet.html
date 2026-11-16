@@ -112,10 +112,19 @@ const label = (a) => (LABELS[a.reason] ?? ((n) => n || a.reason))(a.note, a.amou
 const sub = (a) => ago(a.at) + (a.reason === "buyin" && a.note ? " \u00b7 " + a.note : "");
 
 async function load() {
-  try { W = await api("/api/wallet"); } catch { stage.className = "stage center"; return nowhere("Wallet not found", "Open it from your Nickel link"); }
+  try { W = await api("/api/wallet"); } catch (error) {
+    stage.className = "stage center";
+    const signedOut = error.status === 401;
+    nowhere(signedOut ? "Open your player card" : "Wallet unavailable", signedOut ? "Your balance belongs to your player card. Open it on this device, then return to your wallet." : "Your wallet could not load. Try again in a moment.");
+    dock.hidden = false;
+    dock.innerHTML = (signedOut ? '<a class="primary" href="sms:+17796251378?&body=Nickel%2C%20set%20me%20up">Get my player card</a>' : "") + '<button class="secondary fill" id="retry-wallet" type="button">Try again</button>';
+    $("retry-wallet").onclick = load;
+    return false;
+  }
   draw();
   if (cashoutAsked && W.balanceCents) cashoutSheet();
   cashoutAsked = false;
+  return true;
 }
 
 function draw() {
@@ -223,9 +232,10 @@ function cashoutSheet() {
 setMe();
 load();
 if (params.has("paid")) {
-  toast("Payment sent");
+  toast("Checking your wallet");
   setTimeout(async () => {
-    await load();
+    if (!(await load())) return;
+    toast("Wallet refreshed");
     const to = sessionStorage.getItem("nickel.back");
     if (!to) return;
     sessionStorage.removeItem("nickel.back");
