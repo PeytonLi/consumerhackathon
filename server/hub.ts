@@ -265,3 +265,23 @@ export function hub(me: { token: string; name: string; face: string | null } | n
     recent: [...s.results.map((r) => ({ line: r.line, at: r.at })), ...s.payouts.map((p) => ({ line: p.name + " took the " + dollars(p.amountCents) + " pot.", at: p.at }))].sort((a, b) => b.at - a.at).slice(0, 12),
   };
 }
+
+type Board = { league: string; stakes: string | null; punishment: string | null; people: { name: string; nickels: number }[] };
+
+export const wantsHub = (lower: string) =>
+  /\b(hub|home|dashboard|everything)\b/.test(lower) && !/challenge|fantasy|buy.?in|who won|standings|leaderboard|punish|\bplay\b|i'?m in\b|\$\d|remember|forget|memory/.test(lower);
+
+export const hubLine = (sender: string) => (sender ? sender + ", here" : "Here") + " is everything in one place: the board, each person, pots, payouts and what I remember.";
+
+export function hubCard(board: Board) {
+  const top = board.people[0];
+  return {
+    kicker: "Hub",
+    title: "Everything, one place",
+    sub: (top && top.nickels > 0 ? top.name + " leads. " : "") + "The board, each person, pots and memory.",
+    league: board.league,
+    members: board.people.map((p) => p.name),
+    hue: "#5856d6",
+    path: "/h",
+  };
+}
