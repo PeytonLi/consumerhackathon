@@ -13,7 +13,7 @@ export interface MoneyBackend {
 export function convexBackend(url = process.env.CONVEX_URL): MoneyBackend | null {
   if (!url) return null;
   const client = new ConvexHttpClient(url);
-  const secret = process.env.NICKEL_SYNC_SECRET;
+  const secret = process.env.NICKEL_MONEY_SECRET;
   return {
     query: (name, args) => client.query(makeFunctionReference<"query">(name), { ...args, secret }),
     mutation: (name, args) => client.mutation(makeFunctionReference<"mutation">(name), { ...args, secret }),

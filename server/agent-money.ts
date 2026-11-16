@@ -99,7 +99,7 @@ export function convexMoneyBackend(url = process.env.CONVEX_URL): AgentMoneyBack
     if (!client) throw new MoneyError(503, "Money is not set up yet.");
     const ref = anyApi.payments[name] as FunctionReference<typeof kind>;
     try {
-      const full = { ...args, secret: process.env.NICKEL_SYNC_SECRET };
+      const full = { ...args, secret: process.env.NICKEL_MONEY_SECRET };
       return (kind === "query" ? await client.query(ref as FunctionReference<"query">, full) : await client.mutation(ref as FunctionReference<"mutation">, full)) as T;
     } catch (e) {
       throw new MoneyError(409, e instanceof ConvexError && typeof e.data === "string" ? e.data : "That did not go through.");

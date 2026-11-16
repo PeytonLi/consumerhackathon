@@ -44,7 +44,7 @@ export async function postMove(ctx: MutationCtx, args: MoveArgs) {
 export const move = internalMutation({ args: moveArgs, handler: (ctx, args) => postMove(ctx, args) });
 
 export function assertServer(secret: string | undefined) {
-  if (process.env.NICKEL_SYNC_SECRET && secret !== process.env.NICKEL_SYNC_SECRET) throw new Error("Not allowed");
+  if (process.env.NICKEL_MONEY_SECRET && secret !== process.env.NICKEL_MONEY_SECRET) throw new Error("Not allowed");
 }
 
 export const walletBalance = query({

@@ -16,7 +16,7 @@ export const useBackend = (next: Backend | null) => void (backend = next);
 
 const call = (kind: Kind, name: string, args: Record<string, unknown>) => {
   if (!backend) throw new Error("The Nickel economy is offline");
-  return backend.run(kind, "economy:" + name, { ...args, secret: process.env.NICKEL_SYNC_SECRET });
+  return backend.run(kind, "economy:" + name, { ...args, secret: process.env.NICKEL_MONEY_SECRET });
 };
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "access-control-allow-origin": "*", "cache-control": "no-store" } });
 const reason = (e: unknown) => {
