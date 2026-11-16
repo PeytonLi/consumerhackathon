@@ -44,84 +44,98 @@ Payout is the same shape for all six: the winner takes the stake (6 Nickels unle
 - "Nickel, league scoring: 1 point per new drink, 5 for a line out the door" saves the league's own rule in plain words.
 - "Nickel, season is 8 weeks" (or "10 days") sets the season length and starts the clock.
 - "Nickel, league rules" reports the rule, the season, the current week, and the roster size. After the last week it names the winner.
-- The standings tab of the league page shows the scoring rule.
+- The standings tab of the league page shows the scoring rule and season length. Web creation is at `/leagues/new`; the creator can edit an existing league at `/leagues/<id>`.
+- Inline chat creation also works: `Nickel, make a league for reality TV; scoring: 5 per rose; season: 8 weeks; picks: Dev, Maya`.
 
 Not built: automatic weekly winners. The league log has what is needed to compute one, and it is the next step this research points to.
 
 ## C. Last-place punishments
 
-The bar, from the owner: "not BS punishments like drink milk but running a milk mile". The bar from the sources: "A good last-place punishment is public, survivable, and funny for everyone except the loser" ([LeagueLogs](https://leaguelogs.com/fantasy-football-punishments)); set "real boundaries up front: nothing dangerous, nothing that costs someone their job" ([RotoWire](https://www.rotowire.com/football/article/fantasy-football-last-place-punishments-94933)).
+The owner's standard is a memorable production, not "drink milk". Research found the milk mile, 24-hour diner challenge, SAT, open mic, calendar, costume race and dozens of league-service rituals. Several published lists also recommend genuinely dangerous or permanent dares. Being published does not make a dare safe.
 
-Every item below is legal, has no alcohol, and is not permanent. Left out on purpose even though they are popular: tattoos, body waxing, bad haircuts, the beer mile, the 9-9-9 challenge, bar crawls, the gallon challenge, the one chip challenge, texting an ex, eating only McDonald's, and the dog crate.
+The shipped catalog below has **44 sourced traditions or explicitly adapted versions**. A source link establishes the original tradition, not a claim that a publisher tested or endorsed Nickel's safer adaptation. The adaptations retain the spectacle while removing forced eating, cold exposure, strenuous exercise, employer-account access, location tracking and unwitting strangers.
 
-Sources are abbreviated: **SI** ([Sports Illustrated](https://www.si.com/onsi/fantasy/nfl/top-10-fantasy-football-punishments-for-last-place)), **RW** ([RotoWire](https://www.rotowire.com/football/article/fantasy-football-last-place-punishments-94933)), **LL** ([LeagueLogs](https://leaguelogs.com/fantasy-football-punishments)), **FS** ([FanSided](https://fansided.com/fantasy-sports/50-fantasy-football-punishments-your-league-mates-will-love-or-hate-you-for)), **SL** ([Sleeper](https://sleeper.com/blog/best-fantasy-football-punishments/)), **SN** ([Sporting News](https://www.sportingnews.com/us/fantasy/news/11-funniest-fantasy-football-punishments-loser-2025-league/9b866d447ff5b392166d4433)), **DTV** ([DIRECTV](https://www.directv.com/insider/creative-fantasy-football-punishments/)), **TS** ([TrophySmack](https://www.trophysmack.com/blogs/smackzone/ultimate-guide-to-fantasy-football-punishments)), **BN** ([Bleacher Nation](https://www.bleachernation.com/fantasy-football/2026/08/12/fantasy-football-punishments/)), **AFL** ([AFL Fantasy](https://www.afl.com.au/news/1266443/the-best-losers-punishments-for-your-fantasy-league)). "Kept" means it was already in Nickel's list.
+**Applies to every option:** agree before the season; stop or swap at any time without a penalty; permission from venues and participants; no forced eating, alcohol, nudity or permanent changes; a 20-dollar budget; no session longer than two hours. Accessibility substitutions are always allowed. Sharing stays in the group unless the participant expressly agrees to a wider audience. "Brutal" means performance and commitment, not physical danger.
 
-### Mild: private or passive, fine for a group with coworkers in it
+### Source key
 
-| # | Last place... | Source |
+- [LeagueLogs](https://leaguelogs.com/fantasy-football-punishments): calendars, open mic, airport signs, PowerPoint, costumes, chores, handwritten letters and karaoke.
+- [Sleeper](https://sleeper.com/blog/best-fantasy-football-punishments/): 18 traditions including milk mile, diner challenge, costume race, hunt and daily videos.
+- [RotoWire](https://www.rotowire.com/football/article/fantasy-football-last-place-punishments-94933): duties, apology videos, out-of-office reply, original rap, imaginary golf and mock recruiting.
+- [FanSided](https://fansided.com/fantasy-sports/50-fantasy-football-punishments-your-league-mates-will-love-or-hate-you-for): practice-test basis, stuffed-animal dinner, NFL Combine, rival jersey, caddy and screen-free flight.
+- [DIRECTV](https://www.directv.com/insider/creative-fantasy-football-punishments/): calendar shoot, fitness test and dinner hosting.
+- Additional corroboration: [Sports Illustrated](https://www.si.com/onsi/fantasy/nfl/top-10-fantasy-football-punishments-for-last-place), [Sporting News](https://www.sportingnews.com/us/fantasy/news/11-funniest-fantasy-football-punishments-loser-2025-league/9b866d447ff5b392166d4433), [TrophySmack](https://www.trophysmack.com/blogs/smackzone/ultimate-guide-to-fantasy-football-punishments), [Bleacher Nation](https://www.bleachernation.com/fantasy-football/2026/08/12/fantasy-football-punishments/).
+
+### Mild
+
+| # | Last place... | Source and safety adaptation |
 |---|---|---|
-| 1 | sends a good morning text to the group chat every day until next season | Kept; a version of the daily post in SL, RW |
-| 2 | gets the league trophy: a framed photo of the winner on their desk all season | Kept; loser trophy in SL, FS, TS |
-| 3 | makes a three-minute apology video to the league and pins it | Kept; RW, TS |
-| 4 | takes the group's coffee order every morning for a week, by hand, on foot | Kept; "The servant" SN, draft runner LL |
-| 5 | uses a profile picture the group picks on every app for a month | LL, RW, TS |
-| 6 | orders coffee for a month under a name the group picks and answers to it | LL |
-| 7 | bakes a cake decorated in the winner's honor and delivers it in person | LL |
-| 8 | presents a 15-slide deck to the group on why they lost, with questions after | LL |
-| 9 | mails a handwritten apology letter to every person in the group | LL |
-| 10 | lets the winner write their out-of-office reply for a full week | RW |
-| 11 | washes the winner's car in a costume on a weekend morning | LL, FS, RW |
-| 12 | hosts movie night with a film the winner picks and buys every snack | LL, BN |
-| 13 | reads a two-minute vow of improvement out loud before next season starts | LL |
+| 1 | sends a dramatic good morning announcement to the league every day for one week | [Source](https://sleeper.com/blog/best-fantasy-football-punishments/). Adapted daily-video duty into a private daily announcement. |
+| 2 | gets the league trophy: a framed photo of the winner on their desk all season | [Source](https://leaguelogs.com/fantasy-football-punishments). Kept the existing framed-winner trophy variation. |
+| 3 | makes a three-minute apology video to the league and pins it | [Source](https://www.rotowire.com/football/article/fantasy-football-last-place-punishments-94933). Kept the apology-video tradition. |
+| 4 | takes the group's coffee order by hand for a week, in a paper butler bow tie | [Source](https://www.rotowire.com/football/article/fantasy-football-last-place-punishments-94933). Adapted league-service duty with a paper costume. |
+| 5 | uses a league-approved loser portrait as their group chat picture for one week | [Source](https://leaguelogs.com/fantasy-football-punishments). Limited picture takeover to the consenting person's group profile. |
+| 6 | orders coffee for a month under a name the group picks and answers to it | [Source](https://leaguelogs.com/fantasy-football-punishments). A harmless name only; no impersonation. |
+| 7 | bakes a cake decorated in the winner's honor and delivers it in person | [Source](https://leaguelogs.com/fantasy-football-punishments). Food allergies and normal kitchen safety apply. |
+| 8 | presents a 15-slide deck to the group on why they lost, with questions after | [Source](https://leaguelogs.com/fantasy-football-punishments). Adapted the 30-minute PowerPoint into 15 slides. |
+| 9 | mails a handwritten apology letter to every person in the group | [Source](https://leaguelogs.com/fantasy-football-punishments). Kept the mailed-letter tradition. |
+| 10 | records a league-written out-of-office voice memo and reads it at every game night for a week | [Source](https://www.rotowire.com/football/article/fantasy-football-last-place-punishments-94933). Adapted work-email takeover into a private voice memo. |
+| 11 | washes the winner's car in a costume on a weekend morning | [Source](https://leaguelogs.com/fantasy-football-punishments). Owner permission and a safe washing location required. |
+| 12 | hosts movie night with a film the winner picks and buys every snack | [Source](https://leaguelogs.com/fantasy-football-punishments). Keep snacks within the agreed budget. |
+| 13 | reads a two-minute vow of improvement out loud before next season starts | [Source](https://leaguelogs.com/fantasy-football-punishments). Kept the draft-day vow. |
 
-### Medium: public, takes an afternoon, strangers are involved
+### Medium
 
-| # | Last place... | Source |
+| # | Last place... | Source and safety adaptation |
 |---|---|---|
-| 14 | retakes the SAT and posts the score in the chat | Kept; FS, SN, SL, LL, TS, DTV |
-| 15 | does a five-minute open mic set and the group picks the topic | Kept; SI, SL, DTV, BN, LL |
-| 16 | sets up a lemonade stand and cannot leave until it makes 20 dollars | Kept; SL, DTV, SN, RW |
-| 17 | wears a full suit to every class for a week and explains nothing | Kept; embarrassing outfit in SI, RW |
-| 18 | lets the group write their dating profile and keeps it up for a month | Kept; LL |
-| 19 | holds a sign on the busiest corner on campus that says they finished last | Kept; FS, SL, RW, AFL |
-| 20 | performs karaoke of the winner's choice, sober, first song of the night | Kept; FS, SL, SN, DTV |
-| 21 | cooks dinner for the whole group in a costume the winner picks | Kept; BN, FS |
-| 22 | runs a 5K in jeans and posts the splits | Kept; costume race in SL, LL, RW |
-| 23 | takes a stuffed animal to a sit-down dinner for two and orders for both | FS, DTV, SL, SN |
-| 24 | waits at airport arrivals for two hours with a sign the winner wrote | LL, RW |
-| 25 | plays 18 holes of golf with no ball and explains nothing | RW |
-| 26 | runs the full NFL Combine at a public park and posts every result | FS, DTV, BN |
-| 27 | records a rap about their season and posts it publicly | RW, TS |
-| 28 | wears a rival jersey to a live game and sits with the home fans | FS, LL |
-| 29 | caddies a full round for the winner and takes the blame for every bad shot | FS, RW |
+| 14 | sits a two-hour practice SAT in silence while the group proctors, then posts the score | [Source](https://fansided.com/fantasy-sports/50-fantasy-football-punishments-your-league-mates-will-love-or-hate-you-for). Adapted SAT at a real test center into a practice exam. |
+| 15 | does a five-minute open mic set and the group picks the topic | [Source](https://leaguelogs.com/fantasy-football-punishments). Venue sign-up and organizer permission required. |
+| 16 | runs a permitted lemonade stand in costume for two hours, with a 20-dollar sales target | [Source](https://leaguelogs.com/fantasy-football-punishments). Added a two-hour cap and permission; no sales quota traps. |
+| 17 | wears a full suit to every class for a week and explains nothing | [Source](https://leaguelogs.com/fantasy-football-punishments). Skip any occasion with a dress-code or comfort conflict. |
+| 18 | lets the league write a fictional dating profile and reads every line at game night | [Source](https://leaguelogs.com/fantasy-football-punishments). Adapted dating-app takeover into a fictional private reading. |
+| 19 | holds an I finished last sign for 20 minutes in a permitted pedestrian spot on campus | [Source](https://leaguelogs.com/fantasy-football-punishments). Moved roadside signs away from traffic. |
+| 20 | performs karaoke of the winner's choice, sober, first song of the night | [Source](https://leaguelogs.com/fantasy-football-punishments). Kept karaoke; no alcohol required. |
+| 21 | cooks dinner for the whole group in a costume the winner picks | [Source](https://leaguelogs.com/fantasy-football-punishments). Cooking permission, dietary needs and budget apply. |
+| 22 | walks a one-mile red carpet in formalwear while the league interviews them about losing | [Source](https://sleeper.com/blog/best-fantasy-football-punishments/). Adapted costume/endurance walk into a short ceremonial performance. |
+| 23 | takes a stuffed animal to a sit-down dinner for two and orders for both | [Source](https://fansided.com/fantasy-sports/50-fantasy-football-punishments-your-league-mates-will-love-or-hate-you-for). Restaurant permission; normal portions, no forced eating. |
+| 24 | welcomes every guest at game night with a giant airport-arrivals sign announcing their loss | [Source](https://leaguelogs.com/fantasy-football-punishments). Adapted the airport sign into a private welcome ritual. |
+| 25 | plays nine imaginary golf holes in the yard with a foam club while the league commentates | [Source](https://www.rotowire.com/football/article/fantasy-football-last-place-punishments-94933). Adapted imaginary golf with equipment and venue permission. |
+| 26 | films a mock NFL Combine with paper weights and slow-motion replays of every drill | [Source](https://fansided.com/fantasy-sports/50-fantasy-football-punishments-your-league-mates-will-love-or-hate-you-for). Adapted the athletic combine into a filmed spoof. |
+| 27 | records a rap about their season and posts it publicly | [Source](https://www.rotowire.com/football/article/fantasy-football-last-place-punishments-94933). Audience is opt-in; never expose personal information. |
+| 28 | wears a rival jersey to the league's watch party and delivers a sincere halftime fan speech | [Source](https://fansided.com/fantasy-sports/50-fantasy-football-punishments-your-league-mates-will-love-or-hate-you-for). Moved a hostile rival-fan outing to a private watch party. |
+| 29 | caddies nine mini-golf holes for the winner and takes the blame for every bad shot | [Source](https://fansided.com/fantasy-sports/50-fantasy-football-punishments-your-league-mates-will-love-or-hate-you-for). Adapted full-round caddying into accessible mini-golf. |
 
-### Brutal: a full day, an endurance test, or a month of it
+### Brutal
 
-| # | Last place... | Source |
+| # | Last place... | Source and safety adaptation |
 |---|---|---|
-| 30 | runs a milk mile: four laps, a full glass of milk before each one | Kept; SI, SL, SN, RW, LL, TS |
-| 31 | spends 24 hours in a Waffle House, minus one hour per waffle eaten | Kept; every source, "the most-cited fantasy football punishment on the internet" (RW) |
-| 32 | films a calendar shoot, one themed photo for each month, printed for everyone | Kept; LL, DTV, TS, SN |
-| 33 | runs an official 5K in a full-body costume with the group's name on the back | LL, SL, RW |
-| 34 | eats the full Hot Ones wing lineup on camera while answering the group's questions | LL, RW, FS, DTV, TS |
-| 35 | does an organized polar plunge in January, fully under, filmed | LL, RW |
-| 36 | walks a full marathon distance in one day wearing a sign that says why | LL |
-| 37 | does one pushup for every point they finished behind first, in one session, on camera | LL |
-| 38 | takes a flight longer than two hours with no phone, no book and no screen | FS |
-| 39 | gets hunted for a day: shares their location and has to dodge the whole group | RW "The Loser Hunt", SL "The Hunt" |
-| 40 | performs a choreographed halftime routine in costume at a public game | LL |
-| 41 | takes five rideshares dressed as a mascot and reads each driver a speech the group wrote | LL |
-| 42 | posts a new embarrassing video every day for a month, ideas supplied by the group | SL, RW |
-| 43 | does one hour of interpretive dance in a public square to music the group picks | LL |
-| 44 | sings three songs the group picks at a packed bar on a Saturday, sober, no sunglasses | LL |
+| 30 | walks a milk mile in a cow costume carrying a sealed carton as the baton; no drinking required | [Source](https://sleeper.com/blog/best-fantasy-football-punishments/). Adapted milk mile: no chugging or forced drinking; walking/costume only. |
+| 31 | hosts a two-hour diner booth residency while the league stages hourly last-place interviews | [Source](https://sleeper.com/blog/best-fantasy-football-punishments/). Adapted 24-hour diner confinement: two hours, normal food, venue permission. |
+| 32 | films a calendar shoot, one themed photo for each month, printed for everyone | [Source](https://www.directv.com/insider/creative-fantasy-football-punishments/). Kept the calendar; fully clothed and shared only by consent. |
+| 33 | walks a costume parade for one hour while the league holds a last-place finish-line ceremony | [Source](https://sleeper.com/blog/best-fantasy-football-punishments/). Adapted costume 5K into an accessible parade. |
+| 34 | films a mock Hot Ones interview with ordinary snacks and answers every question about losing | [Source](https://www.rotowire.com/football/article/fantasy-football-last-place-punishments-94933). Adapted hot-sauce endurance into ordinary food and theatrical questions. |
+| 35 | wears swim goggles and gives a dramatic polar-plunge press conference beside an empty paddling pool | [Source](https://leaguelogs.com/fantasy-football-punishments). Adapted cold-water immersion into an empty-pool press conference. |
+| 36 | walks 26 ceremonial laps of the living room, announcing a different excuse for losing on every lap | [Source](https://leaguelogs.com/fantasy-football-punishments). Adapted marathon walk into ceremonial indoor laps. |
+| 37 | performs one theatrical slow-motion pushup per loss, capped at ten with a chair version allowed | [Source](https://leaguelogs.com/fantasy-football-punishments). Capped at ten; seated or theatrical movement allowed. |
+| 38 | spends two hours on a planned trip without entertainment and writes the league a paper travel diary | [Source](https://fansided.com/fantasy-sports/50-fantasy-football-punishments-your-league-mates-will-love-or-hate-you-for). Adapted screen-free flight onto an already planned trip; emergency access stays available. |
+| 39 | plays a one-hour hide-and-seek hunt in a consenting friend's home wearing a mascot costume | [Source](https://sleeper.com/blog/best-fantasy-football-punishments/). Adapted location-tracking hunt into private hide-and-seek. |
+| 40 | performs a choreographed halftime routine in costume at the league's watch party | [Source](https://leaguelogs.com/fantasy-football-punishments). Moved uninvited public halftime performance to a private watch party. |
+| 41 | plays the mascot chauffeur at game night and reads a new apology speech to five consenting friends | [Source](https://leaguelogs.com/fantasy-football-punishments). Adapted rideshare monologues to consenting friends. |
+| 42 | posts a new embarrassing video every day for a month, ideas supplied by the group | [Source](https://sleeper.com/blog/best-fantasy-football-punishments/). Daily private video, never an account takeover or public-post requirement. |
+| 43 | performs a 15-minute interpretive dance about every loss at a permitted private league gathering | [Source](https://leaguelogs.com/fantasy-football-punishments). Adapted public dance to a short private performance. |
+| 44 | sings three songs the group picks at a packed bar on a Saturday, sober, no sunglasses | [Source](https://leaguelogs.com/fantasy-football-punishments). Venue permission and participant consent; no alcohol required. |
 
-### Notes on the edges
+### Runtime behavior
 
-- The milk mile and the Hot Ones lineup are uncomfortable by design. They stay in the brutal tier and a group can exclude that tier with "Nickel, punishment, mild".
-- The polar plunge is written as an organized event on purpose, because a supervised plunge is the safe form of it.
-- Two rules every source repeats, which Nickel already follows: agree on the punishment before anyone is losing, and when real money is on the line the loser just loses the money. Nickel refuses to set a punishment once a buy-in has two paid players.
+- `server/punishments.ts` contains these exact phrases, source URLs and shared consent limits.
+- "Nickel, punishment" preserves the current selection. "New punishment" rerolls within the chosen intensity. "Punishment, mild", "medium" or "brutal" changes intensity; "any intensity" clears it.
+- "Nickel, research a punishment for <context>" returns three numbered options with sources and does not set one. "Nickel, option 2" selects one. No-key fallback chooses from this catalog; live Responses API research must supply three HTTPS sources, pass a deterministic safety filter and the integrated Nace safety check when available.
+- Paid-pot behavior remains unchanged: when two people have paid a buy-in, Nickel does not add a punishment.
 
-### How the list is used
+## Limits and verification
 
-- `server/punishments.ts` holds the three tiers. "Nickel, punishment" and "Nickel, new punishment" draw from every tier, or from one tier after "Nickel, punishment, mild" (or medium, brutal). "Nickel, punishment, any intensity" clears the choice.
-- "Nickel, research a punishment for <context>" returns three options and sets nothing until the group answers "Nickel, option 2". With an OpenAI key the three come from a live web search under the same safety rules. Without a key they come from this list: one per tier, or three from one tier if the request names it, preferring items that share words with the request.
+Custom league scoring is a human-readable rule applied through the existing manual score path, not an automated rule interpreter. Season reporting uses elapsed days from the chosen start, and drafting and scoring close at the season deadline. Automatic weekly awards are not implemented.
+
+Custom games use the shared JSON store and existing `recordResult` path, including scoring parts, stats, idempotency, verification status and leaderboard totals. Deadline settlement happens on the next game read or write; an unknown real answer still needs a group member to supply it. Timing follows the existing honor-system games, so this is not an anti-cheat tournament platform.
+
+Browser evidence in `docs/custom/` covers the create form, two guest identities, submission, reveal, caption voting, result, leaderboard and the custom league web flow. Later numbered screenshots cover integration with auth, Nace, wallet and the current main branch. All server runs used scratch `NICKEL_DATA_DIR`, with no Convex URL, messages, Keiki calls, charges or cash-outs.

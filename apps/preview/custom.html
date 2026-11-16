@@ -69,6 +69,8 @@
   a.primary, a.secondary { text-decoration: none; }
   .secondary:disabled { color: var(--ink-3); }
   .bar .name b, .bar .name span { overflow: hidden; text-overflow: ellipsis; }
+  .field { display: flex; flex-direction: column; gap: 6px; flex: none; }
+  .field input { text-align: left; }
 </style>
 </head>
 <body>
@@ -108,7 +110,7 @@ const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", 
 const hue = (name) => { const i = (G ? G.members : []).indexOf(name); return HUES[(i < 0 ? [...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) : i) % HUES.length]; };
 const avatar = (name, cls = "") => '<span class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + esc(name[0]) + "</span>";
 const meKey = "nickel.me." + (params.get("via") ?? "link");
-const me = () => (!params.get("via") && window.ME && window.ME.name) || sessionStorage.getItem(meKey);
+const me = () => (window.ME && window.ME.name) || sessionStorage.getItem(meKey);
 const TEMPLATES = [["", "Auto"], ["guess", "Closest guess"], ["take", "Hot take"], ["trivia", "Trivia"], ["caption", "Caption"], ["fastest", "Fastest finger"], ["unique", "Lowest unique"]];
 const HINTS = { "": "Guess Dev's steps today", guess: "How many steps did Dev walk today?", take: "A hot dog is a sandwich", trivia: "What is the capital of Australia?", caption: "Worst name for a startup", fastest: "Nothing to write. Just create it.", unique: "Nothing to write. Just create it." };
 let timer, poll, screen = "";
@@ -164,11 +166,16 @@ function countdown(seconds, onEnd) {
 }
 
 async function call(body) {
-  const res = await fetch("/api/games/" + G.id + (body ? "" : "?u=" + encodeURIComponent(me() ?? "")), body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, name: me() }) } : undefined);
-  const data = await res.json();
-  if (data.game) G = data.game;
-  if (!data.ok && data.error) toast(data.error);
-  return data;
+  try {
+    const res = await fetch("/api/games/" + G.id + (body ? "" : "?u=" + encodeURIComponent(me() ?? "")), body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, name: me() }) } : undefined);
+    const data = await res.json();
+    if (data.game) G = data.game;
+    if (!data.ok && data.error) toast(data.error);
+    return data;
+  } catch {
+    toast("Could not connect. Try again.");
+    return { ok: false };
+  }
 }
 
 function create() {
@@ -178,11 +185,12 @@ function create() {
   let template = "", minutes = 60;
   show(
     '<div class="head"><p class="t-title">Make a game</p><p class="t-label">One move each. Under a minute.</p></div>' +
+    (!me() ? '<input class="answer small" id="creator" maxlength="14" autocomplete="given-name" aria-label="Your name" placeholder="Your first name">' : '') +
     '<div class="chips" id="chips">' + TEMPLATES.map(([id, label]) => '<button class="chip' + (id === "" ? " on" : "") + '" type="button" data-t="' + id + '">' + icon("check") + label + "</button>").join("") + "</div>" +
     '<input class="answer small" id="ask" maxlength="200" autocomplete="off" enterkeyhint="done" placeholder="' + esc(HINTS[""]) + '">' +
     '<input class="answer small" id="real" maxlength="60" autocomplete="off" placeholder="Real answer, if you know it">' +
     '<div class="seg" id="span">' + [[10, "10 minutes"], [60, "1 hour"], [1440, "1 day"]].map(([m, label]) => '<button type="button" data-m="' + m + '" class="' + (m === 60 ? "on" : "") + '">' + label + "</button>").join("") + "</div>",
-    '<button class="glass primary" id="make" type="button">' + icon("plus") + 'Create</button><p class="t-caption">Or text it: Nickel, make a game: ...</p>',
+    '<button class="glass primary" id="make" type="button">' + icon("plus") + 'Create</button><a class="secondary" href="/leagues/new">Make a league</a>',
     true
   );
   const sync = () => {
@@ -201,14 +209,57 @@ function create() {
     stage.querySelectorAll("[data-m]").forEach((x) => x.classList.toggle("on", x === b));
   });
   $("make").onclick = async () => {
+    if ($("creator")) {
+      const name = $("creator").value.replace(/[^A-Za-z]/g, "").slice(0, 14);
+      if (!name) return toast("Add your name");
+      sessionStorage.setItem(meKey, name[0].toUpperCase() + name.slice(1).toLowerCase());
+    }
     const request = $("ask").hidden ? "" : $("ask").value.trim();
     if (!template && request.length < 3) { $("ask").classList.remove("shake"); void $("ask").offsetWidth; $("ask").classList.add("shake"); return toast("Describe the game"); }
     $("make").disabled = true;
     $("make").textContent = "Creating";
-    const res = await fetch("/api/games", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request, template, answer: $("real").hidden ? "" : $("real").value.trim(), minutes, name: me() ?? "" }) });
-    const data = await res.json();
-    if (!data.ok) { $("make").disabled = false; $("make").innerHTML = icon("plus") + "Create"; return toast(data.error ?? "Try again"); }
-    location.href = data.path + location.search;
+    try {
+      const res = await fetch("/api/games", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request, template, answer: $("real").hidden ? "" : $("real").value.trim(), minutes, name: me() ?? "" }) });
+      const data = await res.json();
+      if (!data.ok) return toast(data.error ?? "Try again");
+      location.href = data.path + location.search;
+    } catch { toast("Could not connect. Try again."); }
+    finally { $("make").disabled = false; $("make").innerHTML = icon("plus") + "Create"; }
+  };
+}
+
+function leagueForm() {
+  const L = window.CUSTOM_LEAGUE;
+  const editing = !!L;
+  screen = "league";
+  $("title").textContent = editing ? "League rules" : "New league";
+  $("league").textContent = editing ? L.topic : "Fantasy for anything";
+  const field = (id, label, value, placeholder, max = 160, type = "text") => '<label class="field t-label" for="' + id + '">' + label + '<input class="answer small" id="' + id + '" type="' + type + '" value="' + esc(value) + '" maxlength="' + max + '" placeholder="' + esc(placeholder) + '"></label>';
+  show(
+    '<div class="head"><p class="t-title">' + (editing ? "Your league, your rules" : "Fantasy for anything") + '</p><p class="t-label">Draft anything. Score it your way.</p></div>' +
+    (!me() ? field("creator", "Your name", "", "Your first name", 14) : "") +
+    (!editing ? field("topic", "League topic", "", "Boba shops, reality TV, AI models", 48) : "") +
+    field("scoring", "Scoring rule", L?.scoring ?? "", "1 point per new drink, 5 for a sellout") +
+    field("seasonDays", "Season length in days", L?.seasonDays ?? 28, "28", 3, "number") +
+    (!editing ? field("picks", "Draft pool, separated by commas", "", "Boba Guys, Teaspoon, Tpumps", 900) : ""),
+    '<button class="glass primary" id="saveLeague" type="button">' + (editing ? "Save rules" : "Create league") + '</button><a class="secondary" href="' + (editing ? "/f/" + L.id : "/g/new") + '">' + (editing ? "Back to league" : "Make a game") + "</a>",
+    true
+  );
+  $("saveLeague").onclick = async () => {
+    if ($("creator")) {
+      const name = $("creator").value.replace(/[^A-Za-z]/g, "").slice(0, 14);
+      if (!name) return toast("Add your name");
+      sessionStorage.setItem(meKey, name[0].toUpperCase() + name.slice(1).toLowerCase());
+    }
+    const body = { name: me(), topic: $("topic")?.value, scoring: $("scoring").value, seasonDays: Number($("seasonDays").value), picks: $("picks")?.value };
+    $("saveLeague").disabled = true;
+    try {
+      const res = await fetch("/api/leagues" + (editing ? "/" + L.id : ""), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!data.ok) return toast(data.error ?? "Try again");
+      location.href = data.path ?? "/f/" + L.id;
+    } catch { toast("Could not connect. Try again."); }
+    finally { $("saveLeague").disabled = false; }
   };
 }
 
@@ -243,6 +294,7 @@ function pickName() {
 
 function intro() {
   screen = "intro";
+  if (G.expired) return show('<p class="t-title">Answers are closed</p><p class="t-label">Waiting for the real answer from the group</p>', '<a class="glass secondary" href="/g/new">New game</a>');
   const quick = G.template === "fastest";
   show(
     '<span class="tag">' + icon("target") + esc(G.label) + '</span><p class="t-title">' + esc(G.prompt) + '</p><p class="t-label">' + (G.answered.length ? G.answered.length + " locked in" : G.createdBy === "Someone" ? "Nobody has answered yet" : "From " + esc(G.createdBy)) + "</p>",
@@ -352,6 +404,7 @@ function draw(force) {
 }
 
 function start() {
+  if (/^\/leagues\//.test(location.pathname)) return leagueForm();
   if (!G) {
     if (location.pathname.replace(/\/+$/, "") === "/g/new") return create();
     screen = "missing";

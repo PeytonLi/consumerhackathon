@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 let brain: typeof import("./brain.js");
 let custom: typeof import("./custom.js");
@@ -10,6 +10,7 @@ beforeAll(async () => {
   process.env.NICKEL_DATA_DIR = mkdtempSync(tmpdir() + "/nickel-custom-");
   delete process.env.OPENAI_API_KEY;
   delete process.env.CONVEX_URL;
+  delete process.env.NACE_API_KEY;
   custom = await import("./custom.js");
   brain = await import("./brain.js");
   punishments = await import("./punishments.js");
@@ -43,6 +44,26 @@ describe("custom game planning", () => {
         expect(text).toContain("6 Nickels");
         expect(text).not.toMatch(emoji);
       }
+    }
+  });
+
+  it("keeps simultaneous AI plans request-scoped and uses the Responses model", async () => {
+    process.env.OPENAI_API_KEY = "test-only";
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.model).toBe("gpt-5.4-mini");
+      const title = body.input.includes("Dev walked") ? "Dev Steps" : "Maya Tabs";
+      return Response.json({ output: [{ type: "message", content: [{ text: JSON.stringify({ template: "guess", title, prompt: title + "?", rule: "closest", seconds: 20, answer: "" }) }] }] });
+    });
+    try {
+      const texts = ["Nickel, make a game: guess how many steps Dev walked today", "Nickel, make a game: guess how many tabs Maya has"];
+      const prepared = await Promise.all(texts.map((text) => custom.prepareTurn(text)));
+      const replies = texts.map((text, i) => brain.handleTurn({ text, sender: "Maya", baseUrl: "https://nickel.test", customPrepared: prepared[i] }));
+      expect(replies.map((r) => r.card!.title)).toEqual(["Dev Steps", "Maya Tabs"]);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally {
+      fetcher.mockRestore();
+      delete process.env.OPENAI_API_KEY;
     }
   });
 });
@@ -125,7 +146,7 @@ describe("custom games from the chat", () => {
     custom.submitAnswer(take.id, "Dev", "Disagree", 3);
     custom.revealGame(take.id, "Dev");
     expect(take.outcome!.headline).toBe("Disagree takes it, 2 to 1");
-    expect(take.outcome!.rows.map((r) => [r.name, r.won])).toEqual([["Sritej", false], ["Maya", true], ["Dev", true]]);
+    expect(take.outcome!.rows.map((r) => [r.name, r.won])).toEqual([["Maya", true], ["Dev", true], ["Sritej", false]]);
 
     const trivia = custom.createGame(custom.planGame("what is the capital of Australia? answer is Canberra"), "Sritej");
     expect(custom.gameView(trivia, "Maya").needsAnswer).toBe(false);
@@ -191,8 +212,70 @@ describe("custom leagues", () => {
     brain.draftPick(id, "Maya", "Teaspoon");
     brain.scorePick(id, "Teaspoon", 7, "Maya");
     expect(custom.leagueRules(league, league.startedAt! + 60 * 86400000)).toContain("Season: 8 weeks, and it is over. Maya won with 7.");
+    const start = league.startedAt!;
+    league.startedAt = Date.now() - 60 * 86400000;
+    expect(brain.scorePick(id, "Teaspoon", 5, "Maya")).toEqual({ ok: false, error: "This league's season has ended" });
+    expect(brain.draftPick(id, "Dev", "Boba Guys")).toEqual({ ok: false, error: "This league's season has ended" });
+    expect(turn("Nickel, Teaspoon +5", "Maya").line).toBe("This league's season has ended");
+    league.startedAt = start;
     expect(turn("Nickel, the season is 10 days").line).toContain("Season: 10 days, day 1 now.");
     expect(turn("Nickel, fantasy standings").line).toBe("Maya leads Fantasy Boba shops with 7.");
+  });
+
+  it("creates and edits a league from the web without rebuilding fantasy", async () => {
+    const made = await custom.customRoute("POST", new URL("https://nickel.test/api/leagues"), async () => ({ topic: "Reality TV", scoring: "5 per rose, minus 2 per elimination", seasonDays: 56, picks: "Dev, Maya, Alex", name: "Maya" }));
+    expect(made).toMatchObject({ kind: "json", status: 200, data: { ok: true, league: { topic: "Reality TV", scoring: "5 per rose, minus 2 per elimination", seasonDays: 56, createdBy: "Maya" } } });
+    const id = (made as { data: { league: { id: string } } }).data.league.id;
+    expect(brain.getFantasy(id)!.pool.map((p) => p.name)).toEqual(["Dev", "Maya", "Alex"]);
+    expect(custom.configureLeague(id, "Dev", "10 per rose", 28)).toEqual({ ok: false, error: "Only the league creator can change its rules" });
+    expect(custom.configureLeague(id, "Maya", "10 per rose", 400).ok).toBe(false);
+    expect(custom.configureLeague(id, "Maya", "10 per rose", 28)).toMatchObject({ ok: true, league: { scoring: "10 per rose", seasonDays: 28 } });
+    expect(await custom.customRoute("GET", new URL("https://nickel.test/leagues/" + id), async () => null)).toMatchObject({ kind: "page", league: { id }, game: null });
+    expect(await custom.customRoute("POST", new URL("https://nickel.test/api/leagues"), async () => ({ name: "Maya", topic: "x", seasonDays: 0 }))).toMatchObject({ status: 400 });
+  });
+
+  it("accepts a league with rules and a season in the creation message", () => {
+    const made = turn("Nickel, make a league for reality TV; scoring: 5 points per rose; season: 8 weeks; picks: Dev, Maya", "Maya");
+    expect(made.line).toContain("Scoring: 5 points per rose. Season: 8 weeks, week 1 now.");
+    expect(brain.getFantasy(made.card!.path.slice(3))!.pool.map((p) => p.name)).toEqual(["Dev", "Maya"]);
+  });
+});
+
+describe("custom integration safety", () => {
+  it("cannot record a custom result before the server resolves it", () => {
+    const game = custom.createGame(custom.planGame("lowest unique number"), "Sritej");
+    const before = brain.internals.store.results.length;
+    expect(brain.recordResult(game.id, { name: "Sritej", tries: "1" })).toEqual({ ok: false });
+    expect(brain.internals.store.results).toHaveLength(before);
+  });
+
+  it("rejects late submissions even when the real answer is not known yet", () => {
+    const game = custom.createGame(custom.planGame("guess how many steps Dev walked today"), "Sritej");
+    game.closesAt = Date.now() - 1;
+    expect(custom.submitAnswer(game.id, "Dev", "42", 1)).toEqual({ ok: false, error: "Answers are closed. Waiting for the real answer." });
+    expect(custom.submitAnswer(game.id, "Dev", "1e309", 1).ok).toBe(false);
+  });
+
+  it("extends the existing signed-session, body limit and cross-origin gate", async () => {
+    const auth = await import("./auth.js");
+    const profile = brain.profileFor("+15550100678", "Verified");
+    const claim = auth.claimProfile(profile.token, auth.issueClaim(profile.token));
+    if (!claim.ok) throw new Error(claim.error);
+    const post = (path: string, body: unknown, origin = "https://nickel.test") => auth.authGate(new Request("https://nickel.test" + path, { method: "POST", headers: { "content-type": "application/json", host: "nickel.test", origin, cookie: "nickel_sid=" + claim.sid }, body: JSON.stringify(body) }), "203.0.113.88");
+    const wrong = await post("/api/games", { name: "Maya" });
+    expect(wrong).toBeInstanceOf(Response);
+    expect((wrong as Response).status).toBe(403);
+    expect(((await post("/api/leagues", {}, "https://evil.test")) as Response).status).toBe(403);
+    expect(((await post("/api/games", { request: "x".repeat(5000) })) as Response).status).toBe(413);
+    const passed = await post("/api/games", { request: "lowest unique number" });
+    if (passed instanceof Response) throw new Error("Unexpected auth denial");
+    expect(await passed.request.json()).toMatchObject({ name: "Verified", verified: true });
+    const game = custom.createGame(custom.planGame("lowest unique number"), "Verified");
+    await custom.customRoute("POST", new URL("https://nickel.test/api/games/" + game.id), async () => ({ action: "answer", name: "Maya", value: "2", seconds: 3 }), "Verified");
+    expect(game.entries.Verified).toMatchObject({ value: "2", verified: true });
+    expect(game.entries.Maya).toBeUndefined();
+    const stranger = await custom.customRoute("GET", new URL("https://nickel.test/api/games/" + game.id + "?u=Verified"), async () => null);
+    expect(stranger).toMatchObject({ data: { game: { mine: null } } });
   });
 });
 
@@ -201,12 +284,14 @@ describe("punishment research", () => {
     expect(punishments.ALL_PUNISHMENTS.length).toBeGreaterThanOrEqual(30);
     expect(new Set(punishments.ALL_PUNISHMENTS).size).toBe(punishments.ALL_PUNISHMENTS.length);
     expect(brain.PUNISHMENTS).toBe(punishments.ALL_PUNISHMENTS);
-    expect(punishments.PUNISHMENT_TIERS.brutal).toContain("runs a milk mile: four laps, a full glass of milk before each one");
-    expect(punishments.tierOf("retakes the SAT and posts the score in the chat")).toBe("medium");
+    expect(punishments.PUNISHMENT_TIERS.brutal).toContain("walks a milk mile in a cow costume carrying a sealed carton as the baton; no drinking required");
+    expect(punishments.tierOf("sits a two-hour practice SAT in silence while the group proctors, then posts the score")).toBe("medium");
     for (const p of punishments.ALL_PUNISHMENTS) {
       expect(p).not.toMatch(emoji);
       expect(p).not.toMatch(/tattoo|beer|vodka|wax/i);
       expect(p.length).toBeLessThanOrEqual(110);
+      expect(punishments.sourceOf(p)).toMatch(/^https:\/\//);
+      expect(punishments.safePunishment(p)).toBe(true);
     }
   });
 
@@ -228,7 +313,9 @@ describe("punishment research", () => {
     const current = brain.leaderboard().punishment;
     const offer = turn("Nickel, research a punishment for a group that hates running", "Maya");
     const options = [...offer.line!.matchAll(/\d: (.+?)\. /g)].map((m) => m[1]);
-    expect(offer.line).toMatch(/^Three options for last place\. 1: .+ 2: .+ 3: .+ Pick one: Nickel, option 2\.$/);
+    expect(offer.line).toMatch(/^Three options for last place\. 1: .+\n2: .+\n3: .+\nPick one: Nickel, option 2\./);
+    expect(offer.line).toContain(punishments.PUNISHMENT_SAFETY);
+    expect(offer.line!.match(/Source: https:\/\//g)).toHaveLength(3);
     expect(options).toHaveLength(3);
     expect(new Set(options).size).toBe(3);
     expect(brain.leaderboard().punishment).toBe(current);

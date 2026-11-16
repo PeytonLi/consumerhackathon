@@ -1,6 +1,8 @@
-import { fantasyCard, fantasyStandings, internals, leaderboard, leaderboardCard, recordResult, type FantasyLeague, type Round, type TurnReply } from "./brain.js";
+import { createFantasy, fantasyCard, fantasyStandings, internals, leaderboard, leaderboardCard, recordResult, type FantasyLeague, type Round, type TurnReply } from "./brain.js";
 import { applyExtras, explain, streakDays, type Points, type PointsPart, type Scored } from "./points.js";
-import { ALL_PUNISHMENTS, PUNISHMENT_TIERS, intensityIn, threeOptions, type Intensity } from "./punishments.js";
+import { ALL_PUNISHMENTS, PUNISHMENT_TIERS, PUNISHMENT_SAFETY, intensityIn, safePunishment, sourceOf, threeOptions, type Intensity } from "./punishments.js";
+import { punishmentAllowed } from "./nace.js";
+import { nameClaimed } from "./auth.js";
 
 export type Template = "guess" | "take" | "trivia" | "caption" | "fastest" | "unique";
 
@@ -19,6 +21,7 @@ export interface Entry {
   value: string;
   seconds: number;
   at: number;
+  verified?: boolean;
 }
 
 export interface Row {
@@ -50,10 +53,13 @@ export interface CustomGame extends Round {
 
 export type RuledLeague = FantasyLeague & { scoring?: string; seasonDays?: number; startedAt?: number };
 
+export const leagueIsClosed = (league: RuledLeague, now = Date.now()) => !!league.seasonDays && !!league.startedAt && now >= league.startedAt + league.seasonDays * 86400000;
+
 interface CustomState {
   latestGame: string | null;
   intensity: Intensity | null;
   options: string[];
+  optionSources: string[];
   asked: number;
 }
 
@@ -88,7 +94,7 @@ const clamp = (n: number, low: number, high: number) => Math.min(Math.max(Math.r
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "\u2026" : s);
 const clean = (raw: unknown, max: number) => String(raw ?? "").replace(/\p{Extended_Pictographic}|\uFE0F|\u200D|[<>]/gu, "").replace(/\s+/g, " ").trim().slice(0, max).trim();
 const capFirst = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
-const num = (raw: string) => (/\d/.test(raw) ? Number(raw.replace(/[^0-9.-]/g, "")) : NaN);
+const num = (raw: string) => (/^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$/.test(raw.trim()) && Number.isFinite(Number(raw.replace(/,/g, ""))) ? Number(raw.replace(/,/g, "")) : NaN);
 const pretty = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const loose = (s: string) => s.toLowerCase().replace(/^(the|a|an)\s+/, "").replace(/[^a-z0-9]/g, "");
 const keyOf = (id: string, name: string) => [...(id + name)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
@@ -100,6 +106,7 @@ function state() {
   s.custom.latestGame ??= null;
   s.custom.intensity ??= null;
   s.custom.options ??= [];
+  s.custom.optionSources ??= [];
   s.custom.asked ??= 0;
   return s.custom as CustomState;
 }
@@ -189,12 +196,14 @@ export async function planGameAI(request: string, forced?: Template): Promise<Pl
     const out = (await res.json()) as { output?: { type: string; content?: { text?: string }[] }[] };
     const text = out.output?.filter((o) => o.type === "message").flatMap((o) => o.content ?? []).map((c) => c.text ?? "").join(" ") ?? "";
     const found = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)) as Partial<Record<keyof Plan, unknown>>;
-    const template = forced ?? (Object.keys(TEMPLATES).includes(String(found.template)) ? (found.template as Template) : base.template);
+    let template = forced ?? (Object.keys(TEMPLATES).includes(String(found.template)) ? (found.template as Template) : base.template);
+    if (!forced && template === "take" && /^(who|what|which|where|when|how)\b/i.test(clean(found.prompt, 120))) template = "caption";
     const t = TEMPLATES[template];
     const rule = Object.keys(t.rules).includes(String(found.rule)) ? String(found.rule) : template === base.template ? base.rule : Object.keys(t.rules)[0];
     const prompt = clean(found.prompt, 120);
     const title = clean(found.title, 24);
-    const answer = base.answer || clean(found.answer, 60);
+    let answer = base.answer || clean(found.answer, 60);
+    if (template === "guess" && Number.isNaN(num(answer))) answer = "";
     if (prompt.length < 4 || !title || (template === "trivia" && !answer)) return base;
     return { ...base, template, rule, title, prompt: capFirst(prompt), answer: ["guess", "trivia"].includes(template) ? answer : "", seconds: clamp(Number(found.seconds) || t.seconds, 5, 60) };
   } catch (e) {
@@ -210,7 +219,7 @@ export function createGame(plan: Plan, sender: string): CustomGame {
   const now = Date.now();
   const game: CustomGame = {
     id: "game-" + Math.random().toString(36).slice(2, 7),
-    game: "custom" as Round["game"],
+    game: "custom",
     title: plan.title,
     league: board.league,
     members: who && !names.includes(who) ? [...names, who] : names,
@@ -307,6 +316,8 @@ function rank(game: CustomGame): { headline: string; rows: Row[] } {
     headline = top ? top.name + " wins" : game.template === "caption" && votesCast === 0 && !solo ? "Nobody voted" : game.template === "trivia" && !solo ? "Nobody got it" : "";
   }
   if (solo) headline = all.length ? "Only " + all[0].name + " showed up" : "Nobody played";
+  if (!headline) headline = game.template === "guess" && game.rule === "under" ? "Everyone went over" : "No winner this round";
+  rows.sort((a, b) => Number(b.won) - Number(a.won));
   for (const row of rows) if (!row.parts.length) row.parts = [{ label: "showing up", points: SHOWING_UP }];
   return { headline, rows };
 }
@@ -314,10 +325,7 @@ function rank(game: CustomGame): { headline: string; rows: Row[] } {
 export function customScore(round: Round, name: string): Scored | null {
   if (!isCustom(round)) return null;
   const row = round.outcome?.rows.find((r) => r.name === name);
-  if (!row) {
-    const none: Points = { total: 0, parts: [] };
-    return { total: 0, moved: 0, line: name + " has no result on " + round.title + ".", points: none, record: { points: none, players: [name], solved: false, base: 0 } };
-  }
+  if (!row) return null;
   const points = applyExtras(row.parts, { streakDays: streakDays(internals.store.results, name) });
   return { total: points.total, moved: 0, line: name + " " + row.note + ": " + explain(points) + ".", points, record: { points, players: [name], solved: row.won, base: sum(row.parts) } };
 }
@@ -334,7 +342,7 @@ export function settleGame(id: string, by = "", answer = ""): { ok: boolean; err
   const { headline, rows } = rank(game);
   game.outcome = { at: Date.now(), headline, answer: game.template === "guess" ? pretty(num(game.answer)) : game.template === "trivia" ? game.answer.split("|")[0] : "", by: internals.person(by), rows };
   for (const row of [...rows].sort((a, b) => Number(b.won) - Number(a.won))) {
-    const out = recordResult(game.id, { name: row.name, tries: row.won ? "1" : "X", seconds: game.entries[row.name]?.seconds });
+    const out = recordResult(game.id, { name: row.name, tries: row.won ? "1" : "X", seconds: game.entries[row.name]?.seconds, verified: game.entries[row.name]?.verified });
     row.line = out.line;
     row.points = out.points;
   }
@@ -354,11 +362,12 @@ export function getGame(id: string, now = Date.now()): CustomGame | null {
   return game;
 }
 
-export function submitAnswer(id: string, name: string, raw: unknown, seconds: unknown): { ok: boolean; error?: string } {
+export function submitAnswer(id: string, name: string, raw: unknown, seconds: unknown, verified = false): { ok: boolean; error?: string } {
   const game = getGame(id);
   const who = internals.person(name);
   if (!game || !who) return { ok: false, error: "Not found" };
   if (game.outcome) return { ok: false, error: "This game is closed" };
+  if (Date.now() >= game.closesAt) return { ok: false, error: "Answers are closed. Waiting for the real answer." };
   if (game.entries[who]) return { ok: false, error: "You already answered" };
   let value = clean(raw, 80);
   if (value && game.template === "guess") {
@@ -372,7 +381,7 @@ export function submitAnswer(id: string, name: string, raw: unknown, seconds: un
     value = String(clamp(num(value), 80, 10000));
   }
   if (!game.members.includes(who)) game.members.push(who);
-  game.entries[who] = { value, seconds: clamp(Number(seconds) || 0, 0, game.seconds), at: Date.now() };
+  game.entries[who] = { value, seconds: clamp(Number(seconds) || 0, 0, game.seconds), at: Date.now(), verified };
   internals.save();
   settleIfDue(game);
   return { ok: true };
@@ -422,6 +431,7 @@ export function gameView(game: CustomGame, viewer = "") {
     members: game.members,
     createdBy: game.createdBy,
     state: game.outcome ? "settled" : "open",
+    expired: Date.now() >= game.closesAt,
     needsAnswer: needsAnswer(game),
     answered: names,
     mine: game.entries[who] ?? null,
@@ -455,7 +465,9 @@ export function punishmentPool(): string[] {
 
 export const wantsResearch = (text: string) => /punish/i.test(text) && /research|look.?up|\bfind\b|search|google|internet|online|ideas?\b|suggest|come up|options|what do (people|leagues)/i.test(text);
 
-export async function researchPunishments(request: string): Promise<string[] | null> {
+export interface PunishmentOption { text: string; source: string }
+
+export async function researchPunishments(request: string): Promise<PunishmentOption[] | null> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return null;
   const tier = intensityIn(request);
@@ -468,14 +480,22 @@ export async function researchPunishments(request: string): Promise<string[] | n
         tools: [{ type: "web_search" }],
         input: "Search the web for real last place punishments that friend groups and fantasy leagues actually do (Reddit threads, league blogs). Pick THREE different ones that are genuinely funny and publicly embarrassing, that fit this request from the group chat: \"" + clean(request, 200) + "\". " +
           (tier && tier !== "any" ? "All three should be " + tier + " in intensity. " : "Order them from mildest to most brutal. ") +
-          "Each must be legal, safe, and not permanent: no tattoos, no alcohol, nothing sexual, nothing dangerous. Do not pick any of these: " + [internals.store.punishment, ...ALL_PUNISHMENTS.slice(0, 3), ...PUNISHMENT_TIERS.medium.slice(0, 3), ...PUNISHMENT_TIERS.brutal.slice(0, 3)].filter(Boolean).join("; ") + ". Reply with exactly three lines and nothing else, one punishment per line, each starting with a third-person singular verb such as wears, runs or performs, so it completes the sentence \"Last place ...\", each under 110 characters, no numbering, no emojis, no quotes, no period.",
+          "Each must be legal, safe, and not permanent: no tattoos, no alcohol, nothing sexual, nothing dangerous, no public harassment, no forced eating, strenuous exercise, cold exposure or location tracking. Adapt unsafe traditions into private costume performances. " + PUNISHMENT_SAFETY + " Do not pick any of these: " + [internals.store.punishment, ...ALL_PUNISHMENTS.slice(0, 3), ...PUNISHMENT_TIERS.medium.slice(0, 3), ...PUNISHMENT_TIERS.brutal.slice(0, 3)].filter(Boolean).join("; ") + ". Reply only with a JSON array of three objects with text (a third-person singular verb phrase completing Last place, under 110 characters, no emojis, no final period) and source (the exact https article URL you read).",
       }),
       signal: AbortSignal.timeout(25000),
     });
     const out = (await res.json()) as { output?: { type: string; content?: { text?: string }[] }[] };
     const text = out.output?.filter((o) => o.type === "message").flatMap((o) => o.content ?? []).map((c) => c.text ?? "").join("\n") ?? "";
-    const found = text.split(/\n+/).map((line) => clean(line.replace(/\(?\[[^\]]*\]\([^)]*\)\)?/g, "").replace(/[\u201c\u201d"]/g, "").replace(/^[\s\-*\d.)']+/, "").replace(/^(last place|the loser)\s+/i, "").replace(/["'.!\s]+$/, ""), 160)).filter((p) => p.length >= 6).map((p) => p[0].toLowerCase() + p.slice(1));
-    return found.length >= 3 ? found.slice(0, 3) : null;
+    const parsed: unknown = JSON.parse(text.slice(text.indexOf("["), text.lastIndexOf("]") + 1));
+    if (!Array.isArray(parsed)) return null;
+    const found: PunishmentOption[] = [];
+    for (const item of parsed.slice(0, 3)) {
+      const phrase = clean(item?.text, 110).replace(/^(last place|the loser)\s+/i, "").replace(/[.!]+$/, "");
+      const source = String(item?.source ?? "");
+      if (phrase.length < 6 || !/^https:\/\/[^\s<>"']+$/.test(source) || !safePunishment(phrase) || !(await punishmentAllowed(phrase))) return null;
+      found.push({ text: phrase[0].toLowerCase() + phrase.slice(1), source });
+    }
+    return found.length === 3 && new Set(found.map((p) => p.text)).size === 3 ? found : null;
   } catch (e) {
     console.error("Punishment research failed", e);
     return null;
@@ -488,19 +508,19 @@ const gameRequest = (text: string) => {
   return rest.replace(/^[\s:,.\-]+/, "").replace(/^(?:where|about|that|called)\s+/i, "").replace(/[,\s]*@?nickel[.!?\s]*$/i, "").trim();
 };
 
-let prepared: { text: string; options?: string[]; plan?: Plan } | null = null;
+export interface PreparedTurn { text: string; options?: PunishmentOption[]; plan?: Plan }
 
-export async function prepareTurn(text: string): Promise<void> {
+export async function prepareTurn(text: string): Promise<PreparedTurn | undefined> {
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/i.test(text)) return;
   if (wantsResearch(text)) {
     const options = await researchPunishments(text);
-    if (options) prepared = { text, options };
+    if (options) return { text, options };
     return;
   }
   const request = gameRequest(text);
   if (request && request.length >= 3) {
     const plan = await planGameAI(request);
-    if (plan) prepared = { text, plan };
+    if (plan) return { text, plan };
   }
 }
 
@@ -518,14 +538,28 @@ export function leagueRules(league: RuledLeague, now = Date.now()): string {
   return "Fantasy " + league.topic + " rules. Scoring: " + scoring + ". Season: " + season + ". Draft " + league.rosterSize + " each.";
 }
 
-export function customTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string }): TurnReply | null {
+export function configureLeague(id: string, name: string, scoring: unknown, seasonDays: unknown): { ok: boolean; error?: string; league?: RuledLeague } {
+  const league: RuledLeague | undefined = internals.store.fantasy[id];
+  if (!league) return { ok: false, error: "Not found" };
+  if (internals.person(name) !== league.createdBy) return { ok: false, error: "Only the league creator can change its rules" };
+  const rule = clean(scoring, 160).replace(/[.!]+$/, "");
+  const days = Number(seasonDays);
+  if (rule.length < 4 || !Number.isInteger(days) || days < 1 || days > 364) return { ok: false, error: "Add a scoring rule and a season of 1 to 364 days" };
+  if (league.seasonDays !== days || !league.startedAt) league.startedAt = Date.now();
+  league.scoring = rule;
+  league.seasonDays = days;
+  internals.save();
+  return { ok: true, league };
+}
+
+export function customTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; customPrepared?: PreparedTurn }): TurnReply | null {
   const s = state();
   const store = internals.store;
   const text = input.text.trim().replace(/[,\s]*@?nickel[.!?\s]*$/i, "");
   const lower = text.toLowerCase();
   const sender = internals.person(input.sender) || store.names[(input.senderPhone ?? "").replace(/[^+0-9]/g, "")] || "";
   const base = input.baseUrl.replace(/\/+$/, "");
-  const ready = prepared?.text === input.text ? prepared : null;
+  const ready = input.customPrepared?.text === input.text ? input.customPrepared : null;
   const reply = (line: string, card: { kicker: string; league: string; title: string; sub: string; path: string }): TurnReply => ({
     addressed: true,
     line,
@@ -550,11 +584,12 @@ export function customTurn(input: { text: string; sender?: string; senderPhone?:
 
   if (/punish/.test(lower) && !leaderboard().stakes && !/punishment\s*(is|:|=)\s*.{6}/.test(lower)) {
     if (wantsResearch(lower)) {
-      s.options = ready?.options ?? threeOptions(text.replace(/\b(nickel|research|punishments?|for|a|the|find|look|up|ideas?|options|suggest)\b/gi, " "), [store.punishment], s.asked);
+      const options = ready?.options ?? threeOptions(text.replace(/\b(nickel|research|punishments?|for|a|the|find|look|up|ideas?|options|suggest)\b/gi, " "), [store.punishment], s.asked).map((text) => ({ text, source: sourceOf(text) }));
+      s.options = options.map((p) => p.text);
+      s.optionSources = options.map((p) => p.source);
       s.asked += 1;
-      prepared = null;
       internals.save();
-      return { addressed: true, line: "Three options for last place. " + s.options.map((p, i) => i + 1 + ": " + p.split(":")[0] + ".").join(" ") + " Pick one: Nickel, option 2." };
+      return { addressed: true, line: "Three options for last place. " + s.options.map((p, i) => i + 1 + ": " + p + ". Source: " + s.optionSources[i]).join("\n") + "\nPick one: Nickel, option 2. " + PUNISHMENT_SAFETY };
     }
     const tier = intensityIn(lower);
     if (tier) {
@@ -568,6 +603,16 @@ export function customTurn(input: { text: string; sender?: string; senderPhone?:
   }
 
   const latest: RuledLeague | null = store.latestFantasy ? store.fantasy[store.latestFantasy] ?? null : null;
+  const createLeague = text.match(/\b(?:make|create|start|new|set up)\s+(?:a\s+)?(?:fantasy\s+)?league\s+(?:for|about|on)\s+(.+)$/i);
+  if (createLeague && (!/fantasy/i.test(text) || /\b(scoring|rules|season)\s*[:=]/i.test(text))) {
+    const pieces = createLeague[1].split(/\s*;\s*/);
+    const topic = pieces.shift()!.trim();
+    const fields = Object.fromEntries(pieces.map((p) => { const at = p.indexOf(":"); return [p.slice(0, at).trim().toLowerCase(), p.slice(at + 1).trim()]; }));
+    const league = createFantasy(topic, (fields.picks ?? "").split(",").filter(Boolean), sender);
+    const length = fields.season?.match(/(\d+)\s*(days?|weeks?)/i);
+    if (fields.scoring || fields.rules || length) configureLeague(league.id, sender, fields.scoring ?? fields.rules ?? "The group assigns points to each pick", length ? Number(length[1]) * (/week/i.test(length[2]) ? 7 : 1) : 28);
+    return reply("Fantasy " + league.topic + " is open. " + leagueRules(league), fantasyCard(league));
+  }
   const season = lower.match(/\bseason\b[^.]*?\b(\d{1,2})\s*(weeks?|days?)\b/);
   const scoring = (text.match(/\b(?:league|fantasy)\s+(?:scoring|rules?)\s*(?:is|are|:|=)\s*(.{4,200})$/i) ?? text.match(/\bscoring\s*(?:rule\s*)?(?:is|:|=)\s*(.{4,200})$/i))?.[1];
   if (season || scoring || /\b(league|fantasy)\s+(rules?|scoring|settings)\b|\brules (of|for) the league\b/.test(lower)) {
@@ -600,42 +645,67 @@ export function customTurn(input: { text: string; sender?: string; senderPhone?:
   if (request === null) return null;
   if (request.length < 3) return /\b(custom|make|create)\b/.test(lower) ? reply("Tell me the game, or build one here. Try: Nickel, make a game: guess how many steps Dev walked today.", newGameCard()) : null;
   const game = createGame(ready?.plan ?? planGame(request), sender);
-  prepared = null;
   const t = TEMPLATES[game.template];
   return reply(game.title + " is live. " + (["fastest", "unique"].includes(game.template) ? "" : game.prompt + (/[.?!]$/.test(game.prompt) ? " " : ". ")) + (t.rules[game.rule] ?? Object.values(t.rules)[0]) + ". " + plural(game.seconds, "second") + " each, closes in " + (game.minutes >= 60 && game.minutes % 60 === 0 ? plural(game.minutes / 60, "hour") : plural(game.minutes, "minute")) + ".", gameCard(game));
 }
 
 type RouteResult =
   | { kind: "json"; data: unknown; status: number }
-  | { kind: "page"; game: ReturnType<typeof gameView> | null; card: ReturnType<typeof gameCard> | null }
+  | { kind: "page"; game: ReturnType<typeof gameView> | null; card: ReturnType<typeof gameCard> | null; league?: RuledLeague | null }
   | { kind: "card"; card: ReturnType<typeof gameCard> };
 
-export async function customRoute(method: string, url: URL, read: () => Promise<unknown>): Promise<RouteResult | null> {
+export async function customRoute(method: string, url: URL, read: () => Promise<unknown>, actor?: string): Promise<RouteResult | null> {
   const path = url.pathname;
-  const viewer = url.searchParams.get("u") ?? "";
+  const requested = internals.person(url.searchParams.get("u") ?? "");
+  const viewer = actor || (nameClaimed(requested) ? "" : requested);
   if (/^\/api\/rounds\/game-[a-z0-9]+\/result$/.test(path)) return { kind: "json", data: { ok: false }, status: 200 };
   if (path === "/api/games" && method === "POST") {
     const body = ((await read()) ?? {}) as { request?: string; template?: string; answer?: string; minutes?: number; name?: string };
+    const name = actor || (typeof body.name === "string" ? internals.person(body.name) : "");
+    if (!name) return { kind: "json", data: { ok: false, error: "Add your name" }, status: 400 };
     const forced = Object.keys(TEMPLATES).includes(String(body.template)) ? (body.template as Template) : undefined;
     const request = clean(body.request, 240) + (clean(body.answer, 60) ? ", answer is " + clean(body.answer, 60) : "");
     if (!forced && clean(body.request, 240).length < 3) return { kind: "json", data: { ok: false, error: "Describe the game" }, status: 400 };
     const plan = (await planGameAI(request, forced)) ?? planGame(request, forced);
     if (Number(body.minutes) > 0) plan.minutes = clamp(Number(body.minutes), 1, 1440);
-    const game = createGame(plan, body.name ?? "");
-    return { kind: "json", data: { ok: true, id: game.id, path: "/g/" + game.id, game: gameView(game, body.name) }, status: 200 };
+    const game = createGame(plan, name);
+    return { kind: "json", data: { ok: true, id: game.id, path: "/g/" + game.id, game: gameView(game, name) }, status: 200 };
   }
   const api = path.match(/^\/api\/games\/(game-[a-z0-9]+)$/);
   if (api) {
     let result: { ok: boolean; error?: string } = { ok: true };
     let name = viewer;
     if (method === "POST") {
-      const body = ((await read()) ?? {}) as { action?: string; name?: string; value?: unknown; seconds?: unknown; key?: string; answer?: string };
-      name = body.name ?? "";
-      result = body.action === "answer" ? submitAnswer(api[1], name, body.value, body.seconds) : body.action === "vote" ? castVote(api[1], name, String(body.key ?? "")) : body.action === "reveal" ? revealGame(api[1], name, body.answer) : { ok: false, error: "Unknown action" };
+      const body = ((await read()) ?? {}) as { action?: string; name?: string; value?: unknown; seconds?: unknown; key?: string; answer?: string; verified?: boolean };
+      name = actor || (typeof body.name === "string" ? body.name : "");
+      result = body.action === "answer" ? submitAnswer(api[1], name, body.value, body.seconds, !!actor) : body.action === "vote" ? castVote(api[1], name, String(body.key ?? "")) : body.action === "reveal" ? revealGame(api[1], name, body.answer) : { ok: false, error: "Unknown action" };
     }
     const game = getGame(api[1]);
     if (!game) return { kind: "json", data: { ok: false, error: "Not found" }, status: 404 };
     return { kind: "json", data: { ...result, game: gameView(game, name) }, status: result.ok ? 200 : 409 };
+  }
+  if (path === "/api/leagues" && method === "POST") {
+    const body = ((await read()) ?? {}) as { name?: string; topic?: string; scoring?: string; seasonDays?: number; picks?: string };
+    const name = internals.person(actor || (typeof body.name === "string" ? body.name : ""));
+    const topic = clean(body.topic, 48);
+    const days = Number(body.seasonDays);
+    if (!name || topic.length < 2 || clean(body.scoring, 160).length < 4 || !Number.isInteger(days) || days < 1 || days > 364) return { kind: "json", status: 400, data: { ok: false, error: "Add your name, a topic, scoring and a season of 1 to 364 days" } };
+    const league = createFantasy(topic, clean(body.picks, 900).split(",").filter(Boolean), name);
+    configureLeague(league.id, name, body.scoring, days);
+    return { kind: "json", status: 200, data: { ok: true, league, path: "/f/" + league.id } };
+  }
+  const leagueApi = path.match(/^\/api\/leagues\/(fantasy-[a-z0-9]+)$/);
+  if (leagueApi) {
+    const body = method === "POST" ? ((await read()) ?? {}) as { name?: string; scoring?: string; seasonDays?: number } : {};
+    const league = internals.store.fantasy[leagueApi[1]];
+    if (!league) return { kind: "json", status: 404, data: { ok: false, error: "Not found" } };
+    const result = method === "POST" ? configureLeague(league.id, actor || (typeof body.name === "string" ? body.name : ""), body.scoring, body.seasonDays) : { ok: true };
+    return { kind: "json", status: result.ok ? 200 : 409, data: { ...result, league, rules: leagueRules(league) } };
+  }
+  const leaguePage = path.match(/^\/leagues\/(new|fantasy-[a-z0-9]+)\/?$/);
+  if (leaguePage) {
+    const league = internals.store.fantasy[leaguePage[1]] ?? null;
+    return { kind: "page", game: null, card: league ? fantasyCard(league) : null, league };
   }
   const og = path.match(/^\/og\/g\/(game-[a-z0-9]+|new)\.png$/);
   if (og) {

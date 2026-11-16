@@ -4,14 +4,14 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { hubCard, hubLine, hubTurn, notePicks, wantsHub } from "./hub.js";
 import { scoreResult, type Points, type ResultPayload } from "./points.js";
-import { customScore, customTurn, punishmentPool } from "./custom.js";
+import { customScore, customTurn, leagueIsClosed, punishmentPool, type PreparedTurn } from "./custom.js";
 import { ALL_PUNISHMENTS } from "./punishments.js";
 import { attachAuth, claimPath } from "./auth.js";
 import { payBuyIn, walletCard, walletTurn } from "./wallet.js";
 
 export interface Round {
   id: string;
-  game: "wordle" | "krillion" | "rps";
+  game: "wordle" | "krillion" | "rps" | "custom";
   title: string;
   league: string;
   members: string[];
@@ -113,6 +113,7 @@ export function draftPick(id: string, member: string, pickName: string): { ok: b
   const who = person(member);
   const name = cap(pickName).slice(0, 40);
   if (!league || !who || !name) return { ok: false, error: "Not found" };
+  if (leagueIsClosed(league)) return { ok: false, error: "This league's season has ended" };
   if (!league.members.includes(who)) league.members.push(who);
   if (league.pool.filter((p) => p.owner === who).length >= league.rosterSize) return { ok: false, error: "Your roster is full" };
   let pick = league.pool.find((p) => p.name.toLowerCase() === name.toLowerCase());
@@ -130,13 +131,14 @@ export function scorePick(id: string, pickName: string, delta: number, by: strin
   const league = store.fantasy[id];
   const pick = league?.pool.find((p) => p.name.toLowerCase() === pickName.trim().toLowerCase());
   if (!league || !pick || !Number.isFinite(delta) || Math.abs(delta) > 100) return { ok: false, error: "Not found" };
+  if (leagueIsClosed(league)) return { ok: false, error: "This league's season has ended" };
   pick.points += Math.round(delta);
   league.log.push({ pick: pick.name, delta: Math.round(delta), by: person(by) || "Someone", at: Date.now() });
   save();
   return { ok: true, league };
 }
 
-function createFantasy(topic: string, picks: string[], sender: string): FantasyLeague {
+export function createFantasy(topic: string, picks: string[], sender: string): FantasyLeague {
   const names = picks.length ? picks : (POOLS.find(([re]) => re.test(topic))?.[1] ?? []);
   const unique = [...new Map(names.map((n) => [cap(n).toLowerCase(), cap(n).slice(0, 40)])).values()].filter(Boolean).slice(0, 24);
   const league: FantasyLeague = {
@@ -617,7 +619,9 @@ export function recordResult(roundId: string, payload: ResultPayload & { verifie
   const rival = person(payload.opponent ?? (typeof round.opponent === "string" ? round.opponent : ""));
   const bump = (who: string, delta: number) => { if (who) store.nickels[who] = (store.nickels[who] ?? 0) + delta; };
   const tally = (who: string, won: boolean) => { if (!who) return; const t = (store.stats[who] ??= { played: 0, wins: 0, losses: 0 }); t.played += 1; if (won) t.wins += 1; else t.losses += 1; };
-  const scored = customScore(round, name) ?? scoreResult(round, payload, { name, rival }, store);
+  const custom = customScore(round, name);
+  if (round.game === "custom" && !custom) return { ok: false };
+  const scored = custom ?? scoreResult(round, payload, { name, rival }, store);
   const line = scored.line;
   let loser = "";
   if (round.game === "rps") {
@@ -643,7 +647,7 @@ export function nickelStandings(): string {
   return rows.length ? "Nickels: " + rows.slice(0, 6).map(([who, n]) => who + " " + (n > 0 ? "+" : "") + n).join(", ") + "." : "No Nickels have moved yet. First to finish a game takes the lead.";
 }
 
-export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string; hasPhoto?: boolean; trusted?: boolean }): TurnReply {
+export function handleTurn(input: { text: string; sender?: string; senderPhone?: string; baseUrl: string; fantasyTopic?: string; fantasyPicks?: string[]; opponent?: string; game?: string; hasPhoto?: boolean; trusted?: boolean; customPrepared?: PreparedTurn }): TurnReply {
   const text = input.text.trim();
   const lower = text.toLowerCase();
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
@@ -739,7 +743,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     const pick = score && latest.pool.find((p) => lower.includes(p.name.toLowerCase()));
     if (score && pick) {
       const delta = Number(score[1].replace(/\s/g, ""));
-      scorePick(latest.id, pick.name, delta, sender);
+      const scored = scorePick(latest.id, pick.name, delta, sender);
+      if (!scored.ok) return reply(scored.error ?? "Could not score that pick.", fantasyCard(latest));
       const top = fantasyStandings(latest)[0];
       const tail = !pick.owner ? "Nobody owns " + pick.name + " yet, so it is still up for grabs." : top.points > 0 ? top.member + " leads Fantasy " + latest.topic + " with " + top.points + "." : "Fantasy " + latest.topic + " is still wide open.";
       return reply(pick.name + " " + (delta > 0 ? "+" : "") + delta + ". " + tail, fantasyCard(latest));
