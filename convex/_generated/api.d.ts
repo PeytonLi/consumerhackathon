@@ -12,6 +12,8 @@ import type * as http from "../http.js";
 import type * as league from "../league.js";
 import type * as lib_rewardMode from "../lib/rewardMode.js";
 import type * as lib_systemOne from "../lib/systemOne.js";
+import type * as money from "../money.js";
+import type * as moneySchema from "../moneySchema.js";
 import type * as nickel from "../nickel.js";
 import type * as vault from "../vault.js";
 import type * as whop from "../whop.js";
@@ -27,6 +29,8 @@ declare const fullApi: ApiFromModules<{
   league: typeof league;
   "lib/rewardMode": typeof lib_rewardMode;
   "lib/systemOne": typeof lib_systemOne;
+  money: typeof money;
+  moneySchema: typeof moneySchema;
   nickel: typeof nickel;
   vault: typeof vault;
   whop: typeof whop;
