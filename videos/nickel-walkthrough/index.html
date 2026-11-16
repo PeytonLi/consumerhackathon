@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"voiceoverTrack","type":"string","label":"Narration track","default":"assets/audio/narration-safe-trim.mp3"}]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="node_modules/gsap/dist/gsap.min.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; background: #f2f3fa; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #f2f3fa; }
+      .scene-host { position: absolute; inset: 0; }
+      .clip { position: absolute; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="74.25" data-width="1920" data-height="1080">
+      <div id="hook" class="scene-host" data-composition-id="hook" data-composition-src="compositions/01-hook.html" data-start="0" data-duration="9.2" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="wordle" class="scene-host" data-composition-id="wordle" data-composition-src="compositions/04-wordle.html" data-start="9.2" data-duration="7.6" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="krillion" class="scene-host" data-composition-id="krillion" data-composition-src="compositions/05-krillion.html" data-start="16.8" data-duration="7.2" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="handoff" class="scene-host" data-composition-id="handoff" data-composition-src="compositions/02-handoff.html" data-start="24" data-duration="5" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="brand" class="scene-host" data-composition-id="brand" data-composition-src="compositions/03-brand.html" data-start="29" data-duration="6" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="arcade" class="scene-host" data-composition-id="arcade" data-composition-src="compositions/06-arcade.html" data-start="35" data-duration="6.62" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="loser" class="scene-host" data-composition-id="loser" data-composition-src="compositions/07-loser.html" data-start="41.62" data-duration="6.86" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="winner" class="scene-host" data-composition-id="winner" data-composition-src="compositions/08-winner.html" data-start="48.48" data-duration="7.1" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="wrapped" class="scene-host" data-composition-id="wrapped" data-composition-src="compositions/09-wrapped.html" data-start="55.58" data-duration="8.54" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="fantasy" class="scene-host" data-composition-id="fantasy" data-composition-src="compositions/07-fantasy.html" data-start="64.12" data-duration="3.98" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="outro" class="scene-host" data-composition-id="outro" data-composition-src="compositions/10-outro.html" data-start="68.1" data-duration="6.15" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <audio id="music-bed" class="clip" src="assets/audio/quiet-synth.mp3" data-start="0" data-duration="74.25" data-track-index="0" data-volume="0.24" data-fade-in="0.8" data-fade-out="2.2"></audio>
+      <audio id="voiceover" class="clip" src="assets/audio/narration-safe-trim.mp3" data-var-src="voiceoverTrack" data-start="0" data-duration="74.25" data-track-index="2" data-volume="1"></audio>
+      <audio id="fx-tap" class="clip" src="assets/audio/tap.mp3" data-start="9.2" data-duration="0.144" data-track-index="3" data-volume="0.4"></audio>
+      <audio id="fx-card" class="clip" src="assets/audio/card-lock.mp3" data-start="29" data-duration="0.24" data-track-index="3" data-volume="0.35"></audio>
+      <audio id="fx-coin" class="clip" src="assets/audio/coin.mp3" data-start="50.5" data-duration="0.288" data-track-index="3" data-volume="0.35"></audio>
+      <audio id="fx-winner" class="clip" src="assets/audio/coin.mp3" data-start="55.58" data-duration="0.288" data-track-index="3" data-volume="0.35"></audio>
+    </div>
+    <script>
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

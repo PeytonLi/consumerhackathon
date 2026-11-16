@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css"><script src="../node_modules/gsap/dist/gsap.min.js"></script></head>
+<body><div id="root" data-composition-id="identity" data-width="1920px;height:1080px;overflow:hidden;background:#f4f3fa;color:#17172f">
+  <div class="kicker reveal" style="left:180px;top:205px">Know who you’re playing.</div>
+  <h1 class="headline compact reveal" style="left:170px;top:275px;width:750px">Real names.<br>Real rivals.</h1>
+  <p class="subtitle reveal" style="left:180px;top:455px;width:690px">A profile keeps each score connected to a friend, not a mystery avatar.</p>
+  <div class="feature-card reveal" style="left:180px;top:655px;width:625px;padding:28px 32px">
+    <div class="eyebrow">A friend-first league</div><div style="margin-top:16px;font-size:27px;font-weight:760;line-height:1.35">Profiles make the standings feel personal.</div>
+  </div>
+  <img class="shot reveal" src="../assets/ui/identity-setup.jpg" alt="Nickel profile setup demo" style="left:1070px;top:92px;width:470px;height:900px;object-fit:cover;border-radius:36px">
+  <div class="demo-stamp" style="left:1325px;top:905px">DEMO UI</div>
+  <script>window.__timelines=window.__timelines||{};const tl=gsap.timeline({paused:true});tl.fromTo('.reveal',{y:20,autoAlpha:0},{y:0,autoAlpha:1,duration:.5,stagger:.09,ease:'power2.out',immediateRender:false},.1);window.__timelines.identity=tl;</script>
+</div></body></html>

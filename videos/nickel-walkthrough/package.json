@@ -1,0 +1,19 @@
+{
+  "name": "nickel-walkthrough",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "preview": "hyperframes preview --background --port 3007",
+    "check": "hyperframes check --json",
+    "snapshots": "hyperframes snapshot --review",
+    "render": "hyperframes render",
+    "render:delivery": "hyperframes render --fps 30 --quality delivery --output $HOME/.capy/work/nickel-video/final.mp4",
+    "contact-sheet": "./scripts/contact-sheet.sh"
+  },
+  "dependencies": {
+    "gsap": "3.15.0"
+  },
+  "devDependencies": {
+    "hyperframes": "0.9.55"
+  }
+}

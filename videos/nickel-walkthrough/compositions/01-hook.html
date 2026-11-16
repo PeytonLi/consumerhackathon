@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css"><script src="../node_modules/gsap/dist/gsap.min.js"></script></head>
+<body><div id="root" data-composition-id="hook" data-width="1920" data-height="1080" style="position:relative;width:1920px;height:1080px;overflow:hidden;background:#f4f3fa;color:#17172f">
+  <img src="../assets/brand/nickel-lockup.png" alt="Nickel" style="position:absolute;left:160px;top:95px;width:285px;height:auto">
+  <div class="kicker reveal" style="left:170px;top:290px">Every person in this room</div>
+  <h1 class="headline reveal" style="left:160px;top:345px;width:930px">Is a gambler.</h1>
+  <p class="subtitle reveal" style="left:170px;top:470px;width:730px">You bet your savings on a startup. Your weekend on a hackathon.</p>
+  <div class="pill purple reveal" style="left:170px;top:625px">Your time on people you just met</div>
+  <div class="phone reveal" style="left:1220px;top:85px;width:430px;height:765px;border-radius:42px">
+    <video id="presenter-opening" class="clip" src="../assets/footage/presenter-opening.mp4" data-start="0" data-duration="9.2" data-track-index="2" muted playsinline></video>
+  </div>
+  <script>window.__timelines=window.__timelines||{};const tl=gsap.timeline({paused:true});tl.fromTo('.reveal',{y:22,autoAlpha:0},{y:0,autoAlpha:1,duration:.55,stagger:.1,ease:'power2.out',immediateRender:false},.12);window.__timelines.hook=tl;</script>
+</div></body></html>

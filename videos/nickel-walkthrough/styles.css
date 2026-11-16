@@ -1,0 +1,20 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #f4f3fa; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.clip { position: absolute; }
+.kicker { position: absolute; font-size: 24px; line-height: 1; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; color: #6558e8; }
+.headline { position: absolute; margin: 0; font-size: 86px; line-height: .99; letter-spacing: -.065em; font-weight: 820; }
+.headline.compact { font-size: 72px; }
+.subtitle { position: absolute; margin: 0; max-width: 760px; color: #626276; font-size: 30px; line-height: 1.36; letter-spacing: -.02em; }
+.pill { position: absolute; display: inline-flex; align-items: center; gap: 12px; padding: 15px 22px; border: 1px solid rgba(23,23,47,.12); border-radius: 999px; background: #fff; color: #282742; font-size: 20px; font-weight: 760; }
+.pill.purple { background: #6a59f4; border-color: #6a59f4; color: #fff; }
+.pill.lime { background: #d9fa70; border-color: #d9fa70; color: #17172f; }
+.phone { position: absolute; overflow: hidden; border: 10px solid #14141a; border-radius: 42px; background: #09090d; box-shadow: 0 34px 70px rgba(24, 19, 62, .18), 0 8px 24px rgba(24, 19, 62, .12); }
+.phone video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.phone-label { position: absolute; color: #fff; font-size: 20px; font-weight: 780; }
+.shot { position: absolute; display: block; object-fit: cover; border: 1px solid rgba(23,23,47,.08); border-radius: 24px; box-shadow: 0 24px 60px rgba(38, 31, 93, .13); }
+.feature-card { position: absolute; border: 1px solid rgba(23,23,47,.08); border-radius: 26px; background: #fff; box-shadow: 0 18px 44px rgba(38, 31, 93, .09); }
+.eyebrow { font-size: 18px; line-height: 1; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #7268d9; }
+.dark .eyebrow { color: #d9fa70; }
+.score { position: absolute; padding: 15px 20px; border-radius: 18px; background: #fff; color: #17172f; font-size: 23px; font-weight: 820; box-shadow: 0 12px 30px rgba(23,23,47,.1); }
+.demo-stamp { position: absolute; display: inline-flex; align-items: center; padding: 11px 17px; border-radius: 999px; background: #17172f; color: #d9fa70; font-size: 17px; font-weight: 850; letter-spacing: .13em; }
+.reveal { will-change: transform, opacity; }
