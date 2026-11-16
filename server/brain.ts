@@ -2,6 +2,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { hubTurn, notePicks } from "./hub.js";
 
 export interface Round {
   id: string;
@@ -81,6 +82,7 @@ const person = (raw: string | undefined) => {
   return clean ? clean[0].toUpperCase() + clean.slice(1).toLowerCase() : "";
 };
 const withMember = (name: string) => (name && !MEMBERS.includes(name) ? [...MEMBERS, name] : MEMBERS);
+export const internals = { store, save, person };
 
 export function getRound(id: string): Round | null {
   if (store.rounds[id]) return store.rounds[id];
@@ -671,6 +673,7 @@ export function recordResult(roundId: string, payload: { name?: string; opponent
       ? name + (solved ? " solved " + round.title + " in " + String(payload.tries).split("/")[0] + (payload.time ? " (" + payload.time + ")" : "") + ". Plus " + stake + " Nickels." : " missed " + round.title + ". No Nickels today.")
       : name + " locked in " + round.title + ". Plus " + stake + " Nickels.";
   }
+  notePicks(name, payload);
   store.results.push({ roundId, name, line, at: Date.now(), loser: loser || undefined });
   save();
   return { ok: true, line };
@@ -685,6 +688,8 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
   const text = input.text.trim();
   const lower = text.toLowerCase();
   if (!/(^|[^a-z])@?nickel([^a-z]|$)/.test(lower)) return { addressed: false };
+  const hubReply = hubTurn(input);
+  if (hubReply) return hubReply;
   const fantasyTalk = /fantasy/.test(lower) && !/punish/.test(lower);
   const phone = (input.senderPhone ?? "").replace(/[^+0-9]/g, "");
   const intro = person(text.match(/\b(?:i'?m|i am|this is|call me|my name is|it'?s)\s+([A-Za-z]{2,14})\b/i)?.[1]);
