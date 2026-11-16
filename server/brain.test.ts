@@ -202,6 +202,7 @@ describe("group chat turns", () => {
   });
 
   it("switches between demo and Stripe payments from the chat", () => {
+    delete process.env.STRIPE_SECRET_KEY;
     expect(brain.payMode()).toBe("demo");
     expect(turn("nickel real payments", "Maya").line).toBe("Stripe is not connected yet, so payments stay in demo mode. No card is charged.");
     process.env.STRIPE_SECRET_KEY = "sk_test_x";
@@ -212,5 +213,14 @@ describe("group chat turns", () => {
     expect(turn("nickel make payments real", "Maya").line).toMatch(/^Payments are live through Stripe/);
     expect(brain.payMode()).toBe("live");
     delete process.env.STRIPE_SECRET_KEY;
+  });
+
+  it("answers a first text from an unknown number with their player card", () => {
+    const first = brain.handleTurn({ text: "nickel K-HQF6D6", senderPhone: "+15550003333", baseUrl: "https://nickel.test" });
+    expect(first.line).toBe("Welcome to Nickel. Set up your player card: name and photo. One time, then every link opens as you.");
+    expect(first.url).toMatch(/^https:\/\/nickel\.test\/me\/me-[a-z0-9]+$/);
+    expect(first.react).toBeUndefined();
+    const loose = turn("nickel can u set up a wordle game between us pls", "Sritej");
+    expect(loose.line).not.toContain("Pls");
   });
 });

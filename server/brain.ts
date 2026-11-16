@@ -806,7 +806,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
 
   const asked = (input.game ?? "").toLowerCase();
   const game: Round["game"] = asked === "wordle" || asked === "krillion" || asked === "rps" ? asked : /word/.test(lower) ? "wordle" : /krill/.test(lower) ? "krillion" : /rock|paper|scissors|rps/.test(lower) ? "rps" : /challenge|\bvs\b|versus|against|1v1/.test(lower) ? "rps" : "wordle";
-  const skip = new Set(["between", "me", "and", "to", "a", "an", "the", "with", "my", "us", "him", "her", "them", "nickel", "for", "in", "at", "wordle", "krillion", "rps", "rock", "game"]);
+  const skip = new Set(["between", "me", "and", "to", "a", "an", "the", "with", "my", "us", "him", "her", "them", "pls", "please", "plz", "thanks", "gc", "chat", "here", "now", "today", "tonight", "rn", "nickel", "for", "in", "at", "wordle", "krillion", "rps", "rock", "game"]);
   const afterVerb = text.match(/(?:challenge|vs\.?|versus|against|between|and)\s+(.+)$/i)?.[1] ?? "";
   const opponent = person(input.opponent) || person(afterVerb.split(/\s+/).map((w) => w.replace(/[^A-Za-z]/g, "")).find((w) => w && !skip.has(w.toLowerCase())));
   if (opponent && opponent !== sender && /challenge|\bvs\b|versus|against|1v1|between/.test(lower + (input.opponent ? " challenge" : ""))) {
@@ -819,6 +819,7 @@ export function handleTurn(input: { text: string; sender?: string; senderPhone?:
     return reply(round.title + " is live. " + (round.seconds ? round.seconds + " seconds on the clock." : "Best of 3."), roundCard(round));
   }
   if (introduced) return reply("Got it, " + introduced + ". Add your photo here, one time. After that every link opens as you.", profileCard(profileFor(phone, introduced)));
+  if (phone && !sender) return reply("Welcome to Nickel. Set up your player card: name and photo. One time, then every link opens as you.", profileCard(profileFor(phone, "")));
   const n = store.quips;
   const line = quip(COMEBACKS) + " Try: challenge Maya, who won, punishment, or a fantasy league for anything.";
   save();
