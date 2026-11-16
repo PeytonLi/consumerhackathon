@@ -436,7 +436,12 @@ export const cashOut = action({
     let accountId = state.player.whopAccountId;
     if (!accountId) {
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, reason: "email" };
-      accountId = (await api.createAccount({ email, externalId: playerId, title: state.player.name || "Nickel player" })).id;
+      try {
+        accountId = (await api.createAccount({ email, externalId: playerId, title: state.player.name || "Nickel player" })).id;
+      } catch (e) {
+        if (definiteFailure(e)) return { ok: false, reason: "email" };
+        throw e;
+      }
       await ctx.runMutation(internal.payments.setWhopAccount, { playerId, whopAccountId: accountId, kyc: "pending" });
     }
     if (state.player.kyc !== "verified" || !state.player.whopAccountId) {

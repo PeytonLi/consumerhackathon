@@ -203,6 +203,10 @@ describe("payments: cash out through a Whop subaccount", () => {
     expect(await cash(5000)).toEqual({ ok: false, reason: "balance" });
     expect(await cash(50)).toEqual({ ok: false, reason: "amount" });
     expect(await cash(1000)).toEqual({ ok: false, reason: "email" });
+    const createAccount = whop.api.createAccount;
+    whop.api.createAccount = async () => { throw new WhopError(400, "The email you provided does not accept incoming mail."); };
+    expect(await cash(1000, "maya@nomail.invalid")).toEqual({ ok: false, reason: "email" });
+    whop.api.createAccount = createAccount;
     expect(await cash(1000, "maya@example.com")).toEqual({ ok: true, url: "https://sandbox.whop.com/onboarding/biz_player1" });
     expect(whop.calls.find((c) => c.method === "createAccount")?.input).toEqual({ email: "maya@example.com", externalId: maya, title: "Maya" });
     expect((await t.query(api.payments.wallet, { playerId: maya })).kyc).toBe("pending");

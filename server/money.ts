@@ -35,7 +35,7 @@ const WHY: Record<string, string> = {
   limit: "That would pass your daily limit.",
   balance: "Not enough in your Nickel balance. Add money in your wallet.",
   amount: "Cash outs start at $1.",
-  email: "Add your email to set up cash outs.",
+  email: "Add an email that gets mail to set up cash outs.",
   busy: "Your last cash out is still on its way.",
   transfer: "Whop could not send that cash out. Your money is back in your balance.",
 };
