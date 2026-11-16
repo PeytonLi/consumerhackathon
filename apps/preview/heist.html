@@ -112,12 +112,14 @@ function play(l) {
   $("sub").textContent = l.victim + "'s " + (l.nickels === 1 ? "nickel" : "nickels");
   $("me").innerHTML = '<button class="glass icon-btn" id="back" type="button" aria-label="Back">' + icon("back") + "</button>";
   $("back").onclick = load;
-  const ghost = l.peek && l.ghostMs != null ? '<span class="tag">' + icon("eye") + "Ghost " + l.ghostMs + "ms off</span>" : '<span class="tag">' + icon("lock") + "Ghost hidden</span>";
+  const ghost = () => l.peek && l.ghostMs != null ? '<span class="tag">' + icon("eye") + "Ghost " + l.ghostMs + "ms off</span>" : '<span class="tag">' + icon("lock") + "Ghost hidden</span>";
+  const canPeek = !l.peek && (H.perks?.peek ?? 0) > 0;
   show(
-    '<div class="who">' + avatar(l.victim, "lg") + ghost + '</div><p class="clock" id="clock">0.000</p><p class="t-label target">' + icon("target") + "Stop at 5.000</p>",
+    '<div class="who">' + avatar(l.victim, "lg") + '<span id="ghost">' + ghost() + '</span></div><p class="clock" id="clock">0.000</p><p class="t-label target">' + icon("target") + "Stop at 5.000</p>",
+    (canPeek ? '<button class="glass secondary" id="peek" type="button">' + icon("eye") + "Peek at the ghost</button>" : "") +
     '<button class="glass primary" id="go" type="button">' + icon("clock") + "Start</button>"
   );
-  const clock = $("clock"), go = $("go");
+  const clock = $("clock"), go = $("go"), peek = $("peek");
   let t0 = 0, frame;
   const run = () => {
     const ms = performance.now() - t0;
@@ -136,11 +138,27 @@ function play(l) {
     clock.classList.add("pop");
     attempt(l, ms);
   };
-  go.onclick = () => {
+  if (peek) peek.onclick = async () => {
+    haptic();
+    peek.disabled = go.disabled = true;
+    try {
+      const r = await api("/api/heist/" + encodeURIComponent(l.id) + "/peek", {});
+      Object.assign(l, { peek: true, ghostMs: r.ghostMs });
+      H.perks.peek = Math.max(0, H.perks.peek - 1);
+      $("ghost").innerHTML = ghost();
+      peek.remove();
+    } catch (err) { toast(err.message); peek.disabled = false; }
+    go.disabled = false;
+  };
+  go.onclick = async () => {
     if (t0) return stop();
     haptic();
-    $("back").disabled = true;
+    go.disabled = $("back").disabled = true;
+    if (peek) peek.remove();
+    try { await api("/api/heist/" + encodeURIComponent(l.id) + "/start", {}); }
+    catch (err) { toast(err.message); return setTimeout(load, 900); }
     t0 = performance.now();
+    go.disabled = false;
     go.innerHTML = icon("target") + "Stop";
     frame = requestAnimationFrame(run);
   };
@@ -150,6 +168,7 @@ async function attempt(l, ms) {
   let r;
   try { r = await api("/api/heist/" + encodeURIComponent(l.id) + "/attempt", { ms }); }
   catch (err) { toast(err.message); return setTimeout(load, 900); }
+  if (r.ms != null) ms = r.ms;
   const mine = Math.abs(ms - TARGET);
   const ghost = r.ghostMs == null ? "\u2014" : r.ghostMs + "ms";
   haptic(r.won ? 2 : 1);

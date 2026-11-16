@@ -8,6 +8,10 @@ const read = (file: string) => readFileSync(new URL("../apps/preview/" + file, i
 const mockApi = read("mock-api.js");
 
 type Fetch = (input: string, init?: { method?: string; body?: string }) => Promise<Response>;
+let clock = Date.UTC(2026, 10, 16, 17);
+class MockDate extends Date {
+  static now() { return clock; }
+}
 function mocked(search: string) {
   const store = new Map<string, string>();
   const original: Fetch = async () => new Response(JSON.stringify({ real: true }), { status: 200 });
@@ -16,7 +20,7 @@ function mocked(search: string) {
     window,
     location: new URL("http://nickel.test/w" + search),
     sessionStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) },
-    Response, URL, URLSearchParams, setTimeout, structuredClone,
+    Response, URL, URLSearchParams, setTimeout, structuredClone, Date: MockDate,
   });
   const call = async (path: string, body?: unknown) => {
     const res = await window.fetch(path, body === undefined ? undefined : { method: "POST", body: JSON.stringify(body) });
@@ -44,7 +48,7 @@ describe("money pages", () => {
   it("calls exactly the contract endpoints", () => {
     expect(read("wallet.html")).toMatch(/"\/api\/wallet"[\s\S]*"\/api\/wallet\/topup"[\s\S]*"\/api\/wallet\/limit"[\s\S]*"\/api\/wallet\/cashout"/);
     expect(read("chest.html")).toMatch(/"\/api\/chest"[\s\S]*"\/api\/chest\/skip"[\s\S]*"\/api\/chest\/open"/);
-    expect(read("heist.html")).toMatch(/"\/api\/heist"[\s\S]*"\/api\/heist\/" \+ encodeURIComponent\(l\.id\) \+ "\/attempt"/);
+    expect(read("heist.html")).toMatch(/"\/api\/heist"[\s\S]*"\/api\/heist\/" \+ encodeURIComponent\(l\.id\) \+ "\/peek"[\s\S]*"\/api\/heist\/" \+ encodeURIComponent\(l\.id\) \+ "\/start"[\s\S]*"\/api\/heist\/" \+ encodeURIComponent\(l\.id\) \+ "\/attempt"/);
     const play = read("play.html");
     expect(play).toContain('fetch("/api/wallet")');
     expect(play).toContain("d.moneyCents");
@@ -109,16 +113,37 @@ describe("money pages", () => {
     expect((await mocked("?mock=skipped").call("/api/chest")).data).toMatchObject({ available: false, opened: null });
   });
 
-  it("scores the heist against the ghost: closer to 5.000s than the ghost takes it", async () => {
+  it("hides unpeeked ghosts and peeks with a perk", async () => {
     const { call } = mocked("?mock=1");
     const { data } = await call("/api/heist");
     expect(Object.keys(data.perks).sort()).toEqual(["double_steal", "lock", "peek", "shield"]);
     for (const l of data.loose) expect(Object.keys(l).sort()).toEqual(["cents", "endsAt", "ghostMs", "id", "nickels", "peek", "victim"]);
-    expect((await call("/api/heist/lz-dev/attempt", { ms: 5050 })).data).toEqual({ won: true, ghostMs: 212, took: { nickels: 1, cents: 5 } });
-    expect((await call("/api/heist/lz-alex/attempt", { ms: 5400 })).data).toEqual({ won: false, ghostMs: 148, took: { nickels: 0, cents: 0 } });
-    expect((await call("/api/heist/lz-dev/attempt", { ms: 5000 })).status).toBe(404);
-    expect((await call("/api/heist")).data.loose.map((l: { id: string }) => l.id)).toEqual(["lz-maya"]);
+    expect(data.loose.map((l: { id: string; ghostMs: number | null }) => [l.id, l.ghostMs])).toEqual([["lz-dev", 212], ["lz-alex", null], ["lz-maya", null]]);
+    expect((await call("/api/heist/lz-alex/peek", {})).data).toEqual({ ghostMs: 148 });
+    expect((await call("/api/heist/lz-maya/peek", {})).status).toBe(409);
+    const after = (await call("/api/heist")).data;
+    expect(after.perks.peek).toBe(0);
+    expect(after.loose.map((l: { ghostMs: number | null }) => l.ghostMs)).toEqual([212, 148, null]);
     expect((await mocked("?mock=empty").call("/api/heist")).data.loose).toEqual([]);
+  });
+
+  it("scores the heist on its own clock from one start: closer to 5.000s than the ghost takes it", async () => {
+    const { call } = mocked("?mock=1");
+    expect((await call("/api/heist/lz-dev/start", {})).data).toEqual({ ok: true, limitMs: 15000 });
+    expect((await call("/api/heist/lz-dev/start", {})).status).toBe(409);
+    expect((await call("/api/heist")).data.loose.map((l: { id: string }) => l.id)).toEqual(["lz-alex", "lz-maya"]);
+    clock += 5100;
+    expect((await call("/api/heist/lz-dev/attempt", { ms: 5000 })).data).toEqual({ won: true, ghostMs: 212, ms: 5000, took: { nickels: 1, cents: 5 } });
+    expect((await call("/api/heist/lz-dev/attempt", { ms: 5000 })).status).toBe(404);
+    await call("/api/heist/lz-alex/start", {});
+    clock += 5600;
+    expect((await call("/api/heist/lz-alex/attempt", { ms: 5000 })).data).toEqual({ won: false, ghostMs: 148, ms: 5600, took: { nickels: 0, cents: 0 } });
+    expect((await call("/api/heist/lz-maya/attempt", { ms: 5000 })).data).toEqual({ won: false, ghostMs: 300, ms: null, took: { nickels: 0, cents: 0 } });
+    expect((await call("/api/heist")).data.loose).toEqual([]);
+    const late = mocked("?mock=1");
+    await late.call("/api/heist/lz-maya/start", {});
+    clock += 15001;
+    expect((await late.call("/api/heist/lz-maya/attempt", { ms: 5000 })).data).toMatchObject({ won: false, ms: null });
   });
 
   it("adds a money delta to round results and passes other calls through", async () => {
