@@ -154,11 +154,11 @@ const icon = (n) => '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">' + I
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
 const fmt = (s) => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
 const tell = (line) => {
-  if (line && !params.has("practice")) fetch("/api/rounds/" + R.id + "/result", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(line), keepalive: true }).catch(() => {});
+  if (line && !params.has("practice")) fetch("/api/rounds/" + R.id + "/result", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(line), keepalive: true }).then(async (res) => { if (res.status === 403) toast((await res.json()).error); }).catch(() => {});
   if (parent !== window) parent.postMessage({ type: "nickel:done", round: R.id, line }, "*");
 };
 const meKey = "nickel.me." + via;
-const me = () => (!params.get("via") && window.ME && window.ME.name) || sessionStorage.getItem(meKey);
+const me = () => (window.ME && window.ME.name) || sessionStorage.getItem(meKey);
 const HUES = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#40c8e0", "#5e5ce6"];
 const hue = (name) => { const i = (R.members ?? []).indexOf(name); return HUES[(i < 0 ? [...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) : i) % HUES.length]; };
 const avatar = (name, cls = "", seal = "") => '<span class="avatar ' + cls + '" style="--hue:' + hue(name) + '">' + esc(name[0]) + (seal ? '<span class="seal">' + icon(seal) + "</span>" : "") + "</span>";
