@@ -60,3 +60,11 @@ Regression coverage for these fixes is in `server/fixes.test.ts`. The existing s
 - Every Messages chip was clicked after claiming a card, including wallet buy-in agreement, and the composer was exercised. The console was read throughout the journeys; no unexpected browser errors or server exceptions were observed. Expected hostile-input HTTP errors are intentional.
 - Missing/closed pages, reused claim links, a second device's rejected claim, empty names, long request rejection, safe display of HTML names/picks, a repeated result, a second player's RPS submission, reload/back and two-tab cases were checked across browser/API tests. Back/replay limitations are U01/U02, not claimed fixed.
 - Real Safari/iOS, live iMessage delivery, Keiki/Vault delivery, real Stripe checkout/payout, image generation, Nace service availability, a live Convex deployment and production deployment were not tested. AI-dependent paths were disabled locally, not billed. No external credentials were changed.
+
+## Final integration follow-up
+
+The combined build at `1e892a9` passed typecheck, 220 tests, the build and inline-script parsing. The integrator browser-checked profile claim/save, recognized identity in Free Throw practice, sourced fantasy draft/timeline views and a Reaction card sent through the website composer on an isolated file-backed store. The public hub, custom-game creation, league creation, wallet and shared styles returned HTTP 200; anonymous wallet chat returned 401 and payments remained in demo mode.
+
+The Keiki tool schema now accepts the five arcade game names, avoids double-prefixing messages with Nickel, and the agent prompt keeps financial actions simulated. A real agent-harness call for `Nickel, play memory` returned a working Memory round URL. No message was sent to a real line during this check.
+
+**Open transport finding:** `Nickel, games` returns the correct menu from the public `/api/turn` endpoint, but repeated Keiki test-harness calls invoked the tool and returned an empty final reply. An explicit final-answer prompt did not resolve it. A natural-language menu question instead launched Wordle. Individual game launches work; menu intent handling and the empty harness response still need investigation. These checks do not establish delivery on a physical iPhone.
