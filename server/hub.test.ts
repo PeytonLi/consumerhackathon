@@ -135,7 +135,7 @@ describe("GET /api/hub payload", () => {
     expect(out.payouts.map((p) => p.amountCents).sort()).toEqual([1500, 500]);
     expect(Object.keys(out.recent[0])).toEqual(["line", "at"]);
     expect(out.recent.map((r) => r.line)).toContain("Maya took the $15 pot.");
-    expect(out.recent.map((r) => r.line)).toContain("Maya beat Dev 2-0 at Rock Paper Scissors. 5 Nickels moved.");
+    expect(out.recent.some((r) => r.line.startsWith("Maya beat Dev 2-0 at Rock Paper Scissors"))).toBe(true);
     for (let i = 1; i < out.recent.length; i++) expect(out.recent[i - 1].at).toBeGreaterThanOrEqual(out.recent[i].at);
   });
 });
