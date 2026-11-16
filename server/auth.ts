@@ -150,7 +150,7 @@ export async function authGate(request: Request, socket = ""): Promise<{ request
 
   if (route === "turn") {
     if (body.photoUrl) return deny(403, "Add your photo on your player card.");
-    if (!session?.name && !/^\s*@?nickel[\s,!:]*(?:(?:(?:play|new)\s+)?(?:wordle|krillion|rock paper scissors|rps)|play|today|new game|challenge\s+[a-z]+(?:\s+(?:to|at)\s+(?:wordle|krillion|rps|rock paper scissors))?|who won|who'?s (?:winning|losing)|(?:show (?:me )?(?:the )?)?(?:leaderboard|standings|hub)|invite(?: everyone)?|how (?:do|can) (?:we|i) join)[.!?\s]*$/i.test(String(body.text ?? ""))) return deny(401, 'Open your player card first, or text "Nickel, set me up" in the group.');
+    if (!session?.name && !/^\s*@?nickel[\s,!:]*(?:(?:(?:play|new)\s+)?(?:wordle|krillion|rock paper scissors|rps|reaction|free\s?throw|memory|math(?: sprint)?|higher(?: or )?lower)|games|arcade|play|today|new game|challenge\s+[a-z]+(?:\s+(?:to|at)\s+(?:wordle|krillion|rps|rock paper scissors|reaction|free\s?throw|memory|math(?: sprint)?|higher(?: or )?lower))?|who won|who'?s (?:winning|losing)|(?:show (?:me )?(?:the )?)?(?:leaderboard|standings|hub)|invite(?: everyone)?|how (?:do|can) (?:we|i) join)[.!?\s]*$/i.test(String(body.text ?? ""))) return deny(401, 'Open your player card first, or text "Nickel, set me up" in the group.');
     body.sender = session?.name ?? "";
     body.senderPhone = session ? source().profiles[session.token]?.phone ?? "" : "";
     return { request: forward(JSON.stringify(body)), session };
